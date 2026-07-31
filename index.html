@@ -1178,11 +1178,28 @@ async function lancerSync(){
   }
   await rSync();await rHome();toast(`${ok}/${sessions.length} session${ok>1?'s':''} synchronisée${ok>1?'s':''}`);
 }
+// ── GARDE-FOU ÉTANCHÉITÉ BOUTIQUE / BUVETTE ──────────
+const APP_ID='BOUTIQUE';
+function bvtWrongCatalog(t){
+  const msg='\u26D4 Mauvais catalogue : ce lien renvoie la '+String(t).toUpperCase()+'.\nCette tablette est la BOUTIQUE.\nCorrige l\'URL Apps Script dans Synchronisation.';
+  try{synL('\u26D4 Catalogue '+t+' refus\u00E9 \u2014 tablette BOUTIQUE');}catch(e){}
+  try{toast('\u26D4 Catalogue '+t+' refus\u00E9');}catch(e){}
+  try{alert(msg);}catch(e){}
+}
+function guardCatalogSourceBoutique(data){
+  if(!data||typeof data!=='object')return true;
+  if(data.app&&String(data.app).toLowerCase()!=='boutique'){bvtWrongCatalog(data.app);return false;}
+  const looksBuvette=('params_fut'in data)||('ecocups'in data)||('rembs'in data)||
+    (Array.isArray(data.produits)&&data.produits.some(function(p){return p&&(('pv_33cl'in p)||('pv_50cl'in p)||('consigne'in p)||('qty_unites'in p)||/^(P\d|E\d)/.test(String(p.ref||'')));}));
+  if(looksBuvette){bvtWrongCatalog('buvette');return false;}
+  return true;
+}
 async function syncCat(){
   const url=CFG.apps_script_url;if(!url){toast('URL Apps Script non configurée');return;}
   synL('Récupération catalogue...');
   try{const r=await fetch(url+'?action=get_catalogue&boutique='+CFG.boutique_id+'&saison='+encodeURIComponent(CFG.saison));
     const data=await r.json();
+    if(!guardCatalogSourceBoutique(data)){return;}
     if(data.produits&&Array.isArray(data.produits)){await dClr('produits');for(const p of data.produits)await dPut('produits',p);await loadP();document.getElementById('synNP').textContent=prods.length;synL(`Catalogue OK: ${prods.length} produit(s)`);toast(`${prods.length} produit(s) chargé(s)`);}
     else{synL('Réponse invalide');toast('Erreur serveur');}
   }catch(e){synL('ERREUR: '+e.message);toast('Erreur de connexion');}
