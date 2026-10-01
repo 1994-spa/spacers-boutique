@@ -31,7 +31,7 @@ const PB = {
   SH_TAB: '22_TABLETTES',
   SH_CLIENTS: '23_CLIENTS_BOUTIQUE',
   BOUTIQUES: { B1: 'Grand Public', B2: 'VIP' },
-  NAVY: '#000037', GOLD: '#FFDC00',
+  NAVY: '#001E2D', DAY: '#91BEE6',   // charte 26-27 (jaune proscrit)
 };
 const PB_LIVE_COLS = ['Reçu le', 'Horodatage', 'ID vente', 'ID événement Tickie', 'Match', 'Boutique', 'Session',
   'Bénévole', 'Mode', 'Total €', 'Articles', 'Détail', 'ID billet', 'Code-barres', 'Tarif billet',
@@ -49,7 +49,7 @@ function installerPilotage() {
   const mk = function (name, head) {
     const sh = ss.getSheetByName(name) || ss.insertSheet(name);
     if (sh.getLastRow() === 0) {
-      sh.getRange(1, 1, 1, head.length).setValues([head]).setBackground(PB.NAVY).setFontColor(PB.GOLD).setFontWeight('bold');
+      sh.getRange(1, 1, 1, head.length).setValues([head]).setBackground(PB.NAVY).setFontColor('#FFFFFF').setFontWeight('bold');
       sh.setFrozenRows(1);
     }
     return sh;
