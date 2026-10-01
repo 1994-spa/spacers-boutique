@@ -107,19 +107,41 @@ input,textarea,select{font-family:inherit;color:var(--text);outline:none}
 .boutbtn small{display:block;font-weight:600;font-size:12px}
 .boutbtn.sel{background:var(--navy);border-color:var(--navy);color:#fff}
 
-/* ── ACCUEIL ── */
-.hbody{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:16px;padding:16px}
+/* ── ACCUEIL : « prochain match » en vedette, état de la tablette, sessions ── */
+.hbody{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:16px;padding:16px}
 .hcol{display:flex;flex-direction:column;gap:14px;min-height:0}
+.warn-bar{display:flex;align-items:center;gap:12px;background:var(--warn-bg);border:1.5px solid rgba(138,75,0,.35);color:var(--warn);border-radius:var(--rs);padding:10px 14px;font-size:14px;font-weight:700}
+.warn-bar span{flex:1}
+.warn-bar button{background:var(--navy);color:#fff;border-radius:9px;padding:8px 14px;font-weight:800;font-size:13px;white-space:nowrap}
+.hero{position:relative;flex:1;min-height:300px;border-radius:22px;overflow:hidden;color:#fff;padding:26px 28px;display:flex;flex-direction:column;
+  background:radial-gradient(120% 90% at 85% 0%,rgba(145,190,230,.28),rgba(145,190,230,0) 55%),var(--columns),linear-gradient(160deg,#0B3446,#001E2D 60%);box-shadow:var(--shadow-lg)}
+.hero .stars{position:absolute;inset:0;pointer-events:none}
+.hero-k{font-size:13px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--day);position:relative}
+.hero-t{font-family:var(--f-t);font-size:86px;line-height:1;text-transform:uppercase;margin-top:10px;position:relative;max-width:92%;overflow-wrap:anywhere}
+.hero-t.small{font-size:54px}
+.hero-s{font-size:16px;color:rgba(255,255,255,.82);margin-top:8px;position:relative}
+.hero-stats{display:flex;gap:28px;margin-top:auto;padding-top:20px;position:relative;flex-wrap:wrap}
+.hero-stats div{display:flex;flex-direction:column}
+.hero-stats b{font-size:30px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1.1}
+.hero-stats span{font-size:12px;color:rgba(255,255,255,.7);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.hero-cta{position:relative;margin-top:20px;height:70px;border-radius:16px;background:var(--day);color:var(--navy);font-size:21px;font-weight:900;box-shadow:0 8px 24px rgba(0,0,0,.3);transition:transform .12s}
+.hero-cta:active{transform:scale(.98)}
+.status3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.stile{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);padding:14px 16px;text-align:left;display:flex;flex-direction:column;gap:3px;min-height:86px}
+.stile .h{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.stile .dot{width:10px;height:10px;border-radius:50%;background:var(--faint);flex-shrink:0}
+.stile.ok .dot{background:var(--ok)}.stile.wait .dot{background:var(--warn)}.stile.err .dot{background:var(--err)}
+.stile b{font-size:17px;font-weight:900}
+.stile small{font-size:12px;color:var(--muted);font-weight:600;line-height:1.35}
 .krow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;box-shadow:var(--shadow)}
-.kpi.hero{background:var(--columns),var(--navy);color:#fff;border-color:transparent}
 .kl{font-size:12px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
-.kpi.hero .kl,.kpi.hero .ks{color:rgba(255,255,255,.75)}
 .kv{font-size:32px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1.05}
-.kpi.hero .kv{color:var(--day)}
 .ks{font-size:13px;color:var(--muted);margin-top:4px;font-weight:600}
+.sess-h{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .slist{display:flex;flex-direction:column;gap:10px}
 .scard{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;display:flex;align-items:center;gap:14px;min-height:64px;box-shadow:var(--shadow);text-align:left;width:100%}
+.scard.live{border:2px solid var(--ok)}
 .scard:active{border-color:var(--navy)}
 .sdot{width:12px;height:12px;border-radius:50%;flex-shrink:0;background:var(--faint)}
 .sdot.ouvert{background:var(--ok)}.sdot.synchro{background:var(--day);box-shadow:0 0 0 2px var(--navy) inset}
@@ -127,13 +149,15 @@ input,textarea,select{font-family:inherit;color:var(--text);outline:none}
 .sname{font-size:16px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .smeta{font-size:13px;color:var(--muted);margin-top:2px}
 .sca{font-size:18px;font-weight:900;font-variant-numeric:tabular-nums}
+.sgo{background:var(--ok);color:#fff;border-radius:9px;padding:6px 10px;font-size:12px;font-weight:900;white-space:nowrap}
+.hist{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-top:6px}
+.scard.old{box-shadow:none;background:var(--surface-2);min-height:52px;padding:10px 14px}
+.scard.old .sname{font-size:14px}.scard.old .sca{font-size:15px;color:var(--muted)}
 .hello{background:var(--surface);border:2px dashed var(--border);border-radius:var(--r);padding:24px 18px;text-align:center}
 .hello .e{font-size:36px;margin-bottom:8px}
 .hello b{font-size:17px;display:block;margin-bottom:6px}
 .hello p{font-size:14px;color:var(--muted);line-height:1.6}
-.pil-chip{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rs);padding:10px 14px;font-size:14px;font-weight:600}
-.pil-chip .dot{width:10px;height:10px;border-radius:50%;background:var(--faint);flex-shrink:0}
-.pil-chip.ok .dot{background:var(--ok)}.pil-chip.wait .dot{background:var(--warn)}
+.pil-chip{display:none}
 
 /* ── CAISSE : produits à gauche, panier à droite ── */
 .cbody{flex:1;display:grid;grid-template-columns:minmax(0,1fr) var(--side);min-height:0;overflow:hidden}
@@ -376,25 +400,42 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
   </div>
   <div class="hbody">
     <div class="hcol">
+      <div class="warn-bar" id="saisonWarn" style="display:none"><span id="saisonTxt"></span><button onclick="fixSaison()">Corriger</button></div>
+      <section class="hero" aria-label="Prochain match">
+        <svg class="stars" viewBox="0 0 400 300" preserveAspectRatio="xMaxYMin slice" aria-hidden="true">
+          <path transform="translate(330 40) scale(1.6)" fill="#91BEE6" d="M12 0C13 8 16 11 24 12C16 13 13 16 12 24C11 16 8 13 0 12C8 11 11 8 12 0Z"/>
+          <path transform="translate(372 120) scale(.7)" fill="#C8D2EB" opacity=".8" d="M12 0C13 8 16 11 24 12C16 13 13 16 12 24C11 16 8 13 0 12C8 11 11 8 12 0Z"/>
+          <path transform="translate(290 95) scale(.45)" fill="#FFFFFF" opacity=".7" d="M12 0C13 8 16 11 24 12C16 13 13 16 12 24C11 16 8 13 0 12C8 11 11 8 12 0Z"/>
+        </svg>
+        <div class="hero-k" id="heroK">Prochain match</div>
+        <div class="hero-t" id="heroMatch">Aucun match chargé</div>
+        <div class="hero-s" id="heroSub">—</div>
+        <div class="hero-stats">
+          <div><b id="heroBillets">—</b><span>billets en mémoire</span></div>
+          <div><b id="heroStock">—</b><span>articles en stock</span></div>
+          <div><b id="heroCA">—</b><span id="heroCAl">vendu ce match</span></div>
+        </div>
+        <button class="hero-cta" id="hCtaBtn" onclick="hCta()">Ouvrir la caisse →</button>
+      </section>
+      <div class="status3">
+        <button class="stile" id="stCat" onclick="goSync()"><span class="h"><span class="dot"></span>Catalogue</span><b id="stCatV">—</b><small id="stCatS"></small></button>
+        <button class="stile" id="hPil" onclick="goSync()"><span class="h"><span class="dot"></span>Pilotage live</span><b id="hPilV">—</b><small id="hPilTxt"></small></button>
+        <button class="stile" id="stSyn" onclick="goSync()"><span class="h"><span class="dot"></span>Synchro CRM</span><b id="stSynV">—</b><small id="stSynS"></small></button>
+      </div>
+    </div>
+    <div class="hcol">
       <div id="noteTransBox" class="note-box" style="display:none">
         <div class="nb-t">📋 Note du bénévole précédent</div>
         <div class="nb-x" id="noteTransTxt"></div>
         <div class="nb-m" id="noteTransMeta"></div>
       </div>
       <div class="krow">
-        <div class="kpi hero"><div class="kl">Total vendu</div><div class="kv" id="kCA">0 €</div><div class="ks" id="kSub">0 vente</div></div>
+        <div class="kpi"><div class="kl">Vendu sur la tablette</div><div class="kv" id="kCA">0 €</div><div class="ks" id="kSub">0 vente</div></div>
         <div class="kpi"><div class="kl">Matchs</div><div class="kv" id="kMat">0</div><div class="ks" id="kSync">0 non synchro</div></div>
       </div>
-      <div class="pil-chip" id="hPil"><span class="dot"></span><span id="hPilTxt">Pilotage live non configuré</span></div>
-      <button class="btn btn-p btn-big w100" id="hCtaBtn" onclick="openNM()">+ Ouvrir la caisse</button>
-      <div class="g2">
-        <button class="btn btn-s" onclick="goSync()">⇄ Synchronisation</button>
-        <button class="btn btn-s" onclick="ss('s-pilotage')">🆘 Aide &amp; stock</button>
-      </div>
-    </div>
-    <div class="hcol">
-      <div class="card-t" style="margin:0">Sessions</div>
+      <div class="sess-h"><span>Sessions</span></div>
       <div class="slist scroll" id="sList" style="flex:1;min-height:0"></div>
+      <button class="btn btn-s w100" onclick="ss('s-pilotage')">🆘 Aide, contact &amp; stock</button>
     </div>
   </div>
 </div>
@@ -880,40 +921,86 @@ function refOf(p){return p.ref_boutique||p.ref||p.id;}
 function triProduits(l){return [...l].sort((a,b)=>modeleOf(a).localeCompare(modeleOf(b),'fr')||((TAILLES.indexOf(tailleOf(a))+1||99)-(TAILLES.indexOf(tailleOf(b))+1||99)));}
 
 // ── ACCUEIL ───────────────────────────────────
+// Saison sportive déduite de la date : juillet → juin
+function saisonCourante(){const d=new Date(),y=d.getFullYear();return d.getMonth()>=6?y+'-'+(y+1):(y-1)+'-'+y;}
+async function fixSaison(){
+  CFG.saison=saisonCourante();await dPut('config',{...CFG,id:'main',key:'main'});
+  toast('Saison réglée sur '+CFG.saison+' — recharge le catalogue');await rHome();goSync();
+}
+async function hCta(){
+  const ouvertes=(await dAll('sessions')).filter(s=>s.statut==='ouvert').sort((a,b)=>b.date.localeCompare(a.date));
+  const today=new Date().toISOString().slice(0,10);
+  const s=ouvertes.find(x=>x.date===today||(PIL.match&&x.date===PIL.match.dateMatch));
+  if(s)ouvrirSess(s.id);else openNM();
+}
 async function rHome(){
   $('hSai').textContent=(CFG.boutique_nom||'')+' · saison '+(CFG.saison||'—');
   $('hBdg').textContent=CFG.boutique_id||'B?';
+  const sc=saisonCourante(),sw=$('saisonWarn');
+  if(CFG.saison&&CFG.saison!==sc){$('saisonTxt').textContent='La tablette est réglée sur la saison '+CFG.saison+'. Nous sommes en '+sc+'.';sw.style.display='flex';}else sw.style.display='none';
   const sessions=await dAll('sessions'),ventes=await dAll('ventes');
   const vCA=ventes.filter(v=>v.mode_paiement!=='Offert');
   const caS=vCA.reduce((s,v)=>s+(v.ca_ligne||0),0);
   const nbV=new Set(vCA.map(v=>v.groupe||v.id)).size;
   $('kCA').textContent=fmtS(caS);
   $('kSub').textContent=nbV+' vente'+(nbV>1?'s':'')+' · hors offerts';
-  const ns=sessions.filter(s=>s.statut!=='synchro').length;
+  const ns=sessions.filter(s=>s.statut==='clos').length;
   $('kMat').textContent=sessions.length;
-  $('kSync').textContent=ns+' non synchro';
+  $('kSync').textContent=ns?ns+' à synchroniser':'tout est synchronisé';
+  // Vedette : match Tickie chargé, sinon session ouverte, sinon invitation
+  const vm={};ventes.forEach(v=>{if(!vm[v.session_id])vm[v.session_id]={ca:0,g:new Set()};if(v.mode_paiement!=='Offert')vm[v.session_id].ca+=v.ca_ligne||0;vm[v.session_id].g.add(v.groupe||v.id);});
+  const ouverte=[...sessions].filter(s=>s.statut==='ouvert').sort((a,b)=>b.date.localeCompare(a.date))[0];
+  const m=PIL.match,ht=$('heroMatch');
+  const stock=prods.filter(p=>p.actif!==false).reduce((a,p)=>a+Math.max(0,Number(p.stock)||0),0);
+  $('heroStock').textContent=prods.length?stock:'—';
+  $('heroBillets').textContent=m?Object.keys(PIL.billets||{}).length:'—';
+  if(m){
+    const nom=String(m.nom||'').replace(/\s*-\s*(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche).*$/i,'');
+    const adv=(nom.match(/vs\.?\s+(.+)$/i)||[])[1];
+    ht.textContent=adv?'VS '+adv:nom;ht.className='hero-t'+((adv||nom).length>18?' small':'');
+    const d=m.date?new Date(m.date):null;
+    $('heroSub').textContent=d&&!isNaN(d)?d.toLocaleString('fr-FR',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'}):(m.dateMatch||'');
+    $('heroK').textContent=m.dateMatch===new Date().toISOString().slice(0,10)?'Match ce soir':'Prochain match';
+  }else if(ouverte){
+    ht.textContent=ouverte.match_label.replace(/^Spacer's\s+/i,'');ht.className='hero-t';
+    $('heroSub').textContent=ouverte.date+(ouverte.heure?' · '+ouverte.heure:'')+(ouverte.benevole?' · '+ouverte.benevole:'');
+    $('heroK').textContent='Session en cours';
+  }else{
+    ht.textContent='Prêts pour le match';ht.className='hero-t small';
+    $('heroSub').textContent='Avec le wifi : Synchronisation → « Charger le match » pour récupérer le match et les billets.';
+    $('heroK').textContent='Boutique '+(CFG.boutique_id||'');
+  }
+  const cible=ouverte&&(!m||ouverte.date===m.dateMatch)?ouverte:null;
+  const sv=cible?(vm[cible.id]||{ca:0,g:new Set()}):null;
+  $('heroCA').textContent=sv?fmtS(sv.ca):'0 €';$('heroCAl').textContent=sv?sv.g.size+' vente'+(sv.g.size>1?'s':'')+' ce match':'vendu ce match';
+  $('hCtaBtn').textContent=cible?'Reprendre la caisse →':'Ouvrir la caisse →';
+  // Tuiles d'état
+  const tile=(id,cls,v,t)=>{const e=$(id);e.className='stile '+cls;$(id+'V').textContent=v;$(id+'S').textContent=t;};
+  tile('stCat',prods.length?'ok':'err',prods.length?prods.filter(p=>p.actif!==false).length+' produits':'Vide',prods.length?stock+' articles en stock':'Synchronisation → Mettre à jour');
+  tile('stSyn',ns?'wait':'ok',ns?ns+' en attente':'À jour',ns?'Envoyer au CRM avec le wifi':'Ventes envoyées au CRM');
   rPilChip();
+  // Sessions : en cours d'abord, historique replié en dessous
   const el=$('sList');
   if(!sessions.length){
-    el.innerHTML='<div class="hello"><div class="e">👋</div><b>Aucun match en cours</b><p>Le responsable crée le match avant de te donner la tablette.<br>Ou utilise « Ouvrir la caisse ».</p></div>';
+    el.innerHTML='<div class="hello"><div class="e">👋</div><b>Aucune session pour l\'instant</b><p>Touche « Ouvrir la caisse » le jour du match.</p></div>';
   }else{
     const sorted=[...sessions].sort((a,b)=>b.date.localeCompare(a.date));
-    const vm={};ventes.forEach(v=>{if(!vm[v.session_id])vm[v.session_id]={ca:0,g:new Set()};if(v.mode_paiement!=='Offert')vm[v.session_id].ca+=v.ca_ligne||0;vm[v.session_id].g.add(v.groupe||v.id);});
-    el.innerHTML=sorted.map(s=>{const sv=vm[s.id]||{ca:0,g:new Set()};const nb=sv.g.size;const stl=s.statut==='synchro'?'Synchronisé':s.statut==='clos'?'Clôturé':'En cours';
-      return '<button class="scard" onclick="ouvrirSess(\''+esc(s.id)+'\')"><span class="sdot '+esc(s.statut)+'"></span><span class="sinf"><span class="sname" style="display:block">'+esc(s.match_label)+'</span><span class="smeta" style="display:block">'+esc(s.date)+(s.benevole?' · '+esc(s.benevole):'')+' · '+stl+' · '+nb+' vente'+(nb>1?'s':'')+'</span></span><span class="sca">'+fmtS(sv.ca)+'</span></button>';
-    }).join('');
+    const actives=sorted.filter(s=>s.statut!=='synchro'),hist=sorted.filter(s=>s.statut==='synchro');
+    const card=(s,old)=>{const v=vm[s.id]||{ca:0,g:new Set()};const nb=v.g.size;const stl=s.statut==='synchro'?'Synchronisé':s.statut==='clos'?'Clôturé · à synchroniser':'En cours';
+      return '<button class="scard'+(old?' old':'')+(s.statut==='ouvert'?' live':'')+'" onclick="ouvrirSess(\''+esc(s.id)+'\')"><span class="sdot '+esc(s.statut)+'"></span><span class="sinf"><span class="sname" style="display:block">'+esc(s.match_label)+'</span><span class="smeta" style="display:block">'+esc(s.date)+(s.benevole?' · '+esc(s.benevole):'')+' · '+stl+' · '+nb+' vente'+(nb>1?'s':'')+'</span></span>'+(s.statut==='ouvert'?'<span class="sgo">Reprendre</span>':'<span class="sca">'+fmtS(v.ca)+'</span>')+'</button>';};
+    el.innerHTML=actives.map(s=>card(s,false)).join('')+(hist.length?'<div class="hist">Historique</div>'+hist.slice(0,6).map(s=>card(s,true)).join(''):'');
   }
-  const lastClos=[...sessions].filter(s=>s.statut==='clos'&&s.note_transmission).sort((a,b)=>b.date.localeCompare(a.date))[0];
+  const lastClos=[...sessions].filter(s=>s.statut!=='ouvert'&&s.note_transmission).sort((a,b)=>b.date.localeCompare(a.date))[0];
   const nb=$('noteTransBox');
   if(lastClos){$('noteTransTxt').textContent=lastClos.note_transmission;$('noteTransMeta').textContent='Laissé par '+(lastClos.benevole||'bénévole précédent')+' · '+lastClos.date;nb.style.display='block';}
   else nb.style.display='none';
 }
 function rPilChip(){
-  const c=$('hPil'),t=$('hPilTxt');if(!c)return;
-  c.className='pil-chip';
-  if(!PIL.url||!PIL.token){t.textContent='Pilotage live non configuré (Synchronisation)';return;}
-  if(!PIL.match){c.classList.add('wait');t.textContent='Pilotage configuré · match à charger (Synchronisation)';return;}
-  c.classList.add('ok');t.textContent='🎫 '+PIL.match.nom+' · '+Object.keys(PIL.billets||{}).length+' billets en mémoire';
+  const c=$('hPil');if(!c)return;
+  const set=(cls,v,t)=>{c.className='stile '+cls;$('hPilV').textContent=v;$('hPilTxt').textContent=t;};
+  if(!PIL.url||!PIL.token){set('err','Non configuré','Ouvre le lien envoyé par le responsable');return;}
+  if(!PIL.match){set('wait','Match à charger','Synchronisation → Charger le match');return;}
+  set('ok','Connecté',Object.keys(PIL.billets||{}).length+' billets · scan hors ligne');
 }
 function openNM(){
   $('mDat').value=new Date().toISOString().slice(0,10);$('mAdv').value='';$('mBen').value='';
