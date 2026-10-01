@@ -110,6 +110,9 @@ input,textarea,select{font-family:inherit;color:var(--text);outline:none}
 /* ── ACCUEIL : « prochain match » en vedette, état de la tablette, sessions ── */
 .hbody{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:16px;padding:16px}
 .hcol{display:flex;flex-direction:column;gap:14px;min-height:0}
+.install-bar{display:flex;align-items:center;gap:12px;background:var(--navy);color:#fff;border-radius:var(--rs);padding:10px 14px;font-size:14px;font-weight:700}
+.install-bar span{flex:1}
+.install-bar button{background:var(--day);color:var(--navy);border-radius:9px;padding:9px 16px;font-weight:900;font-size:14px;white-space:nowrap}
 .warn-bar{display:flex;align-items:center;gap:12px;background:var(--warn-bg);border:1.5px solid rgba(138,75,0,.35);color:var(--warn);border-radius:var(--rs);padding:10px 14px;font-size:14px;font-weight:700}
 .warn-bar span{flex:1}
 .warn-bar button{background:var(--navy);color:#fff;border-radius:9px;padding:8px 14px;font-weight:800;font-size:13px;white-space:nowrap}
@@ -368,6 +371,7 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
       <p>Configuration de la tablette, à faire une seule fois par le responsable boutique avant de la confier aux bénévoles.</p>
     </div>
     <div class="cfg-form scroll">
+      <div class="install-bar" style="display:none"><span>📲 Installe d'abord l'application sur la tablette.</span><button onclick="installer()">📲 Installer</button></div>
       <div><span class="lbl">Boutique</span>
         <div class="g2">
           <button class="boutbtn" id="bB1" onclick="selB('B1')">BOUTIQUE 1<small>Grand Public</small></button>
@@ -400,6 +404,7 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
   </div>
   <div class="hbody">
     <div class="hcol">
+      <div class="install-bar" style="display:none"><span>📲 Installe l'application sur cette tablette : elle s'ouvrira en plein écran, même sans wifi.</span><button onclick="installer()">📲 Installer</button></div>
       <div class="warn-bar" id="saisonWarn" style="display:none"><span id="saisonTxt"></span><button onclick="fixSaison()">Corriger</button></div>
       <section class="hero" aria-label="Prochain match">
         <svg class="stars" viewBox="0 0 400 300" preserveAspectRatio="xMaxYMin slice" aria-hidden="true">
@@ -845,24 +850,55 @@ async function startup(){
   const p=await dGet('config','pilotage');if(p)PIL=Object.assign(PIL,p);
   // Seules les ventes faites à partir de cette version partent au pilotage (pas l'historique de la tablette)
   if(!PIL.depuis){PIL.depuis=new Date().toISOString();await dPut('config',PIL);}
-  lireLienConfig();
+  const parLien=await lireLienConfig();
   const cfg=await dGet('config','main');
+  rInstall();
   if(!cfg){ss('s-cfg');return;}
   CFG=cfg;await loadP();
   checkBatterie();
   await rHome();ss('s-home');
+  if(parLien){
+    toast('✅ Tablette configurée : '+CFG.boutique_id+' · '+CFG.boutique_nom,4000);
+    // Premier passage en wifi : catalogue + match + billets, sans rien toucher
+    if(navigator.onLine!==false){(async()=>{if(CFG.apps_script_url)await syncCat();if(PIL.url&&PIL.token)await chargerMatch();await rHome();})();}
+  }
   pilEnvoyer();
 }
 // Lien envoyé depuis le tableau de bord : ?cfg=base64({url, token, boutique})
-function lireLienConfig(){
+// Lien / QR code du tableau de bord : ?cfg=base64({url, token, boutique, nom, crm, contact})
+// Configure la tablette en un scan : boutique, CRM, pilotage live.
+async function lireLienConfig(){
   try{
-    const raw=new URLSearchParams(location.search).get('cfg');if(!raw)return;
+    const raw=new URLSearchParams(location.search).get('cfg');if(!raw)return false;
     const c=JSON.parse(decodeURIComponent(escape(atob(raw))));
+    history.replaceState(null,'',location.pathname);
     if(c.url)PIL.url=c.url;if(c.token)PIL.token=c.token;
-    if(c.boutique==='B1'||c.boutique==='B2')selB(c.boutique);
-    dPut('config',PIL);history.replaceState(null,'',location.pathname);
-    toast('📡 Pilotage live configuré');
-  }catch(e){}
+    await dPut('config',PIL);
+    const b=(c.boutique==='B1'||c.boutique==='B2')?c.boutique:null;
+    let cfg=await dGet('config','main');
+    if(b){
+      cfg=Object.assign({id:'main',key:'main',saison:saisonCourante(),contact_urgence:''},cfg||{},
+        {boutique_id:b,boutique_nom:(cfg&&cfg.boutique_id===b&&cfg.boutique_nom)||c.nom||(b==='B1'?'Grand Public':'VIP')});
+      if(c.crm&&!cfg.apps_script_url)cfg.apps_script_url=c.crm;
+      if(c.contact&&!cfg.contact_urgence)cfg.contact_urgence=c.contact;
+      if(cfg.saison!==saisonCourante())cfg.saison=saisonCourante();
+      await dPut('config',cfg);
+    }
+    return true;
+  }catch(e){return false;}
+}
+// Installation de l'application (Android / Chrome) : bouton affiché tant qu'elle n'est pas installée
+let _installEvt=null;
+const estInstallee=()=>matchMedia('(display-mode: standalone)').matches||matchMedia('(display-mode: fullscreen)').matches||navigator.standalone;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();_installEvt=e;rInstall();});
+window.addEventListener('appinstalled',()=>{_installEvt=null;rInstall();toast('✅ Application installée : retrouve « S\'Boutique » sur l\'écran d\'accueil');});
+function rInstall(){
+  document.querySelectorAll('.install-bar').forEach(el=>{el.style.display=(!estInstallee())?'flex':'none';
+    const btn=el.querySelector('button');if(btn)btn.textContent=_installEvt?'📲 Installer':'Comment faire ?';});
+}
+async function installer(){
+  if(_installEvt){_installEvt.prompt();try{await _installEvt.userChoice;}catch(e){}_installEvt=null;rInstall();return;}
+  toast('Menu ⋮ de Chrome → « Installer l\'application » (ou « Ajouter à l\'écran d\'accueil »)',7000);
 }
 
 // ── ONBOARDING ────────────────────────────────

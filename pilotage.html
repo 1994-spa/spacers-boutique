@@ -7,6 +7,7 @@
 <meta name="robots" content="noindex">
 <link rel="icon" href="icon-192.png">
 <title>Pilotage Boutique Spacers</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <style>
 /* Charte 26-27 « NIGHT » : Night, Day, Périvenche, blanc — jaune proscrit. Sansation (texte), Heaters (titres).
    Bandeau billetterie + boutique, puis points de vente, rythme, produits, profils d'acheteurs */
@@ -95,6 +96,24 @@ th:first-child,td:first-child{text-align:left}
 .tab .ok{color:var(--good)}.tab .wait{color:var(--warn)}
 .links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .link-card{display:flex;flex-direction:column;gap:6px;min-width:0}
+.qr{width:200px;height:200px;background:#fff;border-radius:10px;padding:6px;border:1px solid var(--border)}
+.qr svg{width:100%;height:100%;display:block}
+#print-sheet{display:none}
+@media print{
+  @page{size:A5 landscape;margin:8mm}
+  body{background:#fff}
+  body>*:not(#print-sheet){display:none!important}
+  #print-sheet{display:block}
+  .pcard{display:grid;grid-template-columns:1.15fr 1fr;gap:8mm;align-items:center;height:128mm;page-break-after:always;break-after:page;color:#001E2D;font-family:var(--font)}
+  .pc-l{background:#001E2D;color:#fff;border-radius:6mm;padding:7mm;height:100%;display:flex;flex-direction:column;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .pc-brand{font-family:var(--f-t);font-size:30pt;line-height:1;text-transform:uppercase}
+  .pc-sub{font-size:9pt;letter-spacing:.12em;text-transform:uppercase;color:#C8D2EB}
+  .pc-k{font-family:var(--font);font-weight:900;font-size:40pt;color:#91BEE6;margin-top:4mm;line-height:1}
+  .pc-nom{font-size:14pt;font-weight:800}
+  .pc-l ol{margin:4mm 0 0 5mm;font-size:10.5pt;line-height:1.5}
+  .pc-n{margin-top:auto;font-size:8.5pt;color:#C8D2EB}
+  .pc-r svg{width:100%;height:auto;display:block}
+}
 .link-card code{font-size:.72rem;background:var(--surface-2);border-radius:6px;padding:6px 8px;overflow-wrap:anywhere;color:var(--muted);max-height:4.5em;overflow:hidden}
 .btn{background:var(--navy);color:#fff;border:0;border-radius:8px;padding:11px 16px;font-weight:800;cursor:pointer}
 .btn.sec{background:var(--surface-2);color:var(--text);border:1px solid var(--border)}
@@ -130,6 +149,7 @@ th:first-child,td:first-child{text-align:left}
   <button class="btn" type="submit">Se connecter</button>
 </form>
 
+<div id="print-sheet" aria-hidden="true"></div>
 <main class="wrap" id="dash" hidden>
   <div id="err"></div>
   <section class="panel" aria-label="Match des tablettes">
@@ -153,7 +173,7 @@ th:first-child,td:first-child{text-align:left}
       <p class="note" style="margin-top:10px">Le lien vente → acheteur (client Tickie, email) est complété toutes les 10 minutes dans le CRM Boutique (onglets 20_VENTES_LIVE et 23_CLIENTS_BOUTIQUE). Ce tableau n'affiche que des totaux.</p></section>
     <section class="panel"><h2>Billetterie <span>billets valides du match</span></h2><div id="billetterie"></div></section>
   </div>
-  <section class="panel"><h2>Liens de configuration des tablettes <span>à envoyer aux bénévoles : un clic configure le pilotage</span></h2><div class="links" id="links"></div></section>
+  <section class="panel"><h2>Installer les tablettes <span>un scan configure la boutique, le catalogue et le pilotage</span></h2><div class="links" id="links"></div></section>
 </main>
 
 <script>
@@ -330,18 +350,51 @@ function kpi(l, val, s, cls, ratio, extra){
 }
 function niceStep(max){ const raw = max/4; const p = Math.pow(10, Math.floor(Math.log10(raw))); const n = raw/p; return (n<=1?1:n<=2?2:n<=5?5:10)*p; }
 
-function renderLinks(){
+// URL Apps Script du CRM Boutique (catalogue + synchro de fin de match), injectée dans les QR des tablettes
+const CRM_URL = 'https://script.google.com/macros/s/AKfycbz3v2-lSreW_Y7xQVbq4xtDrx_bL1R_KzsbbbOlFQHg5LWVVKaxJZw8vCIo4KGVVyk6ZA/exec';
+function lienTablette(k){
   const base = location.origin && location.origin.startsWith('http') ? location.origin + '/' : 'https://spacers-boutique.spacersytb.workers.dev/';
   const b64 = o => btoa(unescape(encodeURIComponent(JSON.stringify(o))));
+  return base + '?cfg=' + encodeURIComponent(b64({ url: cfg.url, token: cfg.token, boutique: k, nom: BOUTIQUES[k], crm: CRM_URL }));
+}
+function qrSvg(txt, cell){
+  if (!window.qrcode) return '<p class="note">QR indisponible (connexion)</p>';
+  const q = qrcode(0, 'M'); q.addData(txt); q.make();
+  return q.createSvgTag({ cellSize: cell || 4, margin: 2, scalable: true });
+}
+function renderLinks(){
   $('links').innerHTML = Object.entries(BOUTIQUES).map(([k, nom]) => {
-    const url = base + '?cfg=' + encodeURIComponent(b64({ url: cfg.url, token: cfg.token, boutique: k }));
-    return `<div class="link-card"><b>${k} · ${esc(nom)}</b><code id="lk${k}">${esc(url)}</code><button class="btn sec" type="button" data-k="${k}" style="align-self:flex-start">Copier le lien</button></div>`;
-  }).join('');
-  $('links').querySelectorAll('button').forEach(bt => bt.onclick = () => {
+    const url = lienTablette(k);
+    return `<div class="link-card"><b>${k} · ${esc(nom)}</b><div class="qr">${qrSvg(url)}</div>
+      <p class="note">Scanne avec l'appareil photo de la tablette ${k}, ouvre dans Chrome, puis « 📲 Installer ».</p>
+      <code id="lk${k}">${esc(url)}</code><button class="btn sec" type="button" data-k="${k}" style="align-self:flex-start">Copier le lien</button></div>`;
+  }).join('') + `<div style="grid-column:1/-1"><button class="btn" type="button" id="btn-print">🖨 Imprimer les fiches QR (A5)</button></div>`;
+  $('links').querySelectorAll('button[data-k]').forEach(bt => bt.onclick = () => {
     const txt = $('lk' + bt.dataset.k).textContent;
     navigator.clipboard.writeText(txt).then(() => { bt.textContent = 'Copié ✓'; setTimeout(() => bt.textContent = 'Copier le lien', 1800); })
       .catch(() => { const r = document.createRange(); r.selectNodeContents($('lk' + bt.dataset.k)); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); });
   });
+  $('btn-print').onclick = () => { renderPrint(); window.print(); };
+  renderPrint();
+}
+// Fiches A5 paysage à imprimer et plastifier, une par tablette
+function renderPrint(){
+  $('print-sheet').innerHTML = Object.entries(BOUTIQUES).map(([k, nom]) => `
+    <section class="pcard">
+      <div class="pc-l">
+        <div class="pc-brand">Spacer's</div>
+        <div class="pc-sub">Toulouse Volley · Boutique</div>
+        <div class="pc-k">${k}</div><div class="pc-nom">${esc(nom)}</div>
+        <ol>
+          <li>Ouvre l'<b>appareil photo</b> de la tablette et vise le QR code.</li>
+          <li>Touche le lien qui apparaît : il s'ouvre dans <b>Chrome</b>.</li>
+          <li>Touche <b>« 📲 Installer »</b> en haut de l'écran.</li>
+          <li>Ouvre l'appli <b>S'Boutique</b> : la tablette est prête.</li>
+        </ol>
+        <p class="pc-n">À faire en wifi, une seule fois par tablette. Garde cette fiche avec la tablette.</p>
+      </div>
+      <div class="pc-r">${qrSvg(lienTablette(k), 6)}</div>
+    </section>`).join('');
 }
 
 loadCfg();
