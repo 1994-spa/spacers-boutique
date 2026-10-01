@@ -37,3 +37,9 @@ Les ventes « Offert » sont reçues mais exclues du CA et de la fiche client. L
 - Le lien vers l'acheteur (client Tickie, email, nom) est fait côté serveur, dans le CRM.
 - Le tableau de bord ne reçoit que des totaux.
 - À afficher en boutique et dans la politique de confidentialité : le scan du billet sert à mesurer les achats par profil de spectateur et à alimenter le programme de fidélité.
+
+## Organisation du classeur CRM (`Organisation_Classeur.gs`)
+
+À coller dans le projet Apps Script **du classeur** (Extensions › Apps Script › ➕ Fichier › Script, nom `Organisation_Classeur`), puis sélectionner `organiserClasseur` et ▶ Exécuter. Relançable à volonté.
+
+Crée 📖 SOMMAIRE, 📊 TABLEAU DE BORD (formules, sélecteur de saison) et 🔎 RECHERCHE ; range les onglets par familles colorées ; masque les onglets techniques/obsolètes ; fige et stylise les en-têtes, ajoute filtres, notes de colonnes et formats € / dates ; pose un avertissement non bloquant sur les onglets automatiques. Aucun onglet ni aucune en-tête n'est renommé : les scripts existants ne sont pas impactés.
