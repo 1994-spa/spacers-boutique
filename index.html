@@ -152,6 +152,7 @@ input,textarea,select{font-family:inherit;color:var(--text);outline:none}
 .sname{font-size:16px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .smeta{font-size:13px;color:var(--muted);margin-top:2px}
 .sca{font-size:18px;font-weight:900;font-variant-numeric:tabular-nums}
+.sdel{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;background:var(--surface-2);border:1px solid var(--border);flex-shrink:0;opacity:.75}
 .sgo{background:var(--ok);color:#fff;border-radius:9px;padding:6px 10px;font-size:12px;font-weight:900;white-space:nowrap}
 .hist{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-top:6px}
 .scard.old{box-shadow:none;background:var(--surface-2);min-height:52px;padding:10px 14px}
@@ -741,6 +742,17 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
   </div>
 </div>
 
+<div class="ov" id="ov-del">
+  <div class="sheet center">
+    <div class="big-ico">🗑</div>
+    <div class="stitle">Supprimer cette session ?</div>
+    <div class="c-mut" style="font-size:15px" id="delTxt"></div>
+    <div style="font-size:13px;color:var(--muted)">Elle disparaît de cette tablette uniquement. Ce qui a été envoyé au CRM reste dans le classeur.</div>
+    <button class="btn btn-err w100" onclick="confirmerSuppr()">Oui, supprimer</button>
+    <button class="btn btn-q w100" onclick="document.getElementById('ov-del').classList.remove('on')">Annuler</button>
+  </div>
+</div>
+
 <div class="ov" id="ov-vider">
   <div class="sheet center">
     <div class="big-ico">🗑</div>
@@ -1023,13 +1035,31 @@ async function rHome(){
     const sorted=[...sessions].sort((a,b)=>b.date.localeCompare(a.date));
     const actives=sorted.filter(s=>s.statut!=='synchro'),hist=sorted.filter(s=>s.statut==='synchro');
     const card=(s,old)=>{const v=vm[s.id]||{ca:0,g:new Set()};const nb=v.g.size;const stl=s.statut==='synchro'?'Synchronisé':s.statut==='clos'?'Clôturé · à synchroniser':'En cours';
-      return '<button class="scard'+(old?' old':'')+(s.statut==='ouvert'?' live':'')+'" onclick="ouvrirSess(\''+esc(s.id)+'\')"><span class="sdot '+esc(s.statut)+'"></span><span class="sinf"><span class="sname" style="display:block">'+esc(s.match_label)+'</span><span class="smeta" style="display:block">'+esc(s.date)+(s.benevole?' · '+esc(s.benevole):'')+' · '+stl+' · '+nb+' vente'+(nb>1?'s':'')+'</span></span>'+(s.statut==='ouvert'?'<span class="sgo">Reprendre</span>':'<span class="sca">'+fmtS(v.ca)+'</span>')+'</button>';};
+      // Suppression possible : session synchronisée (déjà dans le CRM) ou session sans vente
+      const sup=(s.statut==='synchro'||nb===0)?'<span class="sdel" role="button" aria-label="Supprimer la session" onclick="event.stopPropagation();demanderSuppr(\''+esc(s.id)+'\')">🗑</span>':'';
+      return '<button class="scard'+(old?' old':'')+(s.statut==='ouvert'?' live':'')+'" onclick="ouvrirSess(\''+esc(s.id)+'\')"><span class="sdot '+esc(s.statut)+'"></span><span class="sinf"><span class="sname" style="display:block">'+esc(s.match_label)+'</span><span class="smeta" style="display:block">'+esc(s.date)+(s.benevole?' · '+esc(s.benevole):'')+' · '+stl+' · '+nb+' vente'+(nb>1?'s':'')+'</span></span>'+(s.statut==='ouvert'?'<span class="sgo">Reprendre</span>':'<span class="sca">'+fmtS(v.ca)+'</span>')+sup+'</button>';};
     el.innerHTML=actives.map(s=>card(s,false)).join('')+(hist.length?'<div class="hist">Historique</div>'+hist.slice(0,6).map(s=>card(s,true)).join(''):'');
   }
   const lastClos=[...sessions].filter(s=>s.statut!=='ouvert'&&s.note_transmission).sort((a,b)=>b.date.localeCompare(a.date))[0];
   const nb=$('noteTransBox');
   if(lastClos){$('noteTransTxt').textContent=lastClos.note_transmission;$('noteTransMeta').textContent='Laissé par '+(lastClos.benevole||'bénévole précédent')+' · '+lastClos.date;nb.style.display='block';}
   else nb.style.display='none';
+}
+let _supprId=null;
+async function demanderSuppr(id){
+  const s=(await dAll('sessions')).find(x=>x.id===id);if(!s)return;
+  const v=(await dAll('ventes')).filter(x=>x.session_id===id);
+  if(v.length&&s.statut!=='synchro'){toast('Synchronise d\'abord cette session avec le CRM');return;}
+  _supprId=id;
+  $('delTxt').textContent=s.match_label+' · '+s.date+(v.length?' · '+new Set(v.map(x=>x.groupe||x.id)).size+' vente(s) déjà envoyées au CRM':' · aucune vente');
+  $('ov-del').classList.add('on');
+}
+async function confirmerSuppr(){
+  const id=_supprId;_supprId=null;$('ov-del').classList.remove('on');if(!id)return;
+  for(const v of (await dAll('ventes')).filter(x=>x.session_id===id))await dDel('ventes',v.id);
+  await dDel('sessions',id);
+  if(sess&&sess.id===id)sess=null;
+  toast('Session supprimée de la tablette');await rHome();
 }
 function rPilChip(){
   const c=$('hPil');if(!c)return;
