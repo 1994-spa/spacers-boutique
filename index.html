@@ -240,7 +240,7 @@ input,textarea,select{font-family:inherit;color:var(--text);outline:none}
 #undoT{font-size:16px;font-weight:900;background:rgba(0,0,0,.2);width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center}
 
 /* ── ESPÈCES : récap à gauche, pavé à droite ── */
-#s-esp,#s-ok{align-items:center;justify-content:center;padding:18px}
+#s-esp,#s-cb{align-items:center;justify-content:center;padding:18px}
 .esp-wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:18px;width:100%;max-width:1040px}
 .esp-l{display:flex;flex-direction:column;gap:12px}
 .etl{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:800}
@@ -258,20 +258,41 @@ input,textarea,select{font-family:inherit;color:var(--text);outline:none}
 .nkok{grid-column:span 3;height:64px;border-radius:var(--rs);background:var(--ok);color:#fff;font-size:18px;font-weight:900}
 .nkok:disabled{opacity:.35}
 
-/* ── CONFIRMATION ── */
-.ok-wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px;width:100%;max-width:1000px;align-items:center}
-.ok-l{text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px}
-.okicon{width:110px;height:110px;border-radius:50%;background:var(--ok);color:#fff;font-size:64px;font-weight:900;display:flex;align-items:center;justify-content:center;animation:pop .4s cubic-bezier(.34,1.56,.64,1) both}
-.okamt{font-size:58px;font-weight:900;font-variant-numeric:tabular-nums;animation:pop .4s .06s cubic-bezier(.34,1.56,.64,1) both}
-.okmod{font-size:18px;color:var(--muted);font-weight:700}
-.okchbox{background:var(--ok-bg);border:2px solid var(--ok);border-radius:var(--r);padding:12px 24px;margin-top:8px}
-.okchv{font-size:42px;font-weight:900;color:var(--ok);font-variant-numeric:tabular-nums}
-.ok-r{display:flex;flex-direction:column;gap:12px}
-.okdet .list-row{font-size:15px}
-.okcb{background:var(--warn-bg);border:2px solid var(--warn);border-radius:var(--r);padding:14px 18px;font-size:16px;color:var(--warn);font-weight:700;line-height:1.5}
-.oknxt{height:72px;border-radius:var(--r);background:var(--navy);color:#fff;font-size:19px;font-weight:900}
-.oknxt:disabled{opacity:.45}
-.okcnt{font-size:14px;color:var(--muted);text-align:center;font-weight:600}
+/* ── CB : montant à taper sur le terminal, puis ACCEPTÉ / REFUSÉ ── */
+.cb-wrap{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:22px;width:100%;max-width:1060px;align-items:stretch}
+.cb-l{background:var(--columns),var(--navy);color:#fff;border-radius:22px;padding:26px 30px;display:flex;flex-direction:column;justify-content:center;gap:10px}
+.cb-step{font-size:15px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--day)}
+.cb-amt{font-size:84px;font-weight:900;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-1px}
+.cb-sub{font-size:16px;color:#C8D2EB;font-weight:600;line-height:1.45}
+.cb-items{margin-top:8px;border-top:1px solid rgba(255,255,255,.18);padding-top:10px;font-size:14px;color:#C8D2EB;max-height:26dvh;overflow:auto}
+.cb-items div{display:flex;justify-content:space-between;gap:10px;padding:3px 0}
+.cb-r{display:flex;flex-direction:column;gap:12px;justify-content:center}
+.cb-q{font-size:15px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.cb-yes{height:120px;border-radius:var(--r);background:var(--ok);color:#fff;font-size:24px;font-weight:900;line-height:1.2;box-shadow:0 6px 20px rgba(23,119,47,.3)}
+.cb-yes small{display:block;font-size:14px;font-weight:700;opacity:.85}
+.cb-yes:disabled{opacity:.4;box-shadow:none}
+.cb-no{height:64px;border-radius:var(--r);background:var(--surface);border:2px solid var(--err);color:var(--err);font-size:17px;font-weight:900}
+.pay-scan{min-height:58px;border-radius:var(--rs);border:2px dashed rgba(0,30,45,.35);background:var(--surface);font-weight:800;font-size:16px;color:var(--navy);display:flex;align-items:center;justify-content:center;gap:8px;padding:0 12px}
+.pay-scan.ok{border:2px solid var(--ok);background:var(--ok-bg);color:var(--ok)}
+/* ── Offert : motif obligatoire, un seul toucher ── */
+.motifs{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.motif{min-height:84px;border-radius:var(--r);background:var(--surface);border:2px solid var(--border);font-size:17px;font-weight:900;color:var(--navy);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.motif small{font-size:12px;font-weight:600;color:var(--muted)}
+.motif:active{background:var(--navy);color:#fff;transform:scale(.97)}
+/* ── Retour visuel après une vente (dans le panier vide) ── */
+.done{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;height:100%;text-align:center;padding:16px;animation:pop .35s cubic-bezier(.34,1.56,.64,1) both}
+.done .d-ico{width:64px;height:64px;border-radius:50%;background:var(--ok);color:#fff;font-size:36px;font-weight:900;display:flex;align-items:center;justify-content:center}
+.done .d-amt{font-size:30px;font-weight:900;font-variant-numeric:tabular-nums}
+.done .d-mod{font-size:14px;color:var(--muted);font-weight:700}
+.done .d-chg{margin-top:6px;background:var(--ok-bg);border:2px solid var(--ok);border-radius:var(--r);padding:10px 18px}
+.done .d-chg b{display:block;font-size:34px;color:var(--ok);font-variant-numeric:tabular-nums}
+.done .d-chg span{font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ok)}
+.done .d-next{margin-top:8px;font-size:14px;color:var(--muted);font-weight:600}
+.stepn{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--navy);color:#fff;font-size:13px;font-weight:900;align-items:center;justify-content:center;flex-shrink:0}
+.regle{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)}
+.regle:last-child{border-bottom:0}
+.regle .stepn{width:30px;height:30px;font-size:16px}
+.regle b{font-size:16px}.regle span{font-size:14px;color:var(--muted);line-height:1.4}
 @keyframes pop{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
 
 /* ── Écrans à colonnes (récap, synchro, aide) ── */
@@ -508,15 +529,15 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
       <div class="pgrid" id="pgrid"></div>
     </div>
     <div class="panzone">
-      <div class="phd"><span class="ptit">Panier</span><span class="pbadge" id="pBdg">0</span></div>
+      <div class="phd"><span class="ptit">Vente en cours</span><span class="pbadge" id="pBdg">0</span></div>
       <div class="scanzone" id="scanZone"></div>
       <div class="pitems" id="pItems"></div>
       <div class="pft">
-        <div class="trow"><span class="tlbl">Total</span><span class="tval" id="pTot">0,00 €</span></div>
+        <div class="trow"><span class="tlbl"><span class="stepn">3</span> Encaisser</span><span class="tval" id="pTot">0,00 €</span></div>
         <div class="paybtns">
           <button class="pb pb-cb" onclick="payer('CB')">💳 CB</button>
           <button class="pb pb-esp" onclick="ouvrirEsp()">💵 Espèces</button>
-          <button class="pb pb-off" onclick="payer('Offert')">🎁 Offert</button>
+          <button class="pb pb-off" onclick="payer('Offert')">🎁 Offert (motif demandé)</button>
         </div>
         <div class="minor">
           <button onclick="confirmerVider()">🗑 Vider le panier</button>
@@ -528,7 +549,7 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
   <div class="caband">
     <div class="cai"><div class="cal">Total vendu</div><div class="cav" id="bCA">0 €</div></div>
     <div class="cai"><div class="cal">Ventes</div><div class="cav" id="bTx">0</div></div>
-    <div class="cai"><div class="cal">Panier moyen</div><div class="cav" id="bMoy">— €</div></div>
+    <div class="cai"><div class="cal">🎫 Billets scannés</div><div class="cav" id="bScan">—</div></div>
     <div class="cai"><div class="cal">✓ Sauvegardé</div><div class="cav gr" id="bSave">0 vente</div></div>
     <div class="cai"><div class="cal">📡 Pilotage</div><div class="cav" id="bPil">—</div></div>
   </div>
@@ -541,8 +562,9 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
   <div class="esp-wrap">
     <div class="esp-l">
       <div class="card"><div class="etl">Total à encaisser</div><div class="eto" id="eTo">0,00 €</div></div>
-      <div class="card"><div class="etl">Le client donne</div><div class="egv" id="eGv">—</div></div>
+      <div class="card"><div class="etl">Le client donne (touche le billet reçu)</div><div class="egv" id="eGv">—</div></div>
       <div class="echbox" id="eChBox" style="display:none"><div class="etl" style="color:var(--ok)">Monnaie à rendre</div><div class="echv" id="eChV">0,00 €</div></div>
+      <button class="pay-scan" id="espScan" onclick="ouvrirScanner()"></button>
       <button class="btn btn-q" onclick="ss('s-cai')">← Retour au panier</button>
     </div>
     <div class="esp-l">
@@ -558,26 +580,26 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
         <button class="nk" onclick="nk('4')">4</button><button class="nk" onclick="nk('5')">5</button><button class="nk" onclick="nk('6')">6</button>
         <button class="nk" onclick="nk('7')">7</button><button class="nk" onclick="nk('8')">8</button><button class="nk" onclick="nk('9')">9</button>
         <button class="nk" onclick="nk('0')">0</button><button class="nk" onclick="nk('00')">00</button><button class="nk" onclick="nkDel()" aria-label="Effacer">⌫</button>
-        <button class="nkok" id="nkOk" onclick="valEsp()" disabled>Valider l'encaissement →</button>
+        <button class="nkok" id="nkOk" onclick="valEsp()" disabled>✓ Monnaie rendue — vente suivante</button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ══ CONFIRMATION ══ -->
-<div id="s-ok" class="screen">
-  <div class="ok-wrap">
-    <div class="ok-l">
-      <div class="okicon">✓</div>
-      <div class="okamt" id="okAmt">0,00 €</div>
-      <div class="okmod" id="okMod"></div>
-      <div class="okchbox" id="okChBox" style="display:none"><div class="etl" style="color:var(--ok)">Monnaie à rendre</div><div class="okchv" id="okChV">0,00 €</div></div>
+<!-- ══ CB : le bénévole tape le montant sur le terminal, puis confirme ce que dit le terminal ══ -->
+<div id="s-cb" class="screen">
+  <div class="cb-wrap">
+    <div class="cb-l">
+      <div class="cb-step">Tape ce montant sur le terminal CB</div>
+      <div class="cb-amt" id="cbAmt">0,00 €</div>
+      <div class="cb-sub">Le client présente sa carte. Attends que le terminal affiche <b style="color:#fff">ACCEPTÉ</b>.</div>
+      <div class="cb-items" id="cbItems"></div>
     </div>
-    <div class="ok-r">
-      <div class="card okdet" id="okDetail"></div>
-      <div class="okcb" id="okCbHint" style="display:none">⚠️ Vérifie d'abord la confirmation sur le <strong>terminal CB</strong></div>
-      <button class="oknxt" id="oknxt" onclick="confirmV()">Vente suivante →</button>
-      <div class="okcnt" id="okCbCount" style="display:none"></div>
+    <div class="cb-r">
+      <button class="pay-scan" id="cbScan" onclick="ouvrirScanner()"></button>
+      <div class="cb-q">Le terminal affiche…</div>
+      <button class="cb-yes" id="cbYes" onclick="cbAccepte()">✅ ACCEPTÉ<small>La vente est enregistrée</small></button>
+      <button class="cb-no" onclick="cbRefuse()">✕ Refusé ou annulé — retour au panier</button>
     </div>
   </div>
 </div>
@@ -704,6 +726,11 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
     <div class="stitle">📦 Briefing avant match</div>
     <div class="sheet-cols">
       <div>
+        <div class="card-t">La règle des 3 — à chaque client</div>
+        <div class="regle"><span class="stepn">1</span><div><b>« Vous avez votre billet ? »</b><br><span>Scanne son QR code. Pas de billet ? On vend quand même.</span></div></div>
+        <div class="regle"><span class="stepn">2</span><div><b>Touche les articles</b><br><span>Une touche = un article. Erreur ? « − » dans le panier.</span></div></div>
+        <div class="regle"><span class="stepn">3</span><div><b>Encaisse</b><br><span>💳 CB : tape le montant affiché sur le terminal, puis « ACCEPTÉ » seulement s'il l'affiche.<br>💵 Espèces : touche le billet reçu, rends la monnaie affichée.<br>🎁 Offert : choisis le motif.</span></div></div>
+        <div class="state-line" style="margin-top:8px">Une erreur ? « ↩ Annuler la vente » reste 30 s à l'écran.</div>
         <div id="briNote" class="note-box" style="display:none">
           <div class="nb-t">Note du bénévole précédent</div>
           <div class="nb-x" id="briNoteTxt"></div>
@@ -731,6 +758,20 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
     </div>
     <button class="btn btn-p btn-big w100" onclick="createSess()">Ouvrir la caisse →</button>
     <button class="btn btn-q w100" onclick="closeNM()">Annuler</button>
+  </div>
+</div>
+
+<div class="ov" id="ov-offert">
+  <div class="sheet">
+    <div class="stitle">🎁 Pourquoi c'est offert ?</div>
+    <div class="c-mut" style="font-size:14px;margin-top:-6px">Le club doit justifier chaque article offert. Un toucher suffit.</div>
+    <div class="motifs">
+      <button class="motif" onclick="offrir('Partenaire')">🤝 Partenaire<small>dotation, VIP</small></button>
+      <button class="motif" onclick="offrir('Joueur / staff')">🏐 Joueur / staff<small>dotation club</small></button>
+      <button class="motif" onclick="offrir('Lot / animation')">🎉 Lot / animation<small>jeu, mi-temps</small></button>
+      <button class="motif" onclick="offrir('Échange défectueux')">🔁 Échange<small>article défectueux</small></button>
+    </div>
+    <button class="btn btn-q w100" onclick="document.getElementById('ov-offert').classList.remove('on')">Annuler</button>
   </div>
 </div>
 
@@ -781,9 +822,10 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
       <div>
         <div class="list-row"><span><b>Ajouter un article</b><br><span class="c-mut">Toucher une carte produit. Chaque toucher = +1.</span></span></div>
         <div class="list-row"><span><b>Modifier la quantité</b><br><span class="c-mut">Boutons + et − dans le panier à droite.</span></span></div>
-        <div class="list-row"><span><b>Scanner le billet</b><br><span class="c-mut">Avant de payer : « Scanner le billet ». Sans billet, on vend quand même.</span></span></div>
+        <div class="list-row"><span><b>Scanner le billet</b><br><span class="c-mut">Au début, ou pendant que le client paie (le bouton est aussi sur l'écran de paiement). Sans billet, on vend quand même.</span></span></div>
       </div>
       <div>
+        <div class="list-row"><span><b>CB</b><br><span class="c-mut">Tape le montant affiché sur le terminal. « ACCEPTÉ » uniquement si le terminal l'affiche, sinon « Refusé ».</span></span></div>
         <div class="list-row"><span><b>Espèces</b><br><span class="c-mut">Toucher le billet donné → la monnaie s'affiche.</span></span></div>
         <div class="list-row"><span><b>Annuler une vente</b><br><span class="c-mut">Bouton rouge « ↩ Annuler » pendant 30 secondes.</span></span></div>
         <div class="list-row"><span><b>Fin de match</b><br><span class="c-mut">🏁 FIN → Récap → « Clôturer ce match ».</span></span></div>
@@ -841,7 +883,7 @@ const dClr=(s)=>new Promise((ok,no)=>{const t=DB.transaction(s,'readwrite');t.ob
 
 // ── ÉTAT ──────────────────────────────────────
 const TICKIE_PROXY_URL='https://tickie-proxy.spacersytb.workers.dev';
-let CFG={},prods=[],pan={},sess=null,sCA=0,sTx=0,pendV=null,undoIv=null,espCts=0,curCat='Tous',obSt=0;
+let CFG={},prods=[],pan={},sess=null,sCA=0,sTx=0,sScan=0,derniere=null,pendV=null,undoIv=null,espCts=0,curCat='Tous',obSt=0;
 // Pilotage live : URL + jeton du projet Apps Script « Pilotage Boutique », match actif, billets valides
 let PIL={id:'pilotage',url:'',token:'',match:null,billets:{}};
 let billet=null; // billet relié à la vente en cours : {ticket_id, barcode, tarif, prenom}
@@ -1102,7 +1144,7 @@ async function _prepSess(id){
   const v=(await dAll('ventes')).filter(v=>v.session_id===id);
   prods.forEach(p=>{const vd=v.filter(x=>x.produit_id===p.id).reduce((s,x)=>s+x.quantite,0);p.ss=Math.max(0,p.stock-vd);});
   const vc=v.filter(x=>x.mode_paiement!=='Offert');
-  sCA=vc.reduce((s,x)=>s+x.ca_ligne,0);sTx=new Set(vc.map(x=>x.groupe||x.id)).size;curCat='Tous';
+  sCA=vc.reduce((s,x)=>s+x.ca_ligne,0);sTx=new Set(vc.map(x=>x.groupe||x.id)).size;sScan=new Set(vc.filter(x=>x.ticket_id||x.barcode).map(x=>x.groupe||x.id)).size;derniere=null;curCat='Tous';
   rCai();
   if(v.length===0)await afficherBriefing();
 }
@@ -1151,7 +1193,7 @@ function rGrid(){
       h+='<button class="ptile'+(rupt?' rupt':'')+(q?' incart':'')+'" style="--acc:'+acc+'" data-id="'+esc(p.id)+'"'+(rupt?' disabled':'')+' aria-label="'+esc(p.nom)+', '+fmtP(p.prix_vente)+'">'+
         (q?'<span class="pt-qty">'+q+'</span>':(rupt?'<span class="pt-flag">RUPTURE</span>':''))+
         '<span class="pt-in"><span class="pt-main'+(long?' long':'')+'">'+esc(main)+'</span>'+
-        '<span class="pt-foot"><span class="pt-price">'+fmtP(p.prix_vente)+'</span><span class="pt-stock'+(rupt?' out':low?' low':'')+'">'+(rupt?'épuisé':st+' en stock')+'</span></span></span></button>';
+        '<span class="pt-foot"><span class="pt-price">'+fmtP(p.prix_vente)+'</span>'+(rupt?'<span class="pt-stock out">épuisé</span>':low?'<span class="pt-stock low">plus que '+st+'</span>':'')+'</span></span></button>';
     });
     h+='</div></section>';
   });
@@ -1161,7 +1203,7 @@ $('pgrid').addEventListener('click',e=>{const t=e.target.closest('.ptile');if(t&
 function ajt(id){
   const p=prods.find(x=>x.id===id);if(!p)return;
   const st=stockOf(p);if(st<=0)return;
-  if(!pan[id])pan[id]={...p,qty:0};pan[id].qty++;p.ss=st-1;
+  derniere=null;if(!pan[id])pan[id]={...p,qty:0};pan[id].qty++;p.ss=st-1;
   if(navigator.vibrate)navigator.vibrate(30);
   rGrid();rPan();
 }
@@ -1177,16 +1219,20 @@ function rPan(){
   $('pBdg').textContent=cnt;$('pTot').textContent=fmt(tot);
   $('scanZone').innerHTML=billet
     ?'<div class="ticket-badge">🎫<div><b>'+esc(billet.tarif||'Billet scanné')+(billet.prenom?' · '+esc(billet.prenom):'')+'</b><small>'+(billet.nonVerifie?'Sera vérifié au retour du wifi':'Billet relié à cette vente')+'</small></div><button onclick="retirerBillet()" aria-label="Retirer le billet">✕</button></div>'
-    :'<button class="btn-scan" onclick="ouvrirScanner()">🎫 Scanner le billet <small>(conseillé)</small></button>';
+    :'<button class="btn-scan" onclick="ouvrirScanner()"><span class="stepn">1</span> 🎫 Scanner le billet <small>(demande-le !)</small></button>';
   const el=$('pItems');
-  if(!items.length){el.innerHTML='<div class="empty">Touche un article<br>pour l\'ajouter au panier</div>';return;}
+  if(!items.length){
+    const d=derniere;
+    el.innerHTML=d?'<div class="done"><div class="d-ico">✓</div><div class="d-amt">'+fmt(d.tot)+'</div><div class="d-mod">'+d.lib+'</div>'+(d.mon>0?'<div class="d-chg"><span>Monnaie à rendre</span><b>'+fmt(d.mon)+'</b></div>':'')+'<div class="d-next">Client suivant : touche un article</div></div>'
+      :'<div class="empty"><span class="stepn">2</span><br>Touche un article<br>pour l\'ajouter</div>';
+    return;}
   el.innerHTML=items.map(i=>{const t=tailleOf(i);
     return '<div class="pi"><div class="pinam">'+esc(t?modeleOf(i):i.nom)+(t?'<small>Taille '+esc(t)+'</small>':'')+'</div><div class="piqty"><button class="qb" onclick="chQty(\''+esc(i.id)+'\',-1)" aria-label="Moins">−</button><div class="qv">'+i.qty+'</div><button class="qb plus" onclick="chQty(\''+esc(i.id)+'\',1)" aria-label="Plus">+</button></div><div class="pipr">'+fmt(i.prix_vente*i.qty)+'</div></div>';
   }).join('');
 }
 function rBand(){
   $('bCA').textContent=fmtS(sCA);$('bTx').textContent=sTx;
-  $('bMoy').textContent=sTx>0?fmtS(sCA/sTx):'— €';
+  $('bScan').textContent=sTx>0?sScan+' / '+sTx:'—';
   $('bSave').textContent=sTx+' vente'+(sTx>1?'s':'');
   rPilBand();
 }
@@ -1221,18 +1267,34 @@ setInterval(checkBatterie,120000);
 
 // ── PAIEMENT ──────────────────────────────────
 function payer(mode){
-  const items=Object.values(pan);if(!items.length){toast('Panier vide');return;}
+  const items=Object.values(pan);if(!items.length){toast('Touche d\'abord un article');return;}
   const tot=items.reduce((s,i)=>s+i.prix_vente*i.qty,0);
   pendV={mode,tot,items:items.map(i=>({...i})),monnaie:0};
-  affOk(tot,mode,0);
+  if(mode==='Offert'){$('ov-offert').classList.add('on');return;}
+  // CB : le montant à taper sur le terminal, en très grand
+  $('cbAmt').textContent=fmt(tot);
+  $('cbItems').innerHTML=pendV.items.map(i=>'<div><span>'+esc(i.nom)+' ×'+i.qty+'</span><span>'+fmt(i.prix_vente*i.qty)+'</span></div>').join('');
+  rPayScan();
+  const y=$('cbYes');y.disabled=true;setTimeout(()=>{y.disabled=false;},1200); // évite le double toucher
+  ss('s-cb');
 }
+// Bouton billet sur les écrans de paiement : on scanne pendant que le client paie
+function rPayScan(){
+  ['cbScan','espScan'].forEach(k=>{const el=$(k);if(!el)return;
+    if(billet){el.className='pay-scan ok';el.innerHTML='🎫 Billet relié'+(billet.tarif?' · '+esc(billet.tarif):'')+(billet.prenom?' · '+esc(billet.prenom):'');}
+    else{el.className='pay-scan';el.innerHTML='🎫 Pendant qu\'il paie : scanner son billet';}
+  });
+}
+function cbAccepte(){if(!pendV||$('cbYes').disabled)return;enregistrerVente();}
+function cbRefuse(){pendV=null;ss('s-cai');toast('Paiement non enregistré — le panier est conservé');}
+function offrir(motif){if(!pendV)return;pendV.motif=motif;$('ov-offert').classList.remove('on');enregistrerVente();}
 function ouvrirEsp(){
   const items=Object.values(pan);if(!items.length){toast('Panier vide');return;}
   const tot=items.reduce((s,i)=>s+i.prix_vente*i.qty,0);
   espCts=0;pendV={mode:'Espèces',tot,items:items.map(i=>({...i})),monnaie:0};
   $('eTo').textContent=fmt(tot);$('eGv').textContent='—';$('eGv').className='egv';
   $('eChBox').style.display='none';$('nkOk').disabled=true;
-  ss('s-esp');
+  rPayScan();ss('s-esp');
 }
 // espCts = centimes ; saisie en euros entiers
 function setBillet(eur){espCts=eur*100;mEsp();}
@@ -1248,39 +1310,26 @@ function mEsp(){
   if(ch<0){ge.className='egv err';cb.style.display='none';ok.disabled=true;}
   else{ge.className='egv';cb.style.display='block';cv.textContent=fmt(ch/100);pendV.monnaie=ch/100;ok.disabled=false;}
 }
-function valEsp(){if(!pendV||pendV.monnaie<0)return;affOk(pendV.tot,'Espèces',pendV.monnaie);}
-let _cbIv=null;
-function affOk(tot,mode,mon){
-  $('okAmt').textContent=fmt(tot);
-  $('okMod').textContent=(mode==='CB'?'💳 Paiement CB':mode==='Espèces'?'💵 Paiement espèces':'🎁 Article offert')+(billet?' · 🎫 billet relié':'');
-  const items=pendV?pendV.items:[];
-  $('okDetail').innerHTML='<div class="card-t">Articles</div>'+items.map(i=>'<div class="list-row"><span>'+esc(i.nom)+' ×'+i.qty+'</span><b>'+fmt(i.prix_vente*i.qty)+'</b></div>').join('');
-  if(mode==='Espèces'&&mon>0){$('okChV').textContent=fmt(mon);$('okChBox').style.display='block';}else $('okChBox').style.display='none';
-  const btn=$('oknxt'),hint=$('okCbHint'),cnt=$('okCbCount');
-  clearInterval(_cbIv);
-  if(mode==='CB'){
-    hint.style.display='block';btn.disabled=true;btn.textContent='Vente suivante →';
-    let s=3;cnt.style.display='block';cnt.textContent='Disponible dans '+s+' s…';
-    _cbIv=setInterval(()=>{s--;if(s<=0){clearInterval(_cbIv);btn.disabled=false;btn.textContent='✅ Terminal confirmé → Vente suivante';cnt.style.display='none';}else cnt.textContent='Disponible dans '+s+' s…';},1000);
-  }else{hint.style.display='none';cnt.style.display='none';btn.disabled=false;btn.textContent='Vente suivante →';}
-  if(navigator.vibrate)navigator.vibrate([80,40,80]);
-  ss('s-ok');
-}
-async function confirmV(){
+function valEsp(){if(!pendV||pendV.monnaie<0||$('nkOk').disabled)return;enregistrerVente();}
+// Enregistre la vente et revient directement à la caisse (pas d'écran intermédiaire)
+async function enregistrerVente(){
   if(!pendV)return;
-  const {mode,tot,items}=pendV;pendV=null;espCts=0;
+  const {mode,tot,items,monnaie,motif}=pendV;pendV=null;espCts=0;
   const now=new Date().toISOString(),grp=uid(),b=billet;
   for(const item of items){
     await dPut('ventes',{id:uid(),session_id:sess.id,boutique_id:CFG.boutique_id,saison:CFG.saison,
       produit_id:item.id,produit_ref:refOf(item),produit_nom:item.nom,categorie:item.categorie,
       quantite:item.qty,prix_unitaire:item.prix_vente,ca_ligne:item.prix_vente*item.qty,
-      mode_paiement:mode,timestamp:now,groupe:grp,
+      mode_paiement:mode,motif_offert:mode==='Offert'?(motif||''):null,timestamp:now,groupe:grp,
       // Billet relié : identifiants seulement. Le lien vers l'acheteur (nom, email) est fait côté serveur.
       ticket_id:b?(b.ticket_id||null):null,barcode:b?(b.barcode||null):null,client_tarif:b?(b.tarif||null):null,
       client_email:null,client_nom:null,client_tribune:null,pil_envoye:false});
   }
   billet=null;
-  if(mode!=='Offert'){sCA+=tot;sTx++;}
+  if(mode!=='Offert'){sCA+=tot;sTx++;if(b)sScan++;}
+  derniere={tot,mon:mode==='Espèces'?(monnaie||0):0,
+    lib:(mode==='CB'?'💳 CB enregistrée':mode==='Espèces'?'💵 Espèces enregistrées':'🎁 Offert · '+esc(motif||''))+(b?' · 🎫 billet relié':'')};
+  if(navigator.vibrate)navigator.vibrate([60,30,60]);
   pan={};rPan();rGrid();rBand();showUndo(grp);ss('s-cai');
   setTimeout(pilEnvoyer,32000); // après la fenêtre d'annulation de 30 s
 }
@@ -1297,7 +1346,8 @@ async function annuler(){
   clearInterval(undoIv);btn.classList.remove('on');btn._g=null;
   const all=await dAll('ventes'),del=all.filter(v=>v.groupe===grp);let caU=0,off=false;
   for(const v of del){caU+=v.ca_ligne||0;off=v.mode_paiement==='Offert';const p=prods.find(x=>x.id===v.produit_id);if(p)p.ss=(stockOf(p)||0)+v.quantite;await dDel('ventes',v.id);}
-  if(!off){sCA=Math.max(0,sCA-caU);sTx=Math.max(0,sTx-1);}
+  if(!off){sCA=Math.max(0,sCA-caU);sTx=Math.max(0,sTx-1);if(del.some(v=>v.ticket_id||v.barcode))sScan=Math.max(0,sScan-1);}
+  derniere=null;
   rGrid();rBand();
   toast('Vente annulée ✓',2500);if(navigator.vibrate)navigator.vibrate([50,30,50,30,50]);
 }
@@ -1312,6 +1362,8 @@ async function showRecap(){
   const modes={};v.forEach(x=>{modes[x.mode_paiement]=(modes[x.mode_paiement]||0)+x.ca_ligne;});
   const mi={'CB':'💳','Espèces':'💵','Offert':'🎁'};
   $('rModes').innerHTML=Object.entries(modes).map(([m,val])=>'<div class="list-row"><span>'+(mi[m]||'')+' '+esc(m)+(m==='Offert'?' <span class="c-mut" style="font-size:12px">(hors CA)</span>':'')+'</span><b>'+fmt(val)+'</b></div>').join('')||'<div class="empty">Aucune vente</div>';
+  const mo={};v.filter(x=>x.mode_paiement==='Offert').forEach(x=>{const k=x.motif_offert||'Sans motif';mo[k]=(mo[k]||0)+x.quantite;});
+  if(Object.keys(mo).length)$('rModes').innerHTML+='<div class="c-mut" style="font-size:13px;padding:6px 0 0">🎁 Offerts : '+Object.entries(mo).map(([k,n])=>esc(k)+' ×'+n).join(' · ')+'</div>';
   const esp=modes['Espèces']||0;$('espHV').textContent=fmt(esp);$('espHigh').style.display=esp>0?'flex':'none';
   const pm={};vc.forEach(x=>{if(!pm[x.produit_nom])pm[x.produit_nom]={nb:0,ca:0};pm[x.produit_nom].nb+=x.quantite;pm[x.produit_nom].ca+=x.ca_ligne;});
   const top=Object.entries(pm).sort((a,b)=>b[1].ca-a[1].ca).slice(0,8);
@@ -1470,7 +1522,7 @@ async function pilEnvoyer(force){
     const grp={};enAttente.forEach(v=>{(grp[v.groupe||v.id]=grp[v.groupe||v.id]||[]).push(v);});
     const ventes=Object.entries(grp).slice(0,40).map(([g,ls])=>{const v0=ls[0],s=sessions[v0.session_id]||{};
       return{id:g,ts:v0.timestamp,eventId:s.tickie_event_id||'',match:s.match_label||'',session:v0.session_id,benevole:s.benevole||'',
-        boutique:v0.boutique_id,mode:v0.mode_paiement,total:Math.round(ls.reduce((a,x)=>a+x.ca_ligne,0)*100)/100,
+        boutique:v0.boutique_id,mode:v0.mode_paiement,motif:v0.motif_offert||'',total:Math.round(ls.reduce((a,x)=>a+x.ca_ligne,0)*100)/100,
         lignes:ls.map(x=>({ref:x.produit_ref||x.produit_id,nom:x.produit_nom,cat:x.categorie||'',qte:x.quantite,pu:x.prix_unitaire})),
         ticket:(v0.ticket_id||v0.barcode)?{ticket_id:v0.ticket_id||'',barcode:v0.barcode||'',tarif:v0.client_tarif||''}:null};});
     // text/plain : pas de pré-vérification CORS, accepté par Apps Script
@@ -1546,7 +1598,7 @@ function afficherBillet(t,barcode){
 }
 function utiliserBillet(){
   if(!billetLu||!billetLu.valide)return;
-  billet=billetLu;billetLu=null;fermerScanner();rPan();
+  billet=billetLu;billetLu=null;fermerScanner();rPan();rPayScan();
   toast('🎫 Billet relié à la vente en cours');
 }
 function relancerScan(){arreterCamera();ouvrirScanner();}
