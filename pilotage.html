@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#000037">
+<meta name="robots" content="noindex">
+<link rel="icon" href="icon-192.png">
+<title>Pilotage Boutique Spacers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+/* Bandeau billetterie + boutique, puis points de vente, rythme, produits, profils d'acheteurs */
+:root{
+  --bg:#E9EDF5;--surface:#ffffff;--surface-2:#F3F5FA;--border:rgba(0,0,55,.15);--divider:rgba(0,0,55,.09);
+  --text:#0A1030;--muted:#414B66;--faint:#6A748E;
+  --navy:#000037;--gold:#FFDC00;
+  --good:#17772F;--good-bg:#E2F4E6;--warn:#A35400;--warn-bg:#FFF0DA;--bad:#C0262D;--bad-bg:#FDE5E6;
+  --bar:#2D3C8C;--bar-2:#B48A00;
+  --shadow:0 1px 2px rgba(0,0,55,.06),0 6px 18px rgba(0,0,55,.09);
+  --font:'Inter','Helvetica Neue',Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#10142A;--surface:#1A2040;--surface-2:#232A4F;--border:rgba(255,255,255,.14);--divider:rgba(255,255,255,.08);
+  --text:#F2F4FA;--muted:#C2C8DA;--faint:#929AB3;
+  --good:#5FD07A;--good-bg:rgba(95,208,122,.14);--warn:#FFB547;--warn-bg:rgba(255,181,71,.14);--bad:#FF6B72;--bad-bg:rgba(255,107,114,.14);
+  --bar:#8FA6F0;--bar-2:#FFDC00;--shadow:0 4px 16px rgba(0,0,0,.35);color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10142A;--surface:#1A2040;--surface-2:#232A4F;--border:rgba(255,255,255,.14);--divider:rgba(255,255,255,.08);
+  --text:#F2F4FA;--muted:#C2C8DA;--faint:#929AB3;
+  --good:#5FD07A;--good-bg:rgba(95,208,122,.14);--warn:#FFB547;--warn-bg:rgba(255,181,71,.14);--bad:#FF6B72;--bad-bg:rgba(255,107,114,.14);
+  --bar:#8FA6F0;--bar-2:#FFDC00;--shadow:0 4px 16px rgba(0,0,0,.35);color-scheme:dark}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:15px;-webkit-font-smoothing:antialiased}
+button,select,input{font:inherit;color:inherit}
+.top{background:var(--navy);color:#fff;padding:12px 20px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:5;box-shadow:0 2px 10px rgba(0,0,30,.25)}
+.top h1{font-size:1.15rem;font-weight:900;display:flex;align-items:center;gap:10px}
+.top h1 em{font-style:normal;color:var(--gold);letter-spacing:.08em;font-size:.85rem}
+.top small{display:block;font-size:.8rem;color:rgba(255,255,255,.75);font-weight:500}
+.top-r{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.top select{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:8px;padding:8px 10px;max-width:360px}
+.top select option{color:#000}
+.icon-btn{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer}
+.live{font-size:.8rem;font-weight:700;color:rgba(255,255,255,.85);display:flex;align-items:center;gap:6px}
+.live::before{content:'';width:8px;height:8px;border-radius:50%;background:#5fd07a}
+.live.stale::before{background:#ffb547}
+.wrap{max-width:1400px;margin:0 auto;padding-inline:20px;padding-block:18px 40px;display:flex;flex-direction:column;gap:18px}
+.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+.kpis.small{grid-template-columns:repeat(4,minmax(0,1fr))}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:4px;min-width:0}
+.kpi .l{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.kpi .v{font-size:1.9rem;font-weight:900;font-variant-numeric:tabular-nums;line-height:1.1}
+.kpis.small .v{font-size:1.4rem}
+.kpi .s{font-size:.82rem;color:var(--muted);font-weight:600}
+.kpi.hero{background:var(--navy);color:#fff;border-color:transparent}
+.kpi.hero .v{color:var(--gold)}
+.kpi.hero .l,.kpi.hero .s{color:rgba(255,255,255,.78)}
+.meter{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden;margin-top:4px}
+.meter div{height:100%;background:var(--good)}
+.kpi.hero .meter{background:rgba(255,255,255,.18)}.kpi.hero .meter div{background:var(--gold)}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.two.wide{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;box-shadow:var(--shadow);min-width:0}
+.panel h2{font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:12px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.panel h2 span{font-weight:600;text-transform:none;letter-spacing:0;color:var(--faint)}
+.bq-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;gap:10px}
+.bq-h b{font-size:1.05rem}
+.bq-h .ca{font-size:1.6rem;font-weight:900;font-variant-numeric:tabular-nums}
+.bq-s{font-size:.88rem;color:var(--muted);font-weight:600}
+.chip{display:inline-block;font-size:.75rem;font-weight:700;padding:3px 8px;border-radius:999px;background:var(--surface-2);color:var(--muted);margin-top:8px}
+.chip.ok{background:var(--good-bg);color:var(--good)}.chip.warn{background:var(--warn-bg);color:var(--warn)}
+svg text{fill:var(--muted);font-family:var(--font);font-size:11px}
+svg .grid{stroke:var(--divider)}
+.hbars{display:grid;grid-template-columns:minmax(120px,190px) 1fr auto auto;gap:7px 10px;align-items:center;font-size:.88rem}
+.hbars .t{height:14px;border-radius:3px;background:var(--surface-2);overflow:hidden}
+.hbars .t div{height:100%;background:var(--bar)}
+.hbars b,.hbars i{font-variant-numeric:tabular-nums;text-align:right;font-style:normal}
+.hbars i{color:var(--muted);font-weight:600;min-width:56px}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:.9rem}
+th,td{padding:7px 6px;border-bottom:1px solid var(--divider);text-align:right}
+th{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+th:first-child,td:first-child{text-align:left}
+.note{font-size:.82rem;color:var(--muted);line-height:1.5}
+.empty{color:var(--faint);font-size:.9rem;padding:8px 0}
+.actif{display:flex;flex-wrap:wrap;align-items:center;gap:14px}
+.actif .who{flex:1;min-width:240px}
+.actif .who b{font-size:1.05rem}
+.tabs{display:flex;gap:10px;flex-wrap:wrap}
+.tab{background:var(--surface-2);border-radius:10px;padding:8px 12px;font-size:.85rem;font-weight:600;min-width:200px}
+.tab b{display:block;font-size:.95rem}
+.tab .ok{color:var(--good)}.tab .wait{color:var(--warn)}
+.links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.link-card{display:flex;flex-direction:column;gap:6px;min-width:0}
+.link-card code{font-size:.72rem;background:var(--surface-2);border-radius:6px;padding:6px 8px;overflow-wrap:anywhere;color:var(--muted);max-height:4.5em;overflow:hidden}
+.btn{background:var(--navy);color:#fff;border:0;border-radius:8px;padding:11px 16px;font-weight:800;cursor:pointer}
+.btn.sec{background:var(--surface-2);color:var(--text);border:1px solid var(--border)}
+.btn:disabled{opacity:.5;cursor:default}
+.err{background:var(--bad-bg);color:var(--bad);border-radius:10px;padding:12px 14px;font-weight:700}
+.setup{max-width:560px;margin:40px auto;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:12px;box-shadow:var(--shadow)}
+.setup h2{font-size:1.2rem}
+.setup label{font-size:.85rem;font-weight:700;color:var(--muted)}
+.setup input{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2)}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+@media (max-width:1150px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:800px){.two,.two.wide,.links{grid-template-columns:minmax(0,1fr)}.kpis,.kpis.small{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div><h1>Pilotage boutique <em>SPACER'S</em></h1><small id="ev-sub">Spacer's Toulouse Volley · Palais des Sports André-Brouat</small></div>
+  <div class="top-r">
+    <select id="ev-select" aria-label="Match"></select>
+    <span class="live" id="live">—</span>
+    <button class="icon-btn" id="btn-refresh" type="button">Actualiser</button>
+    <button class="icon-btn" id="btn-config" type="button" aria-label="Configuration">⚙︎</button>
+  </div>
+</header>
+
+<form class="setup" id="setup" hidden>
+  <h2>Connexion au pilotage</h2>
+  <p class="note">Colle l'URL de déploiement du projet Apps Script « Pilotage Boutique » et son jeton (affiché par la fonction <b>afficherJeton</b>, journal d'exécution).</p>
+  <label for="cfg-url">URL Apps Script</label>
+  <input id="cfg-url" type="url" placeholder="https://script.google.com/macros/s/…/exec" required>
+  <label for="cfg-token">Jeton</label>
+  <input id="cfg-token" type="text" autocomplete="off" required>
+  <button class="btn" type="submit">Se connecter</button>
+</form>
+
+<main class="wrap" id="dash" hidden>
+  <div id="err"></div>
+  <section class="panel" aria-label="Match des tablettes">
+    <h2>Match des tablettes <span>les tablettes chargent ce match et la liste de ses billets</span></h2>
+    <div class="actif">
+      <div class="who" id="actif-who">—</div>
+      <button class="btn" type="button" id="btn-actif">Envoyer ce match aux tablettes</button>
+    </div>
+    <div class="tabs" id="tabs" style="margin-top:12px"></div>
+    <p class="note" style="margin-top:10px">Ensuite, sur chaque tablette en wifi : Synchronisation → « Charger le match ». Le scan des billets fonctionne alors hors ligne.</p>
+  </section>
+  <section class="kpis" id="kpis" aria-label="Indicateurs du match"></section>
+  <section class="kpis small" id="kpis2" aria-label="Indicateurs complémentaires"></section>
+  <section class="two" id="boutiques" aria-label="Points de vente"></section>
+  <div class="two wide">
+    <section class="panel"><h2>Rythme des ventes <span>CA par quart d'heure</span></h2><div id="rythme"></div></section>
+    <section class="panel"><h2>Produits vendus <span>quantités · CA TTC</span></h2><div class="hbars" id="produits"></div></section>
+  </div>
+  <div class="two">
+    <section class="panel"><h2>Dépense selon le billet <span>ventes reliées par scan</span></h2><div id="clientele"></div>
+      <p class="note" style="margin-top:10px">Le lien vente → acheteur (client Tickie, email) est complété toutes les 10 minutes dans le CRM Boutique (onglets 20_VENTES_LIVE et 23_CLIENTS_BOUTIQUE). Ce tableau n'affiche que des totaux.</p></section>
+    <section class="panel"><h2>Billetterie <span>billets valides du match</span></h2><div id="billetterie"></div></section>
+  </div>
+  <section class="panel"><h2>Liens de configuration des tablettes <span>à envoyer aux bénévoles : un clic configure le pilotage</span></h2><div class="links" id="links"></div></section>
+</main>
+
+<script>
+(function(){
+const STORE = 'pilotage_boutique_cfg';
+const BOUTIQUES = { B1:'Grand Public', B2:'VIP' };
+let cfg = { url:'', token:'' };
+let events = [], current = '', timer = null, lastOk = 0, actif = null, tablettes = {};
+const $ = id => document.getElementById(id);
+const eur = (n, d=0) => (n==null||isNaN(n)) ? '—' : Number(n).toLocaleString('fr-FR',{minimumFractionDigits:d,maximumFractionDigits:d}) + ' €';
+const int = n => (n==null||isNaN(n)) ? '—' : Number(n).toLocaleString('fr-FR');
+const pct = (a,b,d=0) => b ? (a/b*100).toLocaleString('fr-FR',{maximumFractionDigits:d}) + ' %' : '—';
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const hm = d => new Date(d).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+
+function loadCfg(){
+  try { const s = JSON.parse(localStorage.getItem(STORE)||'null'); if (s) cfg = s; } catch(e){}
+  try {
+    const raw = new URLSearchParams(location.search).get('cfg');
+    if (raw) { const c = JSON.parse(decodeURIComponent(escape(atob(raw)))); cfg = { url: c.url, token: c.token }; saveCfg(); history.replaceState(null,'',location.pathname); }
+  } catch(e){}
+}
+function saveCfg(){ try { localStorage.setItem(STORE, JSON.stringify(cfg)); } catch(e){} }
+
+async function api(params){
+  const u = new URL(cfg.url);
+  Object.entries(Object.assign({ token: cfg.token }, params)).forEach(([k,v]) => v != null && u.searchParams.set(k, v));
+  const j = await (await fetch(u.toString())).json();
+  if (j.status !== 'ok') throw new Error(j.message || 'Réponse invalide');
+  return j;
+}
+async function post(body){
+  const r = await fetch(cfg.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(Object.assign({ token: cfg.token }, body)) });
+  const j = await r.json();
+  if (j.status !== 'ok') throw new Error(j.message || 'refus');
+  return j;
+}
+
+function showSetup(){ $('setup').hidden = false; $('dash').hidden = true; $('cfg-url').value = cfg.url||''; $('cfg-token').value = cfg.token||''; }
+$('setup').addEventListener('submit', e => { e.preventDefault(); cfg = { url: $('cfg-url').value.trim(), token: $('cfg-token').value.trim() }; saveCfg(); renderLinks(); start(); });
+$('btn-config').onclick = showSetup;
+$('btn-refresh').onclick = () => refresh();
+$('ev-select').onchange = e => { current = e.target.value; renderActif(); refresh(); };
+$('btn-actif').onclick = async () => {
+  const b = $('btn-actif'); b.disabled = true; b.textContent = 'Envoi…';
+  try { const j = await post({ action:'actif', eventId: current }); actif = j.actif; tablettes = j.tablettes || {}; renderActif(); }
+  catch(e) { $('err').innerHTML = `<div class="err">Envoi impossible : ${esc(e.message)}</div>`; }
+  b.disabled = false; renderActif();
+};
+
+async function start(){
+  if (!cfg.url || !cfg.token) return showSetup();
+  $('setup').hidden = true; $('dash').hidden = false;
+  try {
+    const r = await api({ action:'events' });
+    events = r.events || []; actif = r.actif || null;
+    const today = new Date().toISOString().slice(0,10);
+    const next = events.find(e => e.dateMatch >= today) || events[events.length-1];
+    current = current || (actif && events.some(e => e.id === actif.eventId) && actif.dateMatch >= today ? actif.eventId : (next ? next.id : ''));
+    $('ev-select').innerHTML = events.map(e => `<option value="${esc(e.id)}"${e.id===current?' selected':''}>${esc(e.nom)} · ${new Date(e.date).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})}</option>`).join('');
+  } catch(e) { $('err').innerHTML = `<div class="err">Connexion impossible : ${esc(e.message)}. Vérifie l'URL et le jeton (⚙︎).</div>`; }
+  renderActif();
+  refresh();
+  clearInterval(timer); timer = setInterval(refresh, 30000);
+}
+
+async function refresh(){
+  if (!current) return;
+  try {
+    const d = await api({ action:'dashboard', eventId: current });
+    $('err').innerHTML = ''; lastOk = Date.now();
+    actif = d.actif || actif; tablettes = d.tablettes || tablettes;
+    render(d); renderActif();
+  } catch(e) { $('err').innerHTML = `<div class="err">Mise à jour impossible : ${esc(e.message)}. Les chiffres affichés datent de la dernière actualisation.</div>`; }
+  liveLabel();
+}
+function liveLabel(){
+  const l = $('live');
+  if (!lastOk) { l.textContent = '—'; return; }
+  const s = Math.round((Date.now()-lastOk)/1000);
+  l.textContent = 'Mis à jour ' + (s < 60 ? 'à l\'instant' : 'il y a ' + Math.round(s/60) + ' min');
+  l.classList.toggle('stale', s > 90);
+}
+setInterval(liveLabel, 15000);
+
+function renderActif(){
+  const ev = events.find(e => e.id === current);
+  const estActif = actif && actif.eventId === current;
+  $('actif-who').innerHTML = actif
+    ? `<b>${esc(actif.nom)}</b><br><span class="note">${estActif ? 'Match actuellement envoyé aux tablettes' : 'Les tablettes sont sur ce match, pas sur celui sélectionné'} · depuis le ${new Date(actif.saved).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>`
+    : '<b>Aucun match envoyé aux tablettes</b>';
+  const b = $('btn-actif');
+  if (!b.disabled) { b.textContent = estActif ? '✓ Match envoyé — renvoyer' : 'Envoyer ce match aux tablettes'; b.className = estActif ? 'btn sec' : 'btn'; }
+  b.hidden = !ev;
+  const saved = estActif ? new Date(actif.saved) : null;
+  $('tabs').innerHTML = Object.entries(BOUTIQUES).map(([k, nom]) => {
+    const j = tablettes[k] || {};
+    const ch = j.chargement ? new Date(j.chargement) : null, rem = j.remontee ? new Date(j.remontee) : null;
+    const etat = !saved ? '' : (ch && ch >= saved ? `<span class="ok">✓ tablette chargée à ${hm(ch)}</span>` : '<span class="wait">⏳ tablette à charger</span>');
+    return `<div class="tab"><b>${k} · ${esc(nom)}</b>${etat}${rem ? `<br>Dernières ventes reçues à ${hm(rem)}` : ''}</div>`;
+  }).join('');
+}
+
+function render(d){
+  const b = d.billetterie || {}, v = d.boutique;
+  const attendus = (b.billets||0) + (b.abonnes||0);
+  const presents = b.entrees != null ? b.entrees : null;
+  const base = presents || attendus;
+  if (d.event) $('ev-sub').textContent = d.event.nom + ' · ' + new Date(d.event.date).toLocaleString('fr-FR',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'});
+
+  $('kpis').innerHTML = [
+    kpi('Spectateurs attendus', int(attendus), int(b.billets) + ' billets + ' + int(b.abonnes) + ' abonnés', '', b.jauge ? attendus/b.jauge : null, b.jauge ? 'jauge ' + int(b.jauge) : ''),
+    kpi('Entrées scannées', presents != null ? int(presents) : '—', presents != null ? pct(presents, attendus) + ' des attendus' : 'contrôle d\'accès non disponible', '', presents != null && attendus ? presents/attendus : null),
+    kpi('CA boutique', eur(v.ca), int(v.ventes) + ' ventes · ' + int(v.articles) + ' articles', 'hero'),
+    kpi('Taux de transformation', pct(v.ventes, base, 1), 'ventes pour 100 ' + (presents ? 'entrées' : 'spectateurs attendus')),
+    kpi('CA par spectateur', base ? eur(v.ca/base, 2) : '—', presents ? 'sur les entrées scannées' : 'sur les spectateurs attendus'),
+    kpi('Ventes reliées à un billet', pct(v.reliees.ventes, v.ventes), int(v.acheteurs) + ' acheteur' + (v.acheteurs > 1 ? 's' : '') + ' identifié' + (v.acheteurs > 1 ? 's' : ''), '', v.ventes ? v.reliees.ventes/v.ventes : null),
+  ].join('');
+  const modes = Object.entries(v.parMode || {}).sort((a,c)=>c[1]-a[1]).map(([m,x]) => m + ' ' + eur(x)).join(' · ');
+  $('kpis2').innerHTML = [
+    kpi('Panier moyen', eur(v.ventes ? v.ca/v.ventes : null, 2), 'par vente'),
+    kpi('Articles par vente', v.ventes ? (v.articles/v.ventes).toLocaleString('fr-FR',{maximumFractionDigits:2}) : '—', int(v.articles) + ' articles vendus'),
+    kpi('Encaissements', modes ? eur(v.ca) : '—', modes || 'aucune vente'),
+    kpi('Offerts', int(v.offerts.ventes), eur(v.offerts.valeur) + ' de valeur, hors CA'),
+  ].join('');
+
+  $('boutiques').innerHTML = Object.entries(v.parBoutique).map(([k, x]) => {
+    const j = tablettes[k] || {}, rem = j.remontee ? new Date(j.remontee) : null;
+    const age = rem ? Math.round((Date.now()-rem)/60000) : null;
+    return `<article class="panel"><div class="bq-h"><b>${esc(k)} · ${esc(x.nom || BOUTIQUES[k] || '')}</b><span class="ca">${eur(x.ca)}</span></div>
+      <div class="bq-s">${int(x.ventes)} ventes · ${int(x.articles)} articles · panier ${eur(x.ventes ? x.ca/x.ventes : null, 2)} · ${pct(x.ca, v.ca)} du CA</div>
+      ${rem ? `<span class="chip ${age > 15 ? 'warn' : 'ok'}">Dernière remontée à ${hm(rem)}${age > 15 ? ' · rien depuis ' + age + ' min' : ''}</span>` : '<span class="chip">Aucune remontée pour l\'instant</span>'}</article>`;
+  }).join('');
+
+  // Rythme
+  const q = Object.entries(v.parQuartHeure).sort((a,c)=>a[0].localeCompare(c[0]));
+  if (!q.length) $('rythme').innerHTML = '<p class="empty">Aucune vente reçue pour ce match pour l\'instant.</p>';
+  else {
+    const W = Math.max(520, q.length*34+60), H = 220, pl = 50, pb = 26, pt = 10;
+    const max = Math.max(...q.map(x=>x[1])) * 1.1 || 1;
+    const step = niceStep(max);
+    const y = val => pt + (H-pt-pb)*(1 - val/max);
+    const bw = (W-pl-10)/q.length;
+    let s = '';
+    for (let t=0; t<=max; t+=step) s += `<line class="grid" x1="${pl}" x2="${W-10}" y1="${y(t)}" y2="${y(t)}"/><text x="${pl-6}" y="${y(t)+4}" text-anchor="end">${int(t)} €</text>`;
+    q.forEach(([h, val], i) => {
+      const x = pl + i*bw;
+      const w = Math.min(46, Math.max(2, bw-6));
+      s += `<rect x="${x+(bw-w)/2}" y="${y(val)}" width="${w}" height="${y(0)-y(val)}" rx="3" fill="var(--bar)"><title>${h} · ${eur(val)}</title></rect>`;
+      if (q.length <= 16 || i % 2 === 0) s += `<text x="${x+bw/2}" y="${H-8}" text-anchor="middle">${h}</text>`;
+    });
+    $('rythme').innerHTML = `<div style="overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" width="100%" style="min-width:${Math.min(W,520)}px" role="img" aria-label="CA par quart d'heure">${s}</svg></div>`;
+  }
+
+  // Produits
+  const prods = Object.entries(d.produits || {}).sort((a,c)=>c[1].qte-a[1].qte);
+  const pmax = Math.max(1, ...prods.map(p=>p[1].qte));
+  $('produits').innerHTML = prods.length ? prods.map(([nom,p]) => `<span>${esc(nom)}</span><div class="t"><div style="width:${p.qte/pmax*100}%"></div></div><b>${int(p.qte)}</b><i>${eur(p.ca)}</i>`).join('') : '<p class="empty" style="grid-column:1/-1">Aucun article vendu pour l\'instant.</p>';
+
+  // Clientèle
+  const fams = ['Abonné','Billet payant','Invité / gratuit','Billet à vérifier','Sans billet'].filter(f => f !== 'Billet à vérifier' || v.parFamilleTarif[f]);
+  $('clientele').innerHTML = `<table><thead><tr><th>Profil</th><th>Ventes</th><th>CA</th><th>Panier moyen</th><th>Part du CA</th></tr></thead><tbody>${
+    fams.map(f => { const x = v.parFamilleTarif[f] || {ventes:0,ca:0}; return `<tr><td>${f}</td><td>${int(x.ventes)}</td><td>${eur(x.ca)}</td><td>${eur(x.ventes ? x.ca/x.ventes : null, 2)}</td><td>${pct(x.ca, v.ca)}</td></tr>`; }).join('')
+  }</tbody></table>`;
+
+  // Billetterie
+  const tarifs = Object.entries(b.parTarif||{}).sort((a,c)=>c[1]-a[1]);
+  $('billetterie').innerHTML = tarifs.length ? `<table><thead><tr><th>Tarif</th><th>Billets</th></tr></thead><tbody>${tarifs.map(([t,n]) => `<tr><td>${esc(t)}</td><td>${int(n)}</td></tr>`).join('')}
+    <tr><td><b>Abonnés de la saison</b></td><td><b>${int(b.abonnes)}</b></td></tr></tbody></table>` : '<p class="empty">Pas de données billetterie pour ce match.</p>';
+}
+
+function kpi(l, val, s, cls, ratio, extra){
+  return `<div class="kpi ${cls||''}"><span class="l">${l}</span><span class="v">${val}</span><span class="s">${s}${extra ? ' · ' + extra : ''}</span>${ratio != null ? `<div class="meter"><div style="width:${Math.min(100, ratio*100).toFixed(1)}%"></div></div>` : ''}</div>`;
+}
+function niceStep(max){ const raw = max/4; const p = Math.pow(10, Math.floor(Math.log10(raw))); const n = raw/p; return (n<=1?1:n<=2?2:n<=5?5:10)*p; }
+
+function renderLinks(){
+  const base = location.origin && location.origin.startsWith('http') ? location.origin + '/' : 'https://spacers-boutique.spacersytb.workers.dev/';
+  const b64 = o => btoa(unescape(encodeURIComponent(JSON.stringify(o))));
+  $('links').innerHTML = Object.entries(BOUTIQUES).map(([k, nom]) => {
+    const url = base + '?cfg=' + encodeURIComponent(b64({ url: cfg.url, token: cfg.token, boutique: k }));
+    return `<div class="link-card"><b>${k} · ${esc(nom)}</b><code id="lk${k}">${esc(url)}</code><button class="btn sec" type="button" data-k="${k}" style="align-self:flex-start">Copier le lien</button></div>`;
+  }).join('');
+  $('links').querySelectorAll('button').forEach(bt => bt.onclick = () => {
+    const txt = $('lk' + bt.dataset.k).textContent;
+    navigator.clipboard.writeText(txt).then(() => { bt.textContent = 'Copié ✓'; setTimeout(() => bt.textContent = 'Copier le lien', 1800); })
+      .catch(() => { const r = document.createRange(); r.selectNodeContents($('lk' + bt.dataset.k)); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); });
+  });
+}
+
+loadCfg();
+renderLinks();
+start();
+})();
+</script>
+</body>
+</html>
