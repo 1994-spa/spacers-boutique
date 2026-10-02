@@ -14,6 +14,14 @@
  * Lecture des .xlsx : service avancé « Drive API » (v3) activé dans le projet.
  */
 
+/** Mise en service en une fois : enveloppe événement, import chaque nuit, réorganisation du classeur. */
+function installerModuleDrive() {
+  var r = [ajouterEnveloppeEvenement(), activerImportQuotidien()];
+  if (typeof organiserClasseur === 'function') r = r.concat(organiserClasseur());
+  Logger.log(r.join('\n'));
+  return r;
+}
+
 var DB = {
   DOSSIER_FACTURES: '📥 Factures fournisseurs',
   DOSSIER_VENTES: '📥 Ventes en ligne (extractions)',
