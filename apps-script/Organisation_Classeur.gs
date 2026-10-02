@@ -222,7 +222,7 @@ function construireSommaire_(ss, plan) {
   // Liens cliquables vers chaque onglet (après création, pour avoir les identifiants)
   liens.forEach(function (l) {
     var s = ss.getSheetByName(l.nom); if (!s) return;
-    sh.getRange(r + l.ligne - 1, 1).setFormula('=HYPERLINK("#gid=' + s.getSheetId() + '","' + l.nom.replace(/"/g, '""') + '")').setFontWeight('bold');
+    sh.getRange(r + l.ligne - 1, 1).setFormula(fx_('=HYPERLINK("#gid=' + s.getSheetId() + '","' + l.nom.replace(/"/g, '""') + '")')).setFontWeight('bold');
   });
   sh.setColumnWidth(1, 230); sh.setColumnWidth(2, 470); sh.setColumnWidth(3, 230); sh.setColumnWidth(4, 150); sh.setColumnWidth(5, 330);
   sh.setFrozenRows(4);
@@ -276,16 +276,16 @@ function construireTableauDeBord_(ss) {
   kpis.forEach(function (k, i) {
     var col = 1 + i * 2;
     sh.getRange(4, col, 1, 2).merge().setValue(k[0]).setFontColor('#55606B').setFontSize(9).setFontWeight('bold');
-    var c = sh.getRange(5, col, 1, 2).merge().setFormula(k[1]).setFontSize(20).setFontWeight('bold').setFontColor(ORG.NIGHT).setHorizontalAlignment('left');
+    var c = sh.getRange(5, col, 1, 2).merge().setFormula(fx_(k[1])).setFontSize(20).setFontWeight('bold').setFontColor(ORG.NIGHT).setHorizontalAlignment('left');
     c.setNumberFormat(k[2] === '€' ? '#,##0 "€"' : '0');
   });
   sh.getRange(4, 1, 2, 14).setBackground('#EEF2F8');
 
   // Tableaux (ligne 8) : CA par match · Top produits · Stock
   titre_(sh, 'A8', 'CA PAR MATCH');
-  sh.getRange('A9').setFormula('=IFERROR(QUERY(' + V + '!$A:$M,"select J, sum(I), sum(G) where L = \'"&$B$2&"\' and M <> \'Offert\' and J is not null group by J order by sum(I) desc label J \'Match\', sum(I) \'CA TTC\', sum(G) \'Articles\'",1),"Aucune vente sur cette saison")');
+  sh.getRange('A9').setFormula(fx_('=IFERROR(QUERY(' + V + '!$A:$M,"select J, sum(I), sum(G) where L = \'"&$B$2&"\' and M <> \'Offert\' and J is not null group by J order by sum(I) desc label J \'Match\', sum(I) \'CA TTC\', sum(G) \'Articles\'",1),"Aucune vente sur cette saison")'));
   titre_(sh, 'E8', 'TOP PRODUITS');
-  sh.getRange('E9').setFormula('=IFERROR(QUERY(' + V + '!$A:$M,"select E, sum(G), sum(I) where L = \'"&$B$2&"\' and M <> \'Offert\' and E is not null group by E order by sum(I) desc limit 10 label E \'Produit\', sum(G) \'Qté\', sum(I) \'CA TTC\'",1),"Aucune vente sur cette saison")');
+  sh.getRange('E9').setFormula(fx_('=IFERROR(QUERY(' + V + '!$A:$M,"select E, sum(G), sum(I) where L = \'"&$B$2&"\' and M <> \'Offert\' and E is not null group by E order by sum(I) desc limit 10 label E \'Produit\', sum(G) \'Qté\', sum(I) \'CA TTC\'",1),"Aucune vente sur cette saison")'));
   titre_(sh, 'I8', 'STOCK DU CATALOGUE ACTIF');
   // Produits actifs (VRAI/TRUE) ; cellules vides comptées 0
   // Colonnes de 03_PRODUITS lues sur les en-têtes (Stock_Boutique.gs ajoute des colonnes à droite)
@@ -298,18 +298,18 @@ function construireTableauDeBord_(ss) {
   var actif = '((' + G_ + '=TRUE)+(' + G_ + '="VRAI")+(' + G_ + '="TRUE")>0)';
   var seuil = 'IF(ISNUMBER(' + P + '!$' + cSeuil + '$2:$' + cSeuil + '),' + P + '!$' + cSeuil + '$2:$' + cSeuil + ',3)';
   var tot = '(' + num(cR) + '+' + num(cB1) + '+' + num(cB2) + ')';
-  sh.getRange('I9').setFormula('=ARRAYFORMULA(IFERROR({"Produit","Réserve","GP (B1)","VIP (B2)","Total";FILTER({' + A_ + ',' + num(cR) + ',' + num(cB1) + ',' + num(cB2) + ',' + tot + '},' + actif + ',' + A_ + '<>"")},"Catalogue vide"))');
+  sh.getRange('I9').setFormula(fx_('=ARRAYFORMULA(IFERROR({"Produit","Réserve","GP (B1)","VIP (B2)","Total";FILTER({' + A_ + ',' + num(cR) + ',' + num(cB1) + ',' + num(cB2) + ',' + tot + '},' + actif + ',' + A_ + '<>"")},"Catalogue vide"))'));
   sh.getRange('C9:C60').setNumberFormat('#,##0 "€"'); sh.getRange('B9:B60').setNumberFormat('#,##0 "€"');
   sh.getRange('G9:G60').setNumberFormat('#,##0 "€"');
 
   // Alertes (sous le CA par match, colonne A ligne 30)
   titre_(sh, 'A30', '⚠️ À TRAITER');
-  sh.getRange('A31').setFormula('=ARRAYFORMULA(IFERROR(FILTER(' + A_ + '&" — stock bas ("&' + tot + '&")",' + actif + ',' + A_ + '<>"",' + tot + '<=' + seuil + '),"Aucun produit en stock bas"))');
-  sh.getRange('E31').setFormula('=ARRAYFORMULA(IFERROR(FILTER(' + A_ + '&" — coût d\'achat manquant (marge faussée)",' + actif + ',' + A_ + '<>"",' + num(cCout) + '=0),"Tous les coûts sont renseignés"))');
+  sh.getRange('A31').setFormula(fx_('=ARRAYFORMULA(IFERROR(FILTER(' + A_ + '&" — stock bas ("&' + tot + '&")",' + actif + ',' + A_ + '<>"",' + tot + '<=' + seuil + '),"Aucun produit en stock bas"))'));
+  sh.getRange('E31').setFormula(fx_('=ARRAYFORMULA(IFERROR(FILTER(' + A_ + '&" — coût d\'achat manquant (marge faussée)",' + actif + ',' + A_ + '<>"",' + num(cCout) + '=0),"Tous les coûts sont renseignés"))'));
 
   // Live du dernier match (pilotage)
   titre_(sh, 'I30', 'EN DIRECT — VENTES LIVE PAR MATCH');
-  sh.getRange('I31').setFormula('=IFERROR(QUERY(' + L + '!$A:$S,"select E, count(C), sum(J), count(M) where C is not null group by E label E \'Match\', count(C) \'Paniers\', sum(J) \'CA TTC\', count(M) \'Billets scannés\'",1),"Aucune vente live pour l\'instant")');
+  sh.getRange('I31').setFormula(fx_('=IFERROR(QUERY(' + L + '!$A:$S,"select E, count(C), sum(J), count(M) where C is not null group by E label E \'Match\', count(C) \'Paniers\', sum(J) \'CA TTC\', count(M) \'Billets scannés\'",1),"Aucune vente live pour l\'instant")'));
   sh.getRange('K31:K60').setNumberFormat('#,##0 "€"');
 
   [1, 5, 9].forEach(function (c) { sh.setColumnWidth(c, 230); });
@@ -326,6 +326,31 @@ function lettreCol_(sh, nom, defaut) {
   var n = i + 1, l = '';
   while (n > 0) { var m = (n - 1) % 26; l = String.fromCharCode(65 + m) + l; n = Math.floor((n - 1) / 26); }
   return l;
+}
+/**
+ * Adapte une formule écrite à l'anglaise (virgules) aux réglages régionaux du classeur.
+ * En français : séparateur d'arguments « ; », séparateur de colonnes dans { } « \ ».
+ */
+function fx_(f) {
+  if (ORG_SEP === null) ORG_SEP = detecterSeparateur_();
+  if (ORG_SEP === ',') return f;
+  var out = '', pile = [], q = false;
+  for (var i = 0; i < f.length; i++) {
+    var c = f.charAt(i);
+    if (c === '"') { q = !q; out += c; continue; }
+    if (q) { out += c; continue; }
+    if (c === '(' || c === '{') pile.push(c);
+    else if (c === ')' || c === '}') pile.pop();
+    else if (c === ',') { out += (pile[pile.length - 1] === '{') ? '\\' : ';'; continue; }
+    out += c;
+  }
+  return out;
+}
+var ORG_SEP = null;
+/** Séparateur d'arguments selon les paramètres régionaux du classeur. */
+function detecterSeparateur_() {
+  var loc = String(SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetLocale() || '');
+  return /^(en|ja|zh|ko|th|he|hi|ms|fil|sw)/i.test(loc) ? ',' : ';';
 }
 function titre_(sh, a1, txt) { sh.getRange(a1).setValue(txt).setFontWeight('bold').setFontColor(ORG.NIGHT).setFontSize(11); }
 
@@ -354,13 +379,13 @@ function construireRecherche_(ss) {
     .setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(dispo.map(function (t) { return t[0]; }), true).setAllowInvalid(false).build());
   sh.getRange('E3').setValue('Nom, prénom, email, code billet, produit, référence, match, bénévole… (majuscules et accents indifférents pour les lettres)').setFontColor('#55606B').setFontStyle('italic').setWrap(false);
   sh.getRange('A5').setValue('Résultats').setFontWeight('bold');
-  sh.getRange('B5').setFormula('=IF(OR($B$3="",NOT(ISTEXT(A7))),0,MAX(0,COUNTA(A7:A)-1))').setFontWeight('bold');
+  sh.getRange('B5').setFormula(fx_('=IF(OR($B$3="",NOT(ISTEXT(A7))),0,MAX(0,COUNTA(A7:A)-1))')).setFontWeight('bold');
 
   var branches = dispo.map(function (t) {
     var q = "'" + t[1] + "'", R = q + '!A2:' + t[2], H = q + '!A1:' + t[2] + '1';
     return '"' + t[0] + '",IFERROR({' + H + ';FILTER(' + R + ',ISNUMBER(SEARCH($B$3,BYROW(' + R + ',LAMBDA(ligne,TEXTJOIN(" ",TRUE,ligne))))))},"Aucun résultat")';
   });
-  sh.getRange('A7').setFormula('=IF($B$3="","← Tape un mot en B3",SWITCH($B$4,' + branches.join(',') + '))');
+  sh.getRange('A7').setFormula(fx_('=IF($B$3="","← Tape un mot en B3",SWITCH($B$4,' + branches.join(',') + '))'));
   sh.getRange('A7:Z7').setFontWeight('bold').setBackground('#EEF2F8');
   sh.setFrozenRows(7);
   sh.setColumnWidth(1, 170);
