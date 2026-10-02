@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<style>
+  body{font-family:Arial,Helvetica,sans-serif;font-size:13px;margin:0;padding:12px;color:#1a1a1a}
+  h2{font-size:15px;margin:0 0 10px;color:#001E2D}
+  .tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px}
+  .tabs button{flex:1 1 30%;padding:6px 2px;border:1px solid #001E2D;background:#fff;color:#001E2D;border-radius:4px;cursor:pointer;font-size:12px}
+  .tabs button.on{background:#001E2D;color:#fff}
+  .pane{display:none}.pane.on{display:block}
+  label{display:block;font-weight:bold;margin:9px 0 3px;font-size:12px}
+  input,select,textarea{width:100%;box-sizing:border-box;padding:6px;border:1px solid #bbb;border-radius:4px;font-size:13px;font-family:inherit}
+  table{width:100%;border-collapse:collapse;margin-top:6px}
+  th,td{padding:4px 3px;border-bottom:1px solid #eee;text-align:center;font-size:12px}
+  th{color:#001E2D}
+  td input{padding:4px;text-align:center}
+  .petit{color:#777;font-size:11px}
+  .hint{color:#666;font-size:11px;margin-top:3px}
+  .go{width:100%;margin-top:14px;padding:9px;background:#001E2D;color:#fff;border:0;border-radius:4px;font-weight:bold;font-size:13px;cursor:pointer}
+  .go:disabled{opacity:.5;cursor:default}
+  .msg{margin-top:10px;padding:8px;border-radius:4px;display:none;font-size:12px}
+  .msg.ok{display:block;background:#e6f4ea;color:#1e6b34}
+  .msg.err{display:block;background:#fdecea;color:#a12622}
+  .retrait{border:1px solid #ddd;border-radius:4px;padding:7px;margin-bottom:6px}
+  .retrait button{margin-top:5px;padding:5px 8px;background:#001E2D;color:#fff;border:0;border-radius:4px;cursor:pointer}
+  .rupture{color:#a12622;font-weight:bold}
+</style>
+</head>
+<body>
+<h2>Stock boutique · 2026-2027</h2>
+
+<div class="tabs">
+  <button data-p="rec" class="on">Réception</button>
+  <button data-p="rep">Répartition</button>
+  <button data-p="dot">Sortie / don</button>
+  <button data-p="tra">Transfert</button>
+  <button data-p="inv">Inventaire</button>
+  <button data-p="ret">Retraits web</button>
+</div>
+
+<!-- RÉCEPTION -->
+<div id="rec" class="pane on">
+  <label>Modèle</label>
+  <select id="rec_modele"></select>
+  <table id="rec_table"></table>
+  <div class="hint">Quantités reçues par taille. Tout entre en Réserve ; répartissez ensuite vers les stands (onglet Répartition).</div>
+  <label>Prix d'achat unitaire HT (€)</label>
+  <input id="rec_pa" type="number" step="0.01" min="0" placeholder="montant HT de la facture">
+  <label>Prix de vente TTC (€)</label>
+  <input id="rec_pv" type="number" step="0.01" min="0">
+  <div class="hint" id="rec_pv_ht">Prix affiché en caisse et sur Tickie. S'applique à toutes les tailles du modèle.</div>
+  <label>Fournisseur</label>
+  <input id="rec_fou">
+  <label>N° facture / bon de livraison</label>
+  <input id="rec_ref">
+  <button class="go" id="rec_go">Enregistrer la réception</button>
+</div>
+
+<!-- RÉPARTITION -->
+<div id="rep" class="pane">
+  <label>Modèle</label>
+  <select id="rep_modele"></select>
+  <table id="rep_table"></table>
+  <div class="hint">Quantités prélevées dans la Réserve et envoyées sur chaque stand. Laisser vide = 0.</div>
+  <button class="go" id="rep_go">Répartir</button>
+</div>
+
+<!-- DOTATION -->
+<div id="dot" class="pane">
+  <label>Article</label>
+  <select id="dot_ref"></select>
+  <label>Prélevé sur</label>
+  <select id="dot_point"></select>
+  <label>Quantité</label>
+  <input id="dot_q" type="number" min="1" step="1" value="1">
+  <label>Enveloppe / motif</label>
+  <select id="dot_type"></select>
+  <div class="hint" id="dot_env_info"></div>
+  <label>Bénéficiaire</label>
+  <input id="dot_benef" list="benefs" placeholder="Nom du partenaire, de la collectivité, du gagnant…">
+  <div class="hint">Écrivez toujours le même nom (la liste propose ceux déjà saisis) pour que les totaux par bénéficiaire soient justes.</div>
+  <label>Événement / occasion</label>
+  <input id="dot_match" list="matchs" placeholder="ex. Spacer's vs Narbonne, soirée partenaires, jeu Instagram…">
+  <label>Demandé par (facultatif)</label>
+  <input id="dot_dem" placeholder="ex. service communication">
+  <label>Justificatif (facultatif)</label>
+  <input id="dot_just" placeholder="n° contrat, lien du post, n° avoir…">
+  <label>Commentaire</label>
+  <textarea id="dot_com" rows="2" placeholder="facultatif"></textarea>
+  <button class="go" id="dot_go">Enregistrer la sortie</button>
+</div>
+
+<!-- TRANSFERT -->
+<div id="tra" class="pane">
+  <label>Article</label>
+  <select id="tra_ref"></select>
+  <label>De</label>
+  <select id="tra_de"></select>
+  <label>Vers</label>
+  <select id="tra_vers"></select>
+  <label>Quantité</label>
+  <input id="tra_q" type="number" min="1" step="1" value="1">
+  <button class="go" id="tra_go">Transférer</button>
+</div>
+
+<!-- INVENTAIRE -->
+<div id="inv" class="pane">
+  <label>Modèle</label>
+  <select id="inv_modele"></select>
+  <table id="inv_table"></table>
+  <div class="hint">Saisir les quantités comptées. Case vide = non comptée (inchangée). Le stock théorique est en gris.</div>
+  <label>Commentaire</label>
+  <input id="inv_com" placeholder="ex. Inventaire avant Sète">
+  <button class="go" id="inv_go">Valider l'inventaire</button>
+</div>
+
+<!-- RETRAITS WEB -->
+<div id="ret" class="pane">
+  <label>Rechercher (email, produit, n° commande)</label>
+  <input id="ret_q" placeholder="Tapez pour filtrer">
+  <div id="ret_list" style="margin-top:8px"></div>
+</div>
+
+<datalist id="matchs"></datalist>
+<datalist id="benefs"></datalist>
+<div id="msg" class="msg"></div>
+
+<script>
+  var D = null;
+  var $ = function (id) { return document.getElementById(id); };
+
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+  function msg(t, ok) { var m = $('msg'); m.textContent = t; m.className = 'msg ' + (ok ? 'ok' : 'err'); }
+  function erreur(e) {
+    msg((e && e.message) ? e.message : String(e), false);
+    document.querySelectorAll('.go').forEach(function (b) { b.disabled = false; });
+  }
+  function options(sel, items) {
+    sel.innerHTML = items.map(function (i) { return '<option value="' + esc(i[0]) + '">' + esc(i[1]) + '</option>'; }).join('');
+  }
+  function modele(nom) { return D.modeles.filter(function (m) { return m.modele === nom; })[0]; }
+  function listeRefs() {
+    var a = [];
+    D.modeles.forEach(function (m) {
+      m.lignes.forEach(function (l) { a.push([l.ref, l.produit + '  (Rés. ' + l.R + ' · GP ' + l.B1 + ' · VIP ' + l.B2 + ')']); });
+    });
+    return a;
+  }
+
+  // Onglets
+  document.querySelectorAll('.tabs button').forEach(function (b) {
+    b.onclick = function () {
+      document.querySelectorAll('.tabs button').forEach(function (x) { x.classList.toggle('on', x === b); });
+      document.querySelectorAll('.pane').forEach(function (p) { p.classList.toggle('on', p.id === b.dataset.p); });
+      $('msg').className = 'msg';
+    };
+  });
+
+  function charger() {
+    google.script.run.withSuccessHandler(function (d) { D = d; init(); }).withFailureHandler(erreur).getDonneesPanneau();
+  }
+
+  function init() {
+    var garder = ['rec_modele', 'rep_modele', 'inv_modele', 'dot_ref', 'tra_ref', 'dot_point', 'tra_de', 'tra_vers', 'dot_type'];
+    var avant = {};
+    garder.forEach(function (id) { avant[id] = $(id).value; });
+
+    if (!D.modeles.length) { msg('Aucun produit actif avec référence : lancez la migration depuis le menu.', false); return; }
+    var mods = D.modeles.map(function (m) { return [m.modele, m.modele]; });
+    options($('rec_modele'), mods);
+    options($('inv_modele'), mods);
+    options($('rep_modele'), mods);
+    options($('dot_ref'), listeRefs());
+    options($('tra_ref'), listeRefs());
+    var pts = Object.keys(D.points).map(function (k) { return [k, D.points[k]]; });
+    options($('dot_point'), pts);
+    options($('tra_de'), pts);
+    options($('tra_vers'), pts);
+    if (!avant['tra_vers'] || avant['tra_vers'] === avant['tra_de']) { $('tra_de').value = 'R'; $('tra_vers').value = 'B1'; }
+    options($('dot_type'), [['', '— choisir —']].concat(D.enveloppes.map(function (e) {
+      var reste = e.reste_v !== null ? ' · reste ' + e.reste_v + ' €' : (e.reste_u !== null ? ' · reste ' + e.reste_u + ' u.' : '');
+      return [e.nom, e.nom + reste];
+    })));
+    infoEnveloppe();
+    $('benefs').innerHTML = (D.beneficiaires || []).map(function (m) { return '<option value="' + esc(m) + '">'; }).join('');
+    $('matchs').innerHTML = D.matchs.map(function (m) { return '<option value="' + esc(m) + '">'; }).join('');
+
+    garder.forEach(function (id) {
+      var s = $(id);
+      if (avant[id] && Array.prototype.some.call(s.options, function (o) { return o.value === avant[id]; })) s.value = avant[id];
+    });
+    grilleReception();
+    grilleRepartition();
+    grilleInventaire();
+    listeRetraits();
+  }
+
+  // Réception
+  function grilleReception() {
+    var m = modele($('rec_modele').value); if (!m) return;
+    $('rec_pv').value = m.prix_vente;
+    majHT();
+    $('rec_table').innerHTML = '<tr><th>Taille</th><th>Stock actuel</th><th>Quantité reçue</th></tr>' + m.lignes.map(function (l) {
+      return '<tr><td>' + esc(l.taille) + '</td><td class="petit">Rés. ' + l.R + ' · GP ' + l.B1 + ' · VIP ' + l.B2 + '</td>' +
+        '<td><input type="number" min="0" step="1" data-ref="' + esc(l.ref) + '" data-pt="R"></td></tr>';
+    }).join('');
+  }
+  $('rec_modele').onchange = grilleReception;
+  function majHT() {
+    var v = Number($('rec_pv').value);
+    $('rec_pv_ht').textContent = 'Prix affiché en caisse et sur Tickie, soit ' + (v ? (v / (1 + D.tva)).toFixed(2) : '—') +
+      ' € HT. S\'applique à toutes les tailles du modèle.';
+  }
+  $('rec_pv').oninput = majHT;
+
+  // Répartition
+  function grilleRepartition() {
+    var m = modele($('rep_modele').value); if (!m) return;
+    $('rep_table').innerHTML = '<tr><th>Taille</th><th>Réserve</th><th>→ GP</th><th>→ VIP</th></tr>' + m.lignes.map(function (l) {
+      return '<tr><td>' + esc(l.taille) + '</td><td>' + l.R + '</td>' +
+        '<td><input type="number" min="0" step="1" data-ref="' + esc(l.ref) + '" data-pt="B1"></td>' +
+        '<td><input type="number" min="0" step="1" data-ref="' + esc(l.ref) + '" data-pt="B2"></td></tr>';
+    }).join('');
+  }
+  $('rep_modele').onchange = grilleRepartition;
+  $('rep_go').onclick = function () {
+    envoyer('enregistrerRepartition', { lignes: lireGrille('rep_table') }, this, 'rep');
+  };
+
+  function lireGrille(tableId) {
+    var o = {};
+    document.querySelectorAll('#' + tableId + ' input').forEach(function (i) {
+      o[i.dataset.ref] = o[i.dataset.ref] || { ref: i.dataset.ref };
+      o[i.dataset.ref][i.dataset.pt] = i.value;
+    });
+    return Object.keys(o).map(function (k) { return o[k]; });
+  }
+
+  function envoyer(fn, payload, bouton, paneId) {
+    bouton.disabled = true;
+    msg('Enregistrement…', true);
+    google.script.run
+      .withSuccessHandler(function (t) {
+        bouton.disabled = false;
+        document.querySelectorAll('#' + paneId + ' input:not([type=hidden]), #' + paneId + ' textarea').forEach(function (i) {
+          if (i.type === 'number' && (i.id === 'dot_q' || i.id === 'tra_q')) i.value = 1; else i.value = '';
+        });
+        msg(t, true);
+        google.script.run.withSuccessHandler(function (d) { D = d; init(); }).withFailureHandler(erreur).getDonneesPanneau();
+      })
+      .withFailureHandler(erreur)[fn](payload);
+  }
+
+  $('rec_go').onclick = function () {
+    var m = modele($('rec_modele').value);
+    var pv = $('rec_pv').value;
+    envoyer('enregistrerReception', {
+      modele: m.modele,
+      lignes: lireGrille('rec_table'),
+      prix_achat: $('rec_pa').value,
+      prix_vente: (pv !== '' && Number(pv) !== Number(m.prix_vente)) ? pv : '',
+      fournisseur: $('rec_fou').value,
+      reference: $('rec_ref').value
+    }, this, 'rec');
+  };
+
+  // Sortie hors vente
+  function infoEnveloppe() {
+    var e = D && D.enveloppes.filter(function (x) { return x.nom === $('dot_type').value; })[0];
+    if (!e) { $('dot_env_info').textContent = ''; return; }
+    $('dot_env_info').textContent = (e.demarque ? 'Démarque : bénéficiaire facultatif.' :
+      (e.tva73 ? 'Cadeau : contrôle du seuil TVA de 73 € TTC par bénéficiaire et par saison.' : 'Hors règle cadeaux.')) +
+      (e.compte ? ' Compte ' + e.compte + '.' : '');
+  }
+  $('dot_type').onchange = infoEnveloppe;
+  $('dot_go').onclick = function () {
+    envoyer('enregistrerDotation', {
+      ref: $('dot_ref').value, point: $('dot_point').value, quantite: $('dot_q').value,
+      enveloppe: $('dot_type').value, beneficiaire: $('dot_benef').value, demandeur: $('dot_dem').value,
+      justificatif: $('dot_just').value, match: $('dot_match').value, commentaire: $('dot_com').value
+    }, this, 'dot');
+  };
+
+  // Transfert
+  $('tra_de').onchange = function () {
+    if ($('tra_vers').value === $('tra_de').value) {
+      $('tra_vers').value = Object.keys(D.points).filter(function (k) { return k !== $('tra_de').value; })[0];
+    }
+  };
+  $('tra_go').onclick = function () {
+    envoyer('enregistrerTransfert', {
+      ref: $('tra_ref').value, de: $('tra_de').value, vers: $('tra_vers').value, quantite: $('tra_q').value
+    }, this, 'tra');
+  };
+
+  // Inventaire
+  function grilleInventaire() {
+    var m = modele($('inv_modele').value); if (!m) return;
+    $('inv_table').innerHTML = '<tr><th>Taille</th><th>Réserve</th><th>GP</th><th>VIP</th></tr>' + m.lignes.map(function (l) {
+      return '<tr><td>' + esc(l.taille) + '</td>' +
+        '<td><input type="number" min="0" step="1" placeholder="' + l.R + '" data-ref="' + esc(l.ref) + '" data-pt="R"></td>' +
+        '<td><input type="number" min="0" step="1" placeholder="' + l.B1 + '" data-ref="' + esc(l.ref) + '" data-pt="B1"></td>' +
+        '<td><input type="number" min="0" step="1" placeholder="' + l.B2 + '" data-ref="' + esc(l.ref) + '" data-pt="B2"></td></tr>';
+    }).join('');
+  }
+  $('inv_modele').onchange = grilleInventaire;
+  $('inv_go').onclick = function () {
+    envoyer('enregistrerInventaire', { lignes: lireGrille('inv_table'), commentaire: $('inv_com').value }, this, 'inv');
+  };
+
+  // Retraits web
+  function listeRetraits() {
+    var q = $('ret_q').value.toLowerCase();
+    var L = D.retraits.filter(function (r) {
+      return !q || (r.email + ' ' + r.produit + ' ' + r.commande).toLowerCase().indexOf(q) !== -1;
+    });
+    $('ret_list').innerHTML = L.length ? L.map(function (r) {
+      var rupture = r.statut.toUpperCase().indexOf('RUPTURE') !== -1;
+      return '<div class="retrait"><b>' + esc(r.quantite) + ' × ' + esc(r.produit) + '</b>' +
+        (rupture ? ' <span class="rupture">RUPTURE</span>' : '') + '<br>' + esc(r.email) +
+        '<br><span class="petit">' + esc(r.date) + (r.match ? ' · ' + esc(r.match) : '') + '</span>' +
+        '<br><button data-l="' + r.ligne + '">Remis au supporter</button></div>';
+    }).join('') : '<p class="petit">Aucun retrait en attente.</p>';
+    $('ret_list').querySelectorAll('button').forEach(function (b) {
+      b.onclick = function () {
+        b.disabled = true;
+        google.script.run
+          .withSuccessHandler(function (t) {
+            msg(t, true);
+            google.script.run.withSuccessHandler(function (d) { D = d; init(); }).getDonneesPanneau();
+          })
+          .withFailureHandler(erreur)
+          .marquerRetire(Number(b.dataset.l));
+      };
+    });
+  }
+  $('ret_q').oninput = listeRetraits;
+
+  charger();
+</script>
+</body>
+</html>

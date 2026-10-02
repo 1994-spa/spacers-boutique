@@ -288,17 +288,24 @@ function construireTableauDeBord_(ss) {
   sh.getRange('E9').setFormula('=IFERROR(QUERY(' + V + '!$A:$M,"select E, sum(G), sum(I) where L = \'"&$B$2&"\' and M <> \'Offert\' and E is not null group by E order by sum(I) desc limit 10 label E \'Produit\', sum(G) \'Qté\', sum(I) \'CA TTC\'",1),"Aucune vente sur cette saison")');
   titre_(sh, 'I8', 'STOCK DU CATALOGUE ACTIF');
   // Produits actifs (VRAI/TRUE) ; cellules vides comptées 0
+  // Colonnes de 03_PRODUITS lues sur les en-têtes (Stock_Boutique.gs ajoute des colonnes à droite)
+  var shP = ss.getSheetByName('03_PRODUITS');
+  var L_ = function (nom, defaut) { return lettreCol_(shP, nom, defaut); };
+  var cNom = L_('produit', 'A'), cCout = L_('cout', 'D'), cB1 = L_('stock_B1', 'E'), cB2 = L_('stock_B2', 'F'),
+      cAct = L_('actif', 'G'), cSeuil = L_('seuil_alerte', 'M'), cR = L_('stock_R', 'N');
   var num = function (c) { return 'IF(ISNUMBER(' + P + '!$' + c + '$2:$' + c + '),' + P + '!$' + c + '$2:$' + c + ',0)'; };
-  var actif = '((' + P + '!$G$2:$G=TRUE)+(' + P + '!$G$2:$G="VRAI")+(' + P + '!$G$2:$G="TRUE")>0)';
-  var tot = '(' + num('N') + '+' + num('E') + '+' + num('F') + ')';
-  sh.getRange('I9').setFormula('=ARRAYFORMULA(IFERROR({"Produit","Réserve","GP (B1)","VIP (B2)","Total";FILTER({' + P + '!$A$2:$A,' + num('N') + ',' + num('E') + ',' + num('F') + ',' + tot + '},' + actif + ',' + P + '!$A$2:$A<>"")},"Catalogue vide"))');
+  var G_ = P + '!$' + cAct + '$2:$' + cAct, A_ = P + '!$' + cNom + '$2:$' + cNom;
+  var actif = '((' + G_ + '=TRUE)+(' + G_ + '="VRAI")+(' + G_ + '="TRUE")>0)';
+  var seuil = 'IF(ISNUMBER(' + P + '!$' + cSeuil + '$2:$' + cSeuil + '),' + P + '!$' + cSeuil + '$2:$' + cSeuil + ',3)';
+  var tot = '(' + num(cR) + '+' + num(cB1) + '+' + num(cB2) + ')';
+  sh.getRange('I9').setFormula('=ARRAYFORMULA(IFERROR({"Produit","Réserve","GP (B1)","VIP (B2)","Total";FILTER({' + A_ + ',' + num(cR) + ',' + num(cB1) + ',' + num(cB2) + ',' + tot + '},' + actif + ',' + A_ + '<>"")},"Catalogue vide"))');
   sh.getRange('C9:C60').setNumberFormat('#,##0 "€"'); sh.getRange('B9:B60').setNumberFormat('#,##0 "€"');
   sh.getRange('G9:G60').setNumberFormat('#,##0 "€"');
 
   // Alertes (sous le CA par match, colonne A ligne 30)
   titre_(sh, 'A30', '⚠️ À TRAITER');
-  sh.getRange('A31').setFormula('=ARRAYFORMULA(IFERROR(FILTER(' + P + '!$A$2:$A&" — stock bas ("&' + tot + '&")",' + actif + ',' + P + '!$A$2:$A<>"",' + tot + '<=' + num('M') + '),"Aucun produit en stock bas"))');
-  sh.getRange('E31').setFormula('=ARRAYFORMULA(IFERROR(FILTER(' + P + '!$A$2:$A&" — coût d\'achat manquant (marge faussée)",' + actif + ',' + P + '!$A$2:$A<>"",' + num('D') + '=0),"Tous les coûts sont renseignés"))');
+  sh.getRange('A31').setFormula('=ARRAYFORMULA(IFERROR(FILTER(' + A_ + '&" — stock bas ("&' + tot + '&")",' + actif + ',' + A_ + '<>"",' + tot + '<=' + seuil + '),"Aucun produit en stock bas"))');
+  sh.getRange('E31').setFormula('=ARRAYFORMULA(IFERROR(FILTER(' + A_ + '&" — coût d\'achat manquant (marge faussée)",' + actif + ',' + A_ + '<>"",' + num(cCout) + '=0),"Tous les coûts sont renseignés"))');
 
   // Live du dernier match (pilotage)
   titre_(sh, 'I30', 'EN DIRECT — VENTES LIVE PAR MATCH');
@@ -310,6 +317,15 @@ function construireTableauDeBord_(ss) {
   sh.setColumnWidth(14, 40);
   sh.setFrozenRows(5);
   avertir_(sh, 'Tableau de bord en formules : seule la saison (B2) se modifie.');
+}
+/** Lettre de la colonne portant cet en-tête (ligne 1), sinon la lettre par défaut. */
+function lettreCol_(sh, nom, defaut) {
+  if (!sh || sh.getLastColumn() < 1) return defaut;
+  var h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function (x) { return String(x).trim(); });
+  var i = h.indexOf(nom); if (i < 0) return defaut;
+  var n = i + 1, l = '';
+  while (n > 0) { var m = (n - 1) % 26; l = String.fromCharCode(65 + m) + l; n = Math.floor((n - 1) / 26); }
+  return l;
 }
 function titre_(sh, a1, txt) { sh.getRange(a1).setValue(txt).setFontWeight('bold').setFontColor(ORG.NIGHT).setFontSize(11); }
 
