@@ -25,7 +25,7 @@
 
 var ORG = {
   NIGHT: '#001E2D', DAY: '#91BEE6', PERI: '#C8D2EB', GRIS: '#9AA5B1', VERT: '#2E7D4F', ORANGE: '#B5651D',
-  SOMMAIRE: '📖 SOMMAIRE', TDB: '📊 TABLEAU DE BORD', RECH: '🔎 RECHERCHE'
+  SOMMAIRE: '📖 SOMMAIRE', TDB: '📊 TABLEAU DE BORD', RECH: '🔎 RECHERCHE', CAD: '🎁 CADEAUX & DONS'
 };
 
 /* Familles d'onglets, dans l'ordre d'affichage.
@@ -34,16 +34,20 @@ var ORG_FAMILLES = [
   { famille: 'Accueil', couleur: ORG.NIGHT, onglets: [
     { n: ORG.SOMMAIRE, role: 'Plan du classeur : à quoi sert chaque onglet.', par: 'Ce script', mode: 'lecture' },
     { n: ORG.TDB, role: 'Chiffres clés de la saison : CA, ventes par match, top produits, stock, alertes.', par: 'Formules (temps réel)', mode: 'lecture' },
+    { n: ORG.CAD, role: 'Coût des articles donnés (partenaires, tournois, jeux, protocole…) : par enveloppe, bénéficiaire, événement.', par: 'Formules (11_MOUVEMENTS_STOCK + offerts caisse)', mode: 'lecture', note: 'Un don se saisit par le menu 📦 › Sortie / don' },
     { n: ORG.RECH, role: 'Retrouver une vente, un client, un billet, un produit : tape un mot.', par: 'Formules', mode: 'saisie', note: 'Saisir seulement les cellules jaunes' }
   ]},
   { famille: 'Ventes', couleur: ORG.DAY, onglets: [
     { n: '01_VENTES', role: 'RÉFÉRENCE COMPTABLE — une ligne par article vendu, après clôture du match (tablettes) et ventes web Tickie.', par: 'Synchro tablettes + passerelle Tickie', mode: 'auto' },
     { n: '20_VENTES_LIVE', role: 'Ventes reçues en direct pendant le match, avec le billet scanné et l\'acheteur Tickie.', par: 'Pilotage live (tablettes, toutes les minutes)', mode: 'auto' },
     { n: '23_CLIENTS_BOUTIQUE', role: 'Fiche par acheteur identifié par son billet : achats, CA, matchs, tarif.', par: 'Pilotage (toutes les 10 min)', mode: 'auto' },
+    { n: '16_VENTES_EN_LIGNE', role: 'Boutique en ligne (site) : détail des commandes importées depuis le dossier Drive des extractions.', par: 'Menu 📥 Drive (et chaque nuit)', mode: 'auto' },
+    { n: '05_CLIENTS', role: 'Clients de la boutique en ligne (email, nombre de commandes, CA).', par: 'Import ventes en ligne', mode: 'auto' },
     { n: '04_MATCHS', role: 'Un match par ligne : date, adversaire, spectateurs, CA boutique.', par: 'Synchro tablettes', mode: 'auto+saisie', note: 'Compléter nb_spectateurs si vide' },
     { n: '09_IMPORT_BOUTIQUE', role: 'Commandes web Tickie à remettre au stand (statut de retrait).', par: 'Passerelle Tickie', mode: 'auto+saisie', note: 'Le retrait se valide depuis le panneau Stock' }
   ]},
   { famille: 'Stock', couleur: ORG.VERT, onglets: [
+    { n: '17_FACTURES', role: 'Registre des factures fournisseurs déposées dans le Drive : n°, montant, canal, réceptionnée ou non.', par: 'Menu 📥 Drive (lecture automatique du PDF)', mode: 'auto+saisie', note: 'Vérifier canal et montant ; la réception en stock se fait par le menu 📦' },
     { n: '03_PRODUITS', role: 'CATALOGUE : prix, coût, stock Réserve / GP (B1) / VIP (B2), référence, actif.', par: 'Saisie + panneau Stock', mode: 'saisie', note: 'Seul onglet stock à modifier à la main (prix, actif, seuil). Les quantités passent par le menu 📦' },
     { n: '02_ACHATS', role: 'Réceptions fournisseur (entrée en Réserve, coût HT).', par: 'Menu 📦 › Réception', mode: 'auto' },
     { n: '11_MOUVEMENTS_STOCK', role: 'Journal de tous les mouvements : réception, répartition, vente, don, casse, inventaire.', par: 'Menu 📦 Stock boutique', mode: 'auto' },
@@ -61,7 +65,6 @@ var ORG_FAMILLES = [
     { n: '13_WEBHOOK_TICKIE', role: 'Journal brut des messages Tickie.', par: 'Passerelle Tickie', mode: 'auto', visible: false },
     { n: '08_IMPORT_PENNYLANE_VENTES', role: 'Import Pennylane (ventes).', par: 'Import Pennylane', mode: 'auto', visible: false },
     { n: '08b_IMPORT_PENNYLANE_ACHATS', role: 'Import Pennylane (achats).', par: 'Import Pennylane', mode: 'auto', visible: false },
-    { n: '05_CLIENTS', role: 'Ancienne base clients web (remplacée par 23_CLIENTS_BOUTIQUE).', par: 'Import boutique en ligne V2', mode: 'auto', visible: false },
     { n: '06_PANIERS_ABANDONNES', role: 'Non utilisé avec Tickie.', par: '—', mode: 'auto', visible: false },
     { n: '07_IMPORT_RATIO', role: 'Ancienne billetterie Ratio (remplacée par Tickie).', par: '—', mode: 'auto', visible: false },
     { n: '99_DIAGNOSTIC', role: 'Contrôles techniques et écarts de stock signalés par la synchro.', par: 'Script V3', mode: 'auto', visible: false }
@@ -130,6 +133,7 @@ function organiserClasseur() {
   var journal = [];
   construireTableauDeBord_(ss); journal.push('📊 Tableau de bord créé / mis à jour');
   construireRecherche_(ss); journal.push('🔎 Recherche créée / mise à jour');
+  construireCadeaux_(ss); journal.push('🎁 Cadeaux & dons créé / mis à jour');
   var plan = planComplet_(ss);
   construireSommaire_(ss, plan); journal.push('📖 Sommaire créé / mis à jour');
 
@@ -169,7 +173,7 @@ function planComplet_(ss) {
   ORG_FAMILLES.forEach(function (f) {
     f.onglets.forEach(function (o) {
       var x = {}; for (var k in o) x[k] = o[k];
-      x.famille = f.famille; x.couleur = f.couleur; x.special = (o.n === ORG.SOMMAIRE || o.n === ORG.TDB || o.n === ORG.RECH);
+      x.famille = f.famille; x.couleur = f.couleur; x.special = (o.n === ORG.SOMMAIRE || o.n === ORG.TDB || o.n === ORG.RECH || o.n === ORG.CAD);
       plan.push(x); connus[o.n] = true;
     });
   });
@@ -229,7 +233,10 @@ function construireSommaire_(ss, plan) {
   var fin = r + lignes.length + 1;
   var routine = [
     ['ROUTINE', ''],
-    ['Réception de marchandise', 'Menu 📦 Stock boutique › Réception (entre en Réserve, coût HT, n° facture)'],
+    ['Facture fournisseur reçue', 'La déposer dans le dossier Drive « 📥 Factures fournisseurs » : elle est lue et ajoutée à 17_FACTURES (menu 📥 Drive, ou chaque nuit)'],
+    ['Réception de marchandise', 'Menu 📦 Stock boutique › Réception (entre en Réserve, coût HT, même n° de facture que dans 17_FACTURES)'],
+    ['Ventes du site', 'Déposer l\'extraction (xlsx/csv) dans « 📥 Ventes en ligne (extractions) » : import dans 16_VENTES_EN_LIGNE et 01_VENTES, sans doublon'],
+    ['Écharpes données (partenaires, tournoi…)', 'Menu 📦 › Sortie / don : enveloppe + bénéficiaire + événement → coût dans 🎁 CADEAUX & DONS'],
     ['Avant chaque match', 'Menu 📦 › Répartition Réserve → B1 / B2, puis sur chaque tablette : Synchronisation › « Mettre à jour le catalogue »'],
     ['Pendant le match', 'Les ventes arrivent seules dans 20_VENTES_LIVE (et sur le tableau de bord pilotage)'],
     ['Après le match', 'Clôturer sur la tablette, puis Synchroniser : les ventes arrivent dans 01_VENTES'],
@@ -266,7 +273,7 @@ function construireTableauDeBord_(ss) {
   var kpis = [
     ['CA TTC', '=SUMIFS(' + V + '!$I:$I,' + cond + ')', '€'],
     ['Articles vendus', '=SUMIFS(' + V + '!$G:$G,' + cond + ')', 'n'],
-    ['Matchs', '=IFERROR(COUNTUNIQUE(FILTER(' + V + '!$J$2:$J,' + V + '!$L$2:$L=$B$2,' + V + '!$J$2:$J<>"")),0)', 'n'],
+    ['Matchs', '=IFERROR(ROWS(UNIQUE(FILTER(' + V + '!$J$2:$J,' + V + '!$L$2:$L=$B$2,' + V + '!$J$2:$J<>""))),0)', 'n'],
     ['CA moyen / match', '=IFERROR(A5/E5,0)', '€'],
     ['dont CB', '=SUMIFS(' + V + '!$I:$I,' + V + '!$L:$L,$B$2,' + V + '!$M:$M,"CB")', '€'],
     ['dont Espèces', '=SUMIFS(' + V + '!$I:$I,' + V + '!$L:$L,$B$2,' + V + '!$M:$M,"Espèces")', '€'],
@@ -280,13 +287,27 @@ function construireTableauDeBord_(ss) {
     c.setNumberFormat(k[2] === '€' ? '#,##0 "€"' : '0');
   });
   sh.getRange(4, 1, 2, 14).setBackground('#EEF2F8');
+  // Bandeau 2 : CA par canal + coût des cadeaux et des achats de la saison
+  var deb = 'DATE(LEFT($B$2,4),7,1)', fin = 'DATE(LEFT($B$2,4)+1,7,1)', M = "'11_MOUVEMENTS_STOCK'", F = "'17_FACTURES'";
+  var canal = function (src) { return '=SUMIFS(' + V + '!$I:$I,' + cond + ',' + V + '!$B:$B,"' + src + '")'; };
+  [['Boutique match (tablettes)', canal('tablette'), '€'],
+   ['Boutique en ligne (site)', canal('site'), '€'],
+   ['Tickie (billetterie web)', canal('tickie'), '€'],
+   ['Cadeaux & dons (coût HT)', '=IFERROR(-SUMIFS(' + M + '!$H:$H,' + M + '!$B:$B,"DOTATION",' + M + '!$A:$A,">="&' + deb + ',' + M + '!$A:$A,"<"&' + fin + '),0)', '€'],
+   ['Factures fournisseurs (HT)', '=IFERROR(SUMIFS(' + F + '!$I:$I,' + F + '!$G:$G,">="&' + deb + ',' + F + '!$G:$G,"<"&' + fin + '),0)', '€']
+  ].forEach(function (k, i) {
+    var col = 1 + i * 2;
+    sh.getRange(6, col, 1, 2).merge().setValue(k[0]).setFontColor('#55606B').setFontSize(9).setFontWeight('bold');
+    sh.getRange(7, col, 1, 2).merge().setFormula(fx_(k[1])).setFontSize(16).setFontWeight('bold').setFontColor(ORG.NIGHT).setHorizontalAlignment('left').setNumberFormat('#,##0 "€"');
+  });
+  sh.getRange(6, 1, 2, 14).setBackground('#F6F8FC');
 
   // Tableaux (ligne 8) : CA par match · Top produits · Stock
-  titre_(sh, 'A8', 'CA PAR MATCH');
-  sh.getRange('A9').setFormula(fx_('=IFERROR(QUERY(' + V + '!$A:$M,"select J, sum(I), sum(G) where L = \'"&$B$2&"\' and M <> \'Offert\' and J is not null group by J order by sum(I) desc label J \'Match\', sum(I) \'CA TTC\', sum(G) \'Articles\'",1),"Aucune vente sur cette saison")'));
-  titre_(sh, 'E8', 'TOP PRODUITS');
-  sh.getRange('E9').setFormula(fx_('=IFERROR(QUERY(' + V + '!$A:$M,"select E, sum(G), sum(I) where L = \'"&$B$2&"\' and M <> \'Offert\' and E is not null group by E order by sum(I) desc limit 10 label E \'Produit\', sum(G) \'Qté\', sum(I) \'CA TTC\'",1),"Aucune vente sur cette saison")'));
-  titre_(sh, 'I8', 'STOCK DU CATALOGUE ACTIF');
+  titre_(sh, 'A9', 'CA PAR MATCH');
+  sh.getRange('A10').setFormula(fx_('=IFERROR(QUERY(' + V + '!$A:$M,"select J, sum(I), sum(G) where L = \'"&$B$2&"\' and M <> \'Offert\' and J is not null group by J order by sum(I) desc label J \'Match\', sum(I) \'CA TTC\', sum(G) \'Articles\'",1),"Aucune vente sur cette saison")'));
+  titre_(sh, 'E9', 'TOP PRODUITS');
+  sh.getRange('E10').setFormula(fx_('=IFERROR(QUERY(' + V + '!$A:$M,"select E, sum(G), sum(I) where L = \'"&$B$2&"\' and M <> \'Offert\' and E is not null group by E order by sum(I) desc limit 10 label E \'Produit\', sum(G) \'Qté\', sum(I) \'CA TTC\'",1),"Aucune vente sur cette saison")'));
+  titre_(sh, 'I9', 'STOCK DU CATALOGUE ACTIF');
   // Produits actifs (VRAI/TRUE) ; cellules vides comptées 0
   // Colonnes de 03_PRODUITS lues sur les en-têtes (Stock_Boutique.gs ajoute des colonnes à droite)
   var shP = ss.getSheetByName('03_PRODUITS');
@@ -298,24 +319,24 @@ function construireTableauDeBord_(ss) {
   var actif = '((' + G_ + '=TRUE)+(' + G_ + '="VRAI")+(' + G_ + '="TRUE")>0)';
   var seuil = 'IF(ISNUMBER(' + P + '!$' + cSeuil + '$2:$' + cSeuil + '),' + P + '!$' + cSeuil + '$2:$' + cSeuil + ',3)';
   var tot = '(' + num(cR) + '+' + num(cB1) + '+' + num(cB2) + ')';
-  sh.getRange('I9').setFormula(fx_('=ARRAYFORMULA(IFERROR({"Produit","Réserve","GP (B1)","VIP (B2)","Total";FILTER({' + A_ + ',' + num(cR) + ',' + num(cB1) + ',' + num(cB2) + ',' + tot + '},' + actif + ',' + A_ + '<>"")},"Catalogue vide"))'));
-  sh.getRange('C9:C60').setNumberFormat('#,##0 "€"'); sh.getRange('B9:B60').setNumberFormat('#,##0 "€"');
-  sh.getRange('G9:G60').setNumberFormat('#,##0 "€"');
+  sh.getRange('I10').setFormula(fx_('=ARRAYFORMULA(IFERROR({"Produit","Réserve","GP (B1)","VIP (B2)","Total";FILTER({' + A_ + ',' + num(cR) + ',' + num(cB1) + ',' + num(cB2) + ',' + tot + '},' + actif + ',' + A_ + '<>"")},"Catalogue vide"))'));
+  sh.getRange('B10:C30').setNumberFormat('#,##0 "€"');
+  sh.getRange('G10:G30').setNumberFormat('#,##0 "€"');
 
   // Alertes (sous le CA par match, colonne A ligne 30)
-  titre_(sh, 'A30', '⚠️ À TRAITER');
-  sh.getRange('A31').setFormula(fx_('=ARRAYFORMULA(IFERROR(FILTER(' + A_ + '&" — stock bas ("&' + tot + '&")",' + actif + ',' + A_ + '<>"",' + tot + '<=' + seuil + '),"Aucun produit en stock bas"))'));
-  sh.getRange('E31').setFormula(fx_('=ARRAYFORMULA(IFERROR(FILTER(' + A_ + '&" — coût d\'achat manquant (marge faussée)",' + actif + ',' + A_ + '<>"",' + num(cCout) + '=0),"Tous les coûts sont renseignés"))'));
+  titre_(sh, 'A32', '⚠️ À TRAITER');
+  sh.getRange('A33').setFormula(fx_('=ARRAYFORMULA(IFERROR(FILTER(' + A_ + '&" — stock bas ("&' + tot + '&")",' + actif + ',' + A_ + '<>"",' + tot + '<=' + seuil + '),"Aucun produit en stock bas"))'));
+  sh.getRange('E33').setFormula(fx_('=ARRAYFORMULA(IFERROR(FILTER(' + A_ + '&" — coût d\'achat manquant (marge faussée)",' + actif + ',' + A_ + '<>"",' + num(cCout) + '=0),"Tous les coûts sont renseignés"))'));
 
   // Live du dernier match (pilotage)
-  titre_(sh, 'I30', 'EN DIRECT — VENTES LIVE PAR MATCH');
-  sh.getRange('I31').setFormula(fx_('=IFERROR(QUERY(' + L + '!$A:$S,"select E, count(C), sum(J), count(M) where C is not null group by E label E \'Match\', count(C) \'Paniers\', sum(J) \'CA TTC\', count(M) \'Billets scannés\'",1),"Aucune vente live pour l\'instant")'));
-  sh.getRange('K31:K60').setNumberFormat('#,##0 "€"');
+  titre_(sh, 'I32', 'EN DIRECT — VENTES LIVE PAR MATCH');
+  sh.getRange('I33').setFormula(fx_('=IFERROR(QUERY(' + L + '!$A:$S,"select E, count(C), sum(J), count(M) where C is not null group by E label E \'Match\', count(C) \'Paniers\', sum(J) \'CA TTC\', count(M) \'Billets scannés\'",1),"Aucune vente live pour l\'instant")'));
+  sh.getRange('K33:K70').setNumberFormat('#,##0 "€"');
 
   [1, 5, 9].forEach(function (c) { sh.setColumnWidth(c, 230); });
   [2, 3, 4, 6, 7, 8, 10, 11, 12, 13].forEach(function (c) { sh.setColumnWidth(c, 90); });
   sh.setColumnWidth(14, 40);
-  sh.setFrozenRows(5);
+  sh.setFrozenRows(7);
   avertir_(sh, 'Tableau de bord en formules : seule la saison (B2) se modifie.');
 }
 /** Lettre de la colonne portant cet en-tête (ligne 1), sinon la lettre par défaut. */
@@ -353,6 +374,60 @@ function detecterSeparateur_() {
   return /^(en|ja|zh|ko|th|he|hi|ms|fil|sw)/i.test(loc) ? ',' : ';';
 }
 function titre_(sh, a1, txt) { sh.getRange(a1).setValue(txt).setFontWeight('bold').setFontColor(ORG.NIGHT).setFontSize(11); }
+
+/* ── 🎁 CADEAUX & DONS (formules) ─────────────────────────────── */
+function construireCadeaux_(ss) {
+  var sh = feuille_(ss, ORG.CAD, 2);
+  sh.clear(); sh.clearNotes(); sh.getRange(1, 1, sh.getMaxRows(), sh.getMaxColumns()).clearDataValidations();
+  try { sh.getRange(1, 1, sh.getMaxRows(), sh.getMaxColumns()).breakApart(); } catch (e) {}
+  if (sh.getMaxColumns() < 14) sh.insertColumnsAfter(sh.getMaxColumns(), 14 - sh.getMaxColumns());
+  sh.setHiddenGridlines(true);
+  var mv = ss.getSheetByName('11_MOUVEMENTS_STOCK');
+  var C = function (nom, d) { return lettreCol_(mv, nom, d); };
+  var cH = C('horodatage', 'A'), cT = C('type', 'B'), cP = C('produit', 'D'), cQ = C('quantite', 'F'), cV = C('valeur', 'H'),
+      cE = C('type_dotation', 'I'), cB = C('beneficiaire', 'J'), cM = C('match', 'K'), cN = C('numero_bon', 'O');
+  var M = "'11_MOUVEMENTS_STOCK'", V = "'01_VENTES'", P = "'03_PRODUITS'";
+  var where = cT + " = 'DOTATION' and " + cH + " >= date '\"&TEXT(DATE(LEFT($B$2,4),7,1),\"yyyy-mm-dd\")&\"' and " + cH + " < date '\"&TEXT(DATE(LEFT($B$2,4)+1,7,1),\"yyyy-mm-dd\")&\"'";
+  sh.getRange('A1').setValue('🎁 CADEAUX & DONS — coût pour le club').setFontSize(18).setFontWeight('bold').setFontColor(ORG.NIGHT);
+  sh.getRange('A2').setValue('Saison').setFontWeight('bold');
+  sh.getRange('B2').setValue(saisonCourante_()).setBackground('#FFF7D6').setFontWeight('bold')
+    .setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(saisonsConnues_(ss), true).build());
+  sh.getRange('C2').setValue('Coût = coût d\'achat HT (CMUP) des articles sortis par le menu 📦 › Sortie / don. Les « Offert » saisis en caisse sont estimés à part.').setFontColor('#55606B').setFontStyle('italic');
+  var plage = M + '!$A:$Z';
+  var Q = function (sel, grp, lab) {
+    return '=IFERROR(QUERY(' + plage + ',"select ' + sel + ' where ' + where + (grp ? ' group by ' + grp : '') + ' ' + lab + '",1),"Aucun don enregistré sur cette saison")';
+  };
+  var kpis = [
+    ['Articles donnés', '=IFERROR(-SUMIFS(' + M + '!$' + cQ + ':$' + cQ + ',' + M + '!$' + cT + ':$' + cT + ',"DOTATION",' + M + '!$' + cH + ':$' + cH + ',">="&DATE(LEFT($B$2,4),7,1),' + M + '!$' + cH + ':$' + cH + ',"<"&DATE(LEFT($B$2,4)+1,7,1)),0)', '0'],
+    ['Coût total HT', '=IFERROR(-SUMIFS(' + M + '!$' + cV + ':$' + cV + ',' + M + '!$' + cT + ':$' + cT + ',"DOTATION",' + M + '!$' + cH + ':$' + cH + ',">="&DATE(LEFT($B$2,4),7,1),' + M + '!$' + cH + ':$' + cH + ',"<"&DATE(LEFT($B$2,4)+1,7,1)),0)', '#,##0.00 "€"'],
+    ['Offerts en caisse (articles)', '=SUMIFS(' + V + '!$G:$G,' + V + '!$L:$L,$B$2,' + V + '!$M:$M,"Offert")', '0'],
+    ['Offerts en caisse (coût HT estimé)', '=IFERROR(SUMPRODUCT(ARRAYFORMULA((' + V + '!$L$2:$L=$B$2)*(' + V + '!$M$2:$M="Offert")*IF(ISNUMBER(' + V + '!$G$2:$G),' + V + '!$G$2:$G,0)*IFERROR(VLOOKUP(' + V + '!$E$2:$E,' + P + '!$A:$D,4,FALSE),0))),0)', '#,##0.00 "€"'],
+    ['TOTAL CADEAUX HT', '=C5+G5', '#,##0.00 "€"']
+  ];
+  kpis.forEach(function (k, i) {
+    var col = 1 + i * 2 + (i === 4 ? 0 : 0);
+    sh.getRange(4, col, 1, 2).merge().setValue(k[0]).setFontColor('#55606B').setFontSize(9).setFontWeight('bold');
+    sh.getRange(5, col, 1, 2).merge().setFormula(fx_(k[1])).setFontSize(20).setFontWeight('bold').setFontColor(ORG.NIGHT).setHorizontalAlignment('left').setNumberFormat(k[2]);
+  });
+  sh.getRange('I5').setFormula(fx_('=C5+G5'));
+  sh.getRange(4, 1, 2, 10).setBackground('#EEF2F8');
+
+  titre_(sh, 'A8', 'PAR ENVELOPPE (motif)');
+  sh.getRange('A9').setFormula(fx_(Q(cE + ', sum(' + cQ + ')*-1, sum(' + cV + ')*-1', cE, 'order by sum(' + cV + ') label ' + cE + " 'Enveloppe', sum(" + cQ + ")*-1 'Articles', sum(" + cV + ")*-1 'Coût HT'")));
+  titre_(sh, 'E8', 'PAR BÉNÉFICIAIRE');
+  sh.getRange('E9').setFormula(fx_(Q(cB + ', sum(' + cQ + ')*-1, sum(' + cV + ')*-1', cB, 'order by sum(' + cV + ') label ' + cB + " 'Bénéficiaire', sum(" + cQ + ")*-1 'Articles', sum(" + cV + ")*-1 'Coût HT'")));
+  titre_(sh, 'I8', 'PAR ÉVÉNEMENT');
+  sh.getRange('I9').setFormula(fx_(Q(cM + ', sum(' + cQ + ')*-1, sum(' + cV + ')*-1', cM, 'order by sum(' + cV + ') label ' + cM + " 'Événement', sum(" + cQ + ")*-1 'Articles', sum(" + cV + ")*-1 'Coût HT'")));
+  titre_(sh, 'A30', 'DÉTAIL DES SORTIES (bons numérotés)');
+  var cols = [cH, mv && lettreCol_(mv, 'numero_bon', '') ? cN : null, cP, cQ, cV, cE, cB, cM].filter(Boolean);
+  sh.getRange('A31').setFormula(fx_(Q(cols.join(', '), '', 'order by ' + cH + ' desc')));
+  sh.getRange('C10:C28').setNumberFormat('#,##0.00 "€"'); sh.getRange('G10:G28').setNumberFormat('#,##0.00 "€"'); sh.getRange('K10:K28').setNumberFormat('#,##0.00 "€"');
+  sh.getRange('A32:A400').setNumberFormat('dd/mm/yyyy');
+  [1, 5, 9].forEach(function (c) { sh.setColumnWidth(c, 230); });
+  sh.setFrozenRows(5);
+  sh.getRange('A27').setValue('Seuil TVA cadeaux : 73 € TTC par bénéficiaire et par an — bénéficiaires au-delà listés dans 12_SYNTHESE_STOCK.').setFontColor('#8A949E').setFontStyle('italic').setFontSize(9);
+  avertir_(sh, 'Page en formules : seule la saison (B2) se modifie. Un don se saisit par le menu 📦 › Sortie / don.');
+}
 
 /* ── 🔎 RECHERCHE ─────────────────────────────────────────────── */
 var ORG_RECH = [

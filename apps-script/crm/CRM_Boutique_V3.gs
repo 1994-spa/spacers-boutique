@@ -971,6 +971,7 @@ function onOpen() {
     .addToUi();
 
   if (typeof menuStockBoutique_ === 'function') menuStockBoutique_();
+  if (typeof menuDriveBoutique_ === 'function') menuDriveBoutique_();
   if (typeof organiserClasseur === 'function') {
     ui.createMenu('📖 Classeur')
       .addItem('Réorganiser (sommaire, tableau de bord, recherche)', 'organiserClasseur')
