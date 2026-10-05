@@ -5,6 +5,15 @@
  * V3.1 = V3 + corrections + compatibilité module Stock_Boutique.gs
  * V3.2 (02/10/2026) : couleurs de la charte 26-27 (plus de jaune) + menu « 📖 Classeur »
  *                    si Organisation_Classeur.gs est présent
+ * V3.3 (04/10/2026) : menu « 🎟️ Add-ons Tickie » si Tickie_Produits.gs / Tickie_Addons.gs
+ *                    sont présents (import des ventes add-on, stock, prix CRM → Tickie)
+ * V3.4 (05/10/2026) : remise abonnés −10 %
+ *   - Onglet 16_ABONNES (cartes valides) alimenté par l'export billets Tickie (16b_IMPORT_ABONNES)
+ *     + lignes saisies à la main (CROUS, cas particuliers)
+ *   - doGet ?action=get_abonnes : liste envoyée aux tablettes SOUS FORME D'EMPREINTES (SHA-256),
+ *     jamais les codes ni les e-mails en clair (l'URL du script est publique)
+ *   - 01_VENTES : colonnes prix_brut, remise, abonne_code, abonne_formule écrites par en-têtes
+ *   - Dashboard : KPI « Remises abonnés TTC » en I4:I6
  *
  * CORRECTIONS V3.1
  *   - Synchro tablette : le stock est DÉCRÉMENTÉ des quantités vendues
@@ -40,6 +49,8 @@ const SHEET = {
   IMPORT_PENNY_A:   '08b_IMPORT_PENNYLANE_ACHATS',
   IMPORT_BOUTIQUE:  '09_IMPORT_BOUTIQUE',
   SAISONS:          '10_SAISONS',
+  ABONNES:          '16_ABONNES',
+  IMPORT_ABONNES:   '16b_IMPORT_ABONNES',
   ANALYSE_PRODUITS: '90_ANALYSE_PRODUITS',
   DIAGNOSTIC:       '99_DIAGNOSTIC',
 };
@@ -74,6 +85,13 @@ const COL_VENTE = {
 
 const FORMAT_EUR = '#,##0.00 "€"';
 const TVA_BOUTIQUE = 0.20;   // CA stocké en TTC · coûts en HT · marge calculée sur le CA HT
+
+// Remise abonnés (V3.4)
+const REMISE_ABONNE      = 0.10;                    // 10 % sur tout le panier
+const SAISON_ABONNEMENTS = '2026-2027';
+const EVENT_ABONNEMENT   = 'Abonnement 2026-2027';  // event.name de l'export billets Tickie
+const STATUTS_VALIDES    = ['VALID', 'DETAILSREQUIRED'];
+const COLS_REMISE_VENTE  = ['prix_brut', 'remise', 'abonne_code', 'abonne_formule'];
 
 // ─────────────────────────────────────────────────────────────
 // UTILITAIRES GÉNÉRAUX
@@ -210,7 +228,12 @@ function doGet(e) {
     const action = e && e.parameter && e.parameter.action || 'ping';
 
     if (action === 'ping') {
-      return jsonResponse({ status: 'ok', app: 'boutique', version: 'V3.1', timestamp: new Date().toISOString() });
+      return jsonResponse({ status: 'ok', app: 'boutique', version: 'V3.4', timestamp: new Date().toISOString() });
+    }
+
+    if (action === 'get_abonnes') {
+      return jsonResponse({ status: 'ok', app: 'boutique', remise: REMISE_ABONNE, saison: SAISON_ABONNEMENTS,
+        maj: new Date().toISOString(), abonnes: getAbonnesPourTablette_() });
     }
 
     if (action === 'get_catalogue') {
@@ -317,11 +340,19 @@ function importSessionDepuisTablet(payload) {
   const clesExist = new Set(shVentes.getDataRange().getValues().slice(1).map(r => String(r[COL_VENTE.COMMANDE]).trim()));
 
   const nouvelles = [];
+  const extrasRemise = [];
   const sorties = {};
   for (const v of ventes) {
     const cle = session.id + '_' + (v.id || slugify(v.produit_nom) + '_' + v.timestamp);
     if (clesExist.has(cle)) continue;
     const q = Number(v.quantite) || 1;
+    const remise = Number(v.remise) || 0;
+    extrasRemise.push([
+      v.prix_brut !== undefined ? Number(v.prix_brut) || 0 : Number(v.prix_unitaire) || 0,
+      remise,
+      String(v.abonne_code || '').trim(),
+      String(v.abonne_formule || '').trim(),
+    ]);
     nouvelles.push([
       toDate(v.timestamp) || dMatch, 'tablette', cle, '',
       v.produit_nom || '', v.categorie || '', q,
@@ -334,7 +365,16 @@ function importSessionDepuisTablet(payload) {
     if (/offert/i.test(String(v.mode_paiement || ''))) sorties[k].offert += q; else sorties[k].vendu += q;
   }
   if (nouvelles.length) {
-    shVentes.getRange(shVentes.getLastRow() + 1, 1, nouvelles.length, nouvelles[0].length).setValues(nouvelles);
+    const ligne0 = shVentes.getLastRow() + 1;
+    shVentes.getRange(ligne0, 1, nouvelles.length, nouvelles[0].length).setValues(nouvelles);
+    // Colonnes remise (V3.4), écrites par en-têtes
+    const colsR = COLS_REMISE_VENTE.map(n => assurerColonne_(shVentes, n));
+    colsR.forEach((col, j) => {
+      shVentes.getRange(ligne0, col, nouvelles.length, 1).setValues(extrasRemise.map(r => [r[j]]));
+    });
+    shVentes.getRange(ligne0, colsR[0], nouvelles.length, 2).setNumberFormat(FORMAT_EUR);
+    const nbRemises = extrasRemise.filter(r => r[1] > 0).length;
+    if (nbRemises) logDiag('doPost', 'INFO', `${nbRemises} ligne(s) avec remise abonné.`);
   }
 
   // ── 2. Stock : décrément des sorties ─────────────────────────
@@ -840,6 +880,23 @@ function mettreAJourDashboard() {
   shDash.getRange(5, 8).setNumberFormat('0');
   shDash.getRange(6, 1, 1, 8).setFontStyle('italic').setFontColor('#666666');
 
+  // KPI remises abonnés (V3.4) — I4:I6
+  const shV = getSheet(SHEET.VENTES);
+  const cV = colsParNom_(shV);
+  let totalRemises = 0, nbVentesAbo = 0;
+  if (cV.remise && shV.getLastRow() > 1) {
+    const vals = shV.getRange(2, 1, shV.getLastRow() - 1, shV.getLastColumn()).getValues();
+    vals.forEach(r => {
+      if (!r[0] || estOffert_(r)) return;
+      const rem = Number(r[cV.remise - 1]) || 0;
+      if (rem > 0) { totalRemises += rem; nbVentesAbo++; }
+    });
+  }
+  shDash.getRange(4, 9, 3, 1).setValues([['Remises abonnés TTC (€)'], [totalRemises], [nbVentesAbo + ' ligne(s) remisées']]);
+  shDash.getRange(4, 9).setFontWeight('bold');
+  shDash.getRange(5, 9).setNumberFormat(FORMAT_EUR).setFontSize(12);
+  shDash.getRange(6, 9).setFontStyle('italic').setFontColor('#666666');
+
   // Nettoyage des restes de l'ancienne mise en page (en-tête doublon, top 5 en ligne 25, « 10000 % »)
   shDash.getRange('A9:G9').clearContent();
   shDash.getRange('A21:G40').clearContent();
@@ -936,8 +993,99 @@ function setupV3() {
   const prodData = shProd.getDataRange().getValues();
   if (prodData.length > 0) verifierColonnesProduits(shProd, prodData[0]);
   verifierColonnesVentes(getSheet(SHEET.VENTES));
+  COLS_REMISE_VENTE.forEach(n => assurerColonne_(getSheet(SHEET.VENTES), n));
+  initialiserOngletAbonnes_();
   logDiag('setupV3', 'INFO', 'Setup V3 terminé — onglet 10_SAISONS créé, colonnes vérifiées.');
   SpreadsheetApp.getActiveSpreadsheet().toast('Setup V3 OK.', '🚀 Setup V3', 6);
+}
+
+// ─────────────────────────────────────────────────────────────
+// ABONNÉS — remise −10 % (V3.4)
+// ─────────────────────────────────────────────────────────────
+//
+// 16b_IMPORT_ABONNES : coller l'export « TICKET_EXPORT » de Tickie (Fichier › Importer,
+//                      séparateur « ; », Remplacer la feuille actuelle).
+// 16_ABONNES         : une ligne par carte (code-barres). Les lignes de source « tickie »
+//                      sont reconstruites à chaque import ; les autres (CROUS, manuel) sont conservées.
+
+const ENTETES_ABONNES = ['code', 'prenom', 'nom', 'email', 'formule', 'source', 'actif', 'saison', 'maj'];
+
+function initialiserOngletAbonnes_() {
+  const sh = getOrCreateSheet(SHEET.ABONNES);
+  if (sh.getLastRow() < 1 || !sh.getRange(1, 1).getValue()) {
+    sh.clearContents();
+    sh.getRange(1, 1, 1, ENTETES_ABONNES.length).setValues([ENTETES_ABONNES])
+      .setBackground('#001E2D').setFontColor('#FFFFFF').setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  getOrCreateSheet(SHEET.IMPORT_ABONNES);
+  return sh;
+}
+
+/** 16b_IMPORT_ABONNES (export billets Tickie) → 16_ABONNES. */
+function importerAbonnesTickie() {
+  const shAbo = initialiserOngletAbonnes_();
+  const shImp = getSheet(SHEET.IMPORT_ABONNES);
+  if (shImp.getLastRow() < 2) throw new Error('16b_IMPORT_ABONNES est vide : importez-y l\'export billets Tickie (séparateur « ; »).');
+
+  const c = colsParNom_(shImp);
+  ['barcode', 'event.name', 'ticketName', 'status'].forEach(k => {
+    if (!c[k]) throw new Error(`Colonne « ${k} » absente de 16b_IMPORT_ABONNES. Vérifiez le séparateur « ; » à l'import.`);
+  });
+  const g = (row, k) => (c[k] ? String(row[c[k] - 1] || '').trim() : '');
+
+  const imp = shImp.getRange(2, 1, shImp.getLastRow() - 1, shImp.getLastColumn()).getValues();
+  const maintenant = new Date();
+  const vus = new Set();
+  const lignesTickie = [];
+  let nbIgnores = 0;
+  imp.forEach(r => {
+    const code = g(r, 'barcode');
+    if (!code || vus.has(code)) return;
+    if (g(r, 'event.name') !== EVENT_ABONNEMENT || STATUTS_VALIDES.indexOf(g(r, 'status').toUpperCase()) < 0) { nbIgnores++; return; }
+    vus.add(code);
+    lignesTickie.push([code, g(r, 'firstname') || g(r, 'customer.firstname'), g(r, 'lastname') || g(r, 'customer.lastname'),
+      (g(r, 'email') || '').toLowerCase(), g(r, 'ticketName'), 'tickie', true, SAISON_ABONNEMENTS, maintenant]);
+  });
+
+  // Conserver les lignes manuelles (CROUS, etc.)
+  const existant = shAbo.getLastRow() > 1 ? shAbo.getRange(2, 1, shAbo.getLastRow() - 1, ENTETES_ABONNES.length).getValues() : [];
+  const manuelles = existant.filter(r => String(r[0]).trim() && String(r[5]).trim().toLowerCase() !== 'tickie' && !vus.has(String(r[0]).trim()));
+
+  const toutes = lignesTickie.concat(manuelles);
+  if (shAbo.getLastRow() > 1) shAbo.getRange(2, 1, shAbo.getLastRow() - 1, ENTETES_ABONNES.length).clearContent();
+  if (toutes.length) {
+    shAbo.getRange(2, 1, toutes.length, ENTETES_ABONNES.length).setValues(toutes);
+    shAbo.getRange(2, 1, toutes.length, 1).setNumberFormat('@');
+  }
+
+  const msg = `${lignesTickie.length} carte(s) Tickie + ${manuelles.length} manuelle(s) · ${nbIgnores} billet(s) ignoré(s) (autre événement ou statut).`;
+  logDiag('importerAbonnesTickie', 'INFO', msg);
+  return msg;
+}
+
+function importerAbonnesMenu() {
+  try {
+    SpreadsheetApp.getActiveSpreadsheet().toast(importerAbonnesTickie() + ' Rechargez les tablettes.', '✅ Abonnés', 8);
+  } catch (e) {
+    SpreadsheetApp.getUi().alert('Import abonnés impossible', e.message, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+/** Empreinte envoyée aux tablettes : SHA-256 hex du code normalisé (minuscules, sans espaces). */
+function empreinteCode_(code) {
+  const norm = String(code || '').trim().toLowerCase().replace(/\s+/g, '');
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, norm, Utilities.Charset.UTF_8)
+    .map(b => ('0' + (b & 0xff).toString(16)).slice(-2)).join('');
+}
+
+/** Liste minimale pour les tablettes : empreinte, prénom, formule — aucun code, nom ni e-mail en clair. */
+function getAbonnesPourTablette_() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.ABONNES);
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, ENTETES_ABONNES.length).getValues()
+    .filter(r => String(r[0]).trim() && r[6] !== false && !/^(false|faux|non)$/i.test(String(r[6]).trim()))
+    .map(r => ({ h: empreinteCode_(r[0]), p: String(r[1] || '').trim(), f: String(r[4] || '').trim() }));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -958,6 +1106,7 @@ function onOpen() {
     .addItem('Import Pennylane Ventes',         'importPennylaneVentes')
     .addItem('Import Pennylane Achats',         'importPennylaneAchats')
     .addItem('Import Boutique en ligne',        'importBoutiqueLigne')
+    .addItem('🎫 Importer les abonnés (export Tickie)', 'importerAbonnesMenu')
     .addSeparator()
     .addItem('--- Analyses ---',                'menuTitre3')
     .addItem('Analyser produits',               'analyserProduits')
@@ -972,6 +1121,7 @@ function onOpen() {
 
   if (typeof menuStockBoutique_ === 'function') menuStockBoutique_();
   if (typeof menuDriveBoutique_ === 'function') menuDriveBoutique_();
+  if (typeof menuTickieBoutique_ === 'function') menuTickieBoutique_();
   if (typeof organiserClasseur === 'function') {
     ui.createMenu('📖 Classeur')
       .addItem('Réorganiser (sommaire, tableau de bord, recherche)', 'organiserClasseur')
@@ -980,7 +1130,7 @@ function onOpen() {
 }
 
 function testConnexion() {
-  SpreadsheetApp.getActiveSpreadsheet().toast('API V3.1 opérationnelle — doGet et doPost déployés.', '✅ Connexion OK', 5);
+  SpreadsheetApp.getActiveSpreadsheet().toast('API V3.4 opérationnelle — doGet et doPost déployés.', '✅ Connexion OK', 5);
 }
 
 function menuTitre1() {}

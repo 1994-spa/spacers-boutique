@@ -1,7 +1,7 @@
 // Service worker — Spacer's Boutique : la caisse s'ouvre même sans réseau.
 // Pages : réseau d'abord (pour recevoir les mises à jour), cache si hors ligne.
 // Fichiers statiques (icônes, polices, lecteur QR) : cache d'abord.
-const CACHE = 'spacers-boutique-v9';
+const CACHE = 'spacers-boutique-v10';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './fonts/sansation-bold.woff2', './fonts/heaters.woff2',
   'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js'];
 

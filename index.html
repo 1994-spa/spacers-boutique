@@ -205,6 +205,10 @@ input,textarea,select{font-family:inherit;color:var(--text);outline:none}
 .ticket-badge div{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
 .ticket-badge b{font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ticket-badge small{font-size:12px;color:var(--ok);font-weight:700}
+.ticket-badge.abo{background:#FFF7E0;border-color:#C9A227}
+.ticket-badge.abo small{color:#8A6D00}
+.trem{display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:800;color:#8A6D00;padding:2px 0}
+.trem s{color:var(--muted);font-weight:600;margin-right:6px}
 .ticket-badge button{width:38px;height:38px;border-radius:50%;background:#fff;font-size:16px;color:var(--muted);flex-shrink:0;border:1px solid var(--border)}
 .pitems{flex:1;min-height:0;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px}
 .pi{background:var(--surface-2);border:1px solid var(--divider);border-radius:var(--rs);padding:8px 8px 8px 12px;display:flex;align-items:center;gap:8px}
@@ -533,6 +537,7 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
       <div class="scanzone" id="scanZone"></div>
       <div class="pitems" id="pItems"></div>
       <div class="pft">
+        <div class="trem" id="pRem" style="display:none"></div>
         <div class="trow"><span class="tlbl"><span class="stepn">3</span> Encaisser</span><span class="tval" id="pTot">0,00 €</span></div>
         <div class="paybtns">
           <button class="pb pb-cb" onclick="payer('CB')">💳 CB</button>
@@ -561,7 +566,7 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
 <div id="s-esp" class="screen">
   <div class="esp-wrap">
     <div class="esp-l">
-      <div class="card"><div class="etl">Total à encaisser</div><div class="eto" id="eTo">0,00 €</div></div>
+      <div class="card"><div class="etl">Total à encaisser</div><div class="eto" id="eTo">0,00 €</div><div class="trem" id="eRem" style="display:none"></div></div>
       <div class="card"><div class="etl">Le client donne (touche le billet reçu)</div><div class="egv" id="eGv">—</div></div>
       <div class="echbox" id="eChBox" style="display:none"><div class="etl" style="color:var(--ok)">Monnaie à rendre</div><div class="echv" id="eChV">0,00 €</div></div>
       <button class="pay-scan" id="espScan" onclick="ouvrirScanner()"></button>
@@ -663,8 +668,9 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
         <div class="list-row"><span class="c-mut">Boutique</span><b id="synBN">—</b></div>
         <div class="list-row"><span class="c-mut">Saison</span><b id="synSai">—</b></div>
         <div class="list-row"><span class="c-mut">Produits catalogue</span><b id="synNP">0</b></div>
+        <div class="list-row"><span class="c-mut">Cartes abonnés (remise −10 %)</span><b id="synAbo">0</b></div>
         <div class="list-row"><span class="c-mut">Sessions en attente</span><b id="synNA">0</b></div>
-        <button class="btn btn-s w100" style="margin-top:10px" onclick="syncCat()">↓ Mettre à jour le catalogue depuis Sheets</button>
+        <button class="btn btn-s w100" style="margin-top:10px" onclick="syncCat()">↓ Mettre à jour le catalogue et les abonnés</button>
       </div>
       <div class="card">
         <div class="card-t">Paramètres CRM</div>
@@ -886,7 +892,9 @@ const TICKIE_PROXY_URL='https://tickie-proxy.spacersytb.workers.dev';
 let CFG={},prods=[],pan={},sess=null,sCA=0,sTx=0,sScan=0,derniere=null,pendV=null,undoIv=null,espCts=0,curCat='Tous',obSt=0;
 // Pilotage live : URL + jeton du projet Apps Script « Pilotage Boutique », match actif, billets valides
 let PIL={id:'pilotage',url:'',token:'',match:null,billets:{}};
-let billet=null; // billet relié à la vente en cours : {ticket_id, barcode, tarif, prenom}
+let billet=null; // billet relié à la vente en cours : {ticket_id, barcode, tarif, prenom, abo, formule}
+// Abonnés : empreintes SHA-256 des cartes (jamais les codes en clair), chargées depuis le CRM, utilisables hors ligne
+let ABO={id:'abonnes',liste:{},maj:null,remise:0.10};
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const fmt=n=>(Number(n)||0).toFixed(2).replace('.',',')+' €';
 const fmtS=n=>(Number(n)||0).toFixed(0)+' €';
@@ -902,6 +910,7 @@ async function startup(){
   try{if(screen.orientation&&screen.orientation.lock)screen.orientation.lock('landscape').catch(()=>{});}catch(e){}
   await initDB();
   const p=await dGet('config','pilotage');if(p)PIL=Object.assign(PIL,p);
+  const ab=await dGet('config','abonnes');if(ab)ABO=Object.assign(ABO,ab);
   // Seules les ventes faites à partir de cette version partent au pilotage (pas l'historique de la tablette)
   if(!PIL.depuis){PIL.depuis=new Date().toISOString();await dPut('config',PIL);}
   const parLien=await lireLienConfig();
@@ -1214,12 +1223,63 @@ function chQty(id,d){
   if(pan[id].qty<=0)delete pan[id];
   rGrid();rPan();
 }
+// ── REMISE ABONNÉ ─────────────────────────────
+const r2=n=>Math.round((Number(n)||0)*100)/100;
+const tauxRemise=b=>(b&&b.abo)?(Number(ABO.remise)||0.10):0;
+// Remise calculée ligne par ligne (au centime), le total est la somme des lignes : CRM et caisse tombent juste
+function lignesRemisees(items,b){
+  const t=tauxRemise(b);
+  return items.map(i=>{const brut=r2(i.prix_vente*i.qty),rem=r2(brut*t);return{...i,brut,remise:rem,net:r2(brut-rem)};});
+}
+function totaux(items,b){
+  const l=lignesRemisees(items,b);
+  return{lignes:l,brut:r2(l.reduce((s,x)=>s+x.brut,0)),remise:r2(l.reduce((s,x)=>s+x.remise,0)),net:r2(l.reduce((s,x)=>s+x.net,0))};
+}
+function htmlRemise(T){return T.remise>0?'<span>⭐ Remise abonné −'+Math.round(tauxRemise(billet)*100)+' %</span><span><s>'+fmt(T.brut)+'</s>−'+fmt(T.remise)+'</span>':'';}
+async function sha256Hex(txt){
+  const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(txt));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function chercherAbonne(code){
+  try{
+    if(!ABO.liste||!Object.keys(ABO.liste).length||!(window.crypto&&crypto.subtle))return null;
+    const h=await sha256Hex(String(code).trim().toLowerCase().replace(/\s+/g,''));
+    return ABO.liste[h]||null;
+  }catch(e){return null;}
+}
+async function chargerAbonnes(){
+  const url=CFG.apps_script_url;if(!url)return;
+  try{
+    const d=await (await fetch(url+'?action=get_abonnes')).json();
+    if(d.status!=='ok'||!Array.isArray(d.abonnes))throw new Error(d.message||'réponse invalide (CRM pas encore en V3.4 ?)');
+    const m={};d.abonnes.forEach(a=>{if(a&&a.h)m[a.h]=[a.p||'',a.f||''];});
+    ABO.liste=m;ABO.maj=d.maj||new Date().toISOString();if(d.remise)ABO.remise=Number(d.remise);
+    await dPut('config',ABO);
+    synL('Abonnés OK : '+Object.keys(m).length+' carte(s)');
+  }catch(e){synL('Abonnés non chargés : '+e.message+' (la liste précédente est conservée)');}
+  if($('synAbo'))$('synAbo').textContent=Object.keys(ABO.liste||{}).length;
+}
+// Si le panier est déjà sur l'écran CB ou Espèces quand on scanne / retire la carte : on recalcule le montant
+function majPaiementEnCours(){
+  if(!pendV||pendV.mode==='Offert')return;
+  const T=totaux(pendV.items,billet);pendV.tot=T.net;pendV.T=T;
+  if(pendV.mode==='CB'){
+    $('cbAmt').textContent=fmt(T.net);
+    $('cbItems').innerHTML=T.lignes.map(i=>'<div><span>'+esc(i.nom)+' ×'+i.qty+'</span><span>'+fmt(i.brut)+'</span></div>').join('')+(T.remise>0?'<div><span>⭐ Remise abonné</span><span>−'+fmt(T.remise)+'</span></div>':'');
+  }else{
+    $('eTo').textContent=fmt(T.net);const er=$('eRem');er.innerHTML=htmlRemise(T);er.style.display=T.remise>0?'flex':'none';
+    if(espCts)mEsp();
+  }
+}
 function rPan(){
-  const items=Object.values(pan),tot=items.reduce((s,i)=>s+i.prix_vente*i.qty,0),cnt=items.reduce((s,i)=>s+i.qty,0);
+  const items=Object.values(pan),T=totaux(items,billet),tot=T.net,cnt=items.reduce((s,i)=>s+i.qty,0);
   $('pBdg').textContent=cnt;$('pTot').textContent=fmt(tot);
+  const pr=$('pRem');pr.innerHTML=htmlRemise(T);pr.style.display=T.remise>0?'flex':'none';
   $('scanZone').innerHTML=billet
-    ?'<div class="ticket-badge">🎫<div><b>'+esc(billet.tarif||'Billet scanné')+(billet.prenom?' · '+esc(billet.prenom):'')+'</b><small>'+(billet.nonVerifie?'Sera vérifié au retour du wifi':'Billet relié à cette vente')+'</small></div><button onclick="retirerBillet()" aria-label="Retirer le billet">✕</button></div>'
-    :'<button class="btn-scan" onclick="ouvrirScanner()"><span class="stepn">1</span> 🎫 Scanner le billet <small>(demande-le !)</small></button>';
+    ?(billet.abo
+      ?'<div class="ticket-badge abo">⭐<div><b>Abonné'+(billet.prenom?' · '+esc(billet.prenom):'')+(billet.formule?' · '+esc(billet.formule):'')+'</b><small>Remise −'+Math.round(tauxRemise(billet)*100)+' % appliquée sur tout le panier</small></div><button onclick="retirerBillet()" aria-label="Retirer la carte abonné">✕</button></div>'
+      :'<div class="ticket-badge">🎫<div><b>'+esc(billet.tarif||'Billet scanné')+(billet.prenom?' · '+esc(billet.prenom):'')+'</b><small>'+(billet.nonVerifie?'Sera vérifié au retour du wifi':'Billet relié à cette vente')+'</small></div><button onclick="retirerBillet()" aria-label="Retirer le billet">✕</button></div>')
+    :'<button class="btn-scan" onclick="ouvrirScanner()"><span class="stepn">1</span> 🎫 Scanner le billet ou la carte abonné <small>(−10 % abonnés)</small></button>';
   const el=$('pItems');
   if(!items.length){
     const d=derniere;
@@ -1271,9 +1331,8 @@ function payer(mode){
   const tot=items.reduce((s,i)=>s+i.prix_vente*i.qty,0);
   pendV={mode,tot,items:items.map(i=>({...i})),monnaie:0};
   if(mode==='Offert'){$('ov-offert').classList.add('on');return;}
-  // CB : le montant à taper sur le terminal, en très grand
-  $('cbAmt').textContent=fmt(tot);
-  $('cbItems').innerHTML=pendV.items.map(i=>'<div><span>'+esc(i.nom)+' ×'+i.qty+'</span><span>'+fmt(i.prix_vente*i.qty)+'</span></div>').join('');
+  // CB : le montant à taper sur le terminal, en très grand (remise abonné déduite)
+  majPaiementEnCours();
   rPayScan();
   const y=$('cbYes');y.disabled=true;setTimeout(()=>{y.disabled=false;},1200); // évite le double toucher
   ss('s-cb');
@@ -1281,8 +1340,9 @@ function payer(mode){
 // Bouton billet sur les écrans de paiement : on scanne pendant que le client paie
 function rPayScan(){
   ['cbScan','espScan'].forEach(k=>{const el=$(k);if(!el)return;
-    if(billet){el.className='pay-scan ok';el.innerHTML='🎫 Billet relié'+(billet.tarif?' · '+esc(billet.tarif):'')+(billet.prenom?' · '+esc(billet.prenom):'');}
-    else{el.className='pay-scan';el.innerHTML='🎫 Pendant qu\'il paie : scanner son billet';}
+    if(billet&&billet.abo){el.className='pay-scan ok';el.innerHTML='⭐ Abonné'+(billet.prenom?' · '+esc(billet.prenom):'')+' · −'+Math.round(tauxRemise(billet)*100)+' % déduits';}
+    else if(billet){el.className='pay-scan ok';el.innerHTML='🎫 Billet relié'+(billet.tarif?' · '+esc(billet.tarif):'')+(billet.prenom?' · '+esc(billet.prenom):'');}
+    else{el.className='pay-scan';el.innerHTML='🎫 Pendant qu\'il paie : scanner son billet ou sa carte abonné';}
   });
 }
 function cbAccepte(){if(!pendV||$('cbYes').disabled)return;enregistrerVente();}
@@ -1292,7 +1352,7 @@ function ouvrirEsp(){
   const items=Object.values(pan);if(!items.length){toast('Panier vide');return;}
   const tot=items.reduce((s,i)=>s+i.prix_vente*i.qty,0);
   espCts=0;pendV={mode:'Espèces',tot,items:items.map(i=>({...i})),monnaie:0};
-  $('eTo').textContent=fmt(tot);$('eGv').textContent='—';$('eGv').className='egv';
+  majPaiementEnCours();$('eGv').textContent='—';$('eGv').className='egv';
   $('eChBox').style.display='none';$('nkOk').disabled=true;
   rPayScan();ss('s-esp');
 }
@@ -1316,10 +1376,14 @@ async function enregistrerVente(){
   if(!pendV)return;
   const {mode,tot,items,monnaie,motif}=pendV;pendV=null;espCts=0;
   const now=new Date().toISOString(),grp=uid(),b=billet;
-  for(const item of items){
+  // Pas de remise sur un article offert
+  const T=totaux(items,mode==='Offert'?null:b);
+  for(const item of T.lignes){
     await dPut('ventes',{id:uid(),session_id:sess.id,boutique_id:CFG.boutique_id,saison:CFG.saison,
       produit_id:item.id,produit_ref:refOf(item),produit_nom:item.nom,categorie:item.categorie,
-      quantite:item.qty,prix_unitaire:item.prix_vente,ca_ligne:item.prix_vente*item.qty,
+      quantite:item.qty,prix_unitaire:r2(item.net/item.qty),ca_ligne:item.net,
+      prix_brut:item.prix_vente,remise:item.remise,
+      abonne_code:(item.remise>0&&b)?(b.barcode||''):'',abonne_formule:(item.remise>0&&b)?(b.formule||''):'',
       mode_paiement:mode,motif_offert:mode==='Offert'?(motif||''):null,timestamp:now,groupe:grp,
       // Billet relié : identifiants seulement. Le lien vers l'acheteur (nom, email) est fait côté serveur.
       ticket_id:b?(b.ticket_id||null):null,barcode:b?(b.barcode||null):null,client_tarif:b?(b.tarif||null):null,
@@ -1328,7 +1392,7 @@ async function enregistrerVente(){
   billet=null;
   if(mode!=='Offert'){sCA+=tot;sTx++;if(b)sScan++;}
   derniere={tot,mon:mode==='Espèces'?(monnaie||0):0,
-    lib:(mode==='CB'?'💳 CB enregistrée':mode==='Espèces'?'💵 Espèces enregistrées':'🎁 Offert · '+esc(motif||''))+(b?' · 🎫 billet relié':'')};
+    lib:(mode==='CB'?'💳 CB enregistrée':mode==='Espèces'?'💵 Espèces enregistrées':'🎁 Offert · '+esc(motif||''))+(T.remise>0?' · ⭐ remise abonné −'+fmt(T.remise):b?' · 🎫 billet relié':'')};
   if(navigator.vibrate)navigator.vibrate([60,30,60]);
   pan={};rPan();rGrid();rBand();showUndo(grp);ss('s-cai');
   setTimeout(pilEnvoyer,32000); // après la fenêtre d'annulation de 30 s
@@ -1427,6 +1491,7 @@ async function rSync(){
   $('synBN').textContent=(cfg.boutique_nom||'—')+' ('+cfg.boutique_id+')';
   $('synSai').textContent=cfg.saison||'—';
   $('synNP').textContent=prods.length;
+  $('synAbo').textContent=Object.keys(ABO.liste||{}).length;
   $('synUrl').value=cfg.apps_script_url||'';
   $('pilUrl').value=PIL.url||'';$('pilTok').value=PIL.token||'';
   rPilState();
@@ -1471,7 +1536,7 @@ async function syncCat(){
   try{const r=await fetch(url+'?action=get_catalogue&boutique='+CFG.boutique_id+'&saison='+encodeURIComponent(CFG.saison));
     const data=await r.json();
     if(!guardCatalogSourceBoutique(data))return;
-    if(data.produits&&Array.isArray(data.produits)){await dClr('produits');for(const p of data.produits)await dPut('produits',p);await loadP();$('synNP').textContent=prods.length;synL('Catalogue OK : '+prods.length+' produit(s)');toast(prods.length+' produit(s) chargé(s)');}
+    if(data.produits&&Array.isArray(data.produits)){await dClr('produits');for(const p of data.produits)await dPut('produits',p);await loadP();$('synNP').textContent=prods.length;synL('Catalogue OK : '+prods.length+' produit(s)');await chargerAbonnes();toast(prods.length+' produit(s) · '+Object.keys(ABO.liste||{}).length+' carte(s) abonné');}
     else{synL('Réponse invalide');toast('Erreur serveur');}
   }catch(e){synL('ERREUR : '+e.message);toast('Erreur de connexion');}
 }
@@ -1523,6 +1588,7 @@ async function pilEnvoyer(force){
     const ventes=Object.entries(grp).slice(0,40).map(([g,ls])=>{const v0=ls[0],s=sessions[v0.session_id]||{};
       return{id:g,ts:v0.timestamp,eventId:s.tickie_event_id||'',match:s.match_label||'',session:v0.session_id,benevole:s.benevole||'',
         boutique:v0.boutique_id,mode:v0.mode_paiement,motif:v0.motif_offert||'',total:Math.round(ls.reduce((a,x)=>a+x.ca_ligne,0)*100)/100,
+        remise:Math.round(ls.reduce((a,x)=>a+(Number(x.remise)||0),0)*100)/100,abonne:v0.abonne_formule||'',
         lignes:ls.map(x=>({ref:x.produit_ref||x.produit_id,nom:x.produit_nom,cat:x.categorie||'',qte:x.quantite,pu:x.prix_unitaire})),
         ticket:(v0.ticket_id||v0.barcode)?{ticket_id:v0.ticket_id||'',barcode:v0.barcode||'',tarif:v0.client_tarif||''}:null};});
     // text/plain : pas de pré-vérification CORS, accepté par Apps Script
@@ -1563,6 +1629,8 @@ async function lireImage(){
 function arreterCamera(){clearInterval(_scanIv);_scanIv=null;if(_scanStream){_scanStream.getTracks().forEach(t=>t.stop());_scanStream=null;}}
 function saisieManuelle(e){e.preventDefault();const v=$('scan-manual').value.trim();if(v){arreterCamera();chercherBillet(v);}}
 async function chercherBillet(barcode){
+  const ab=await chercherAbonne(barcode);
+  if(ab){afficherBillet({valide:true,abo:true,prenom:ab[0],formule:ab[1],tarif:ab[1]||'Abonnement'},barcode);return;}
   const local=(PIL.billets||{})[barcode];
   if(local){afficherBillet({ticket_id:local[0],tarif:local[1],valide:true},barcode);return;}
   if(navigator.onLine===false){afficherNonVerifie(barcode,'Hors ligne et billet absent de la liste chargée.');return;}
@@ -1593,17 +1661,20 @@ function afficherBillet(t,barcode){
   const valide=t.valide!==false;
   const prenom=(t.prenom||(t.nom_complet||t.nom||'').split(' ')[0]||'').trim();
   // Seuls ces champs sont gardés sur la tablette : ni email ni nom complet
-  billetLu={ticket_id:t.ticket_id||t._id||'',barcode:t.barcode||barcode,tarif:t.tarif||'',prenom,valide};
+  // Carte abonné : liste du CRM, ou à défaut tarif Tickie d'abonnement renvoyé par le relais
+  const abo=valide&&(t.abo||/abonnement/i.test(String(t.tarif||'')));
+  billetLu={ticket_id:t.ticket_id||t._id||'',barcode:t.barcode||barcode,tarif:t.tarif||'',prenom,valide,abo:!!abo,formule:t.formule||(abo?t.tarif:'')||''};
+  if(abo){montrerResultat('','<div class="scan-state">⭐ Carte abonné valide</div><div class="scan-tarif">Remise −'+Math.round((Number(ABO.remise)||0.10)*100)+' % sur le panier</div>'+(prenom?'<div class="scan-meta">'+esc(prenom)+'</div>':'')+(billetLu.formule?'<div class="scan-meta">'+esc(billetLu.formule)+'</div>':''),true);return;}
   montrerResultat(valide?'':'ko','<div class="scan-state">'+(valide?'✅ Billet valide':'❌ Billet non valide')+'</div><div class="scan-tarif">'+esc(billetLu.tarif||'Tarif inconnu')+'</div>'+(prenom?'<div class="scan-meta">'+esc(prenom)+'</div>':'')+(t.tribune?'<div class="scan-meta">📍 '+esc(t.tribune)+'</div>':''),valide);
 }
 function utiliserBillet(){
   if(!billetLu||!billetLu.valide)return;
-  billet=billetLu;billetLu=null;fermerScanner();rPan();rPayScan();
-  toast('🎫 Billet relié à la vente en cours');
+  billet=billetLu;billetLu=null;fermerScanner();rPan();rPayScan();majPaiementEnCours();
+  toast(billet.abo?'⭐ Abonné : remise −'+Math.round(tauxRemise(billet)*100)+' % appliquée':'🎫 Billet relié à la vente en cours');
 }
 function relancerScan(){arreterCamera();ouvrirScanner();}
 function fermerScanner(){arreterCamera();$('ov-scan').classList.remove('on');}
-function retirerBillet(){billet=null;rPan();}
+function retirerBillet(){billet=null;rPan();rPayScan();majPaiementEnCours();}
 
 // ── PWA : fichiers statiques (manifest.json, sw.js) — indispensable à l'installation Android ──
 function rSW(){if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});}
