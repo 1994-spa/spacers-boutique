@@ -9,7 +9,8 @@
  *                    sont présents (import des ventes add-on, stock, prix CRM → Tickie)
  * V3.4 (05/10/2026) : remise abonnés −10 %
  *   - Onglet 16_ABONNES (cartes valides) alimenté par l'export billets Tickie (16b_IMPORT_ABONNES)
- *     + lignes saisies à la main (CROUS, cas particuliers)
+ *     + billets partenaires lus dans Tickie (CROUS : menu « 🤝 Importer les billets partenaires »,
+ *       clé VIVENU_API_KEY dans les propriétés du script) + lignes saisies à la main
  *   - doGet ?action=get_abonnes : liste envoyée aux tablettes SOUS FORME D'EMPREINTES (SHA-256),
  *     jamais les codes ni les e-mails en clair (l'URL du script est publique)
  *   - 01_VENTES : colonnes prix_brut, remise, abonne_code, abonne_formule écrites par en-têtes
@@ -1072,6 +1073,68 @@ function importerAbonnesMenu() {
   }
 }
 
+// ── Partenaires dont les billets ouvrent droit à la remise (gestion partenaires Tickie) ──
+// Billets émis au nom du partenaire, un code par match : on les lit tous via l'API Tickie (Vivenu).
+// Clé API : propriété du script VIVENU_API_KEY (la même que dans le projet « Pilotage Boutique »).
+const PARTENAIRES_REMISE = [
+  { nom: 'CROUS', customerId: '6a300038606cb61d33ae0f79' },
+];
+const VIVENU_API = 'https://vivenu.com/api';
+
+function vivenuGet_(path, params) {
+  const key = PropertiesService.getScriptProperties().getProperty('VIVENU_API_KEY');
+  if (!key) throw new Error('Propriété VIVENU_API_KEY absente : Paramètres du projet › Propriétés du script (copier la clé du projet « Pilotage Boutique »).');
+  const qs = Object.keys(params || {}).map(k => encodeURIComponent(k) + '=' + encodeURIComponent(params[k])).join('&');
+  const r = UrlFetchApp.fetch(VIVENU_API + path + (qs ? '?' + qs : ''), { headers: { Authorization: 'Bearer ' + key }, muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) throw new Error('Tickie ' + r.getResponseCode() + ' sur ' + path + ' : ' + r.getContentText().slice(0, 200));
+  return JSON.parse(r.getContentText());
+}
+
+/** Billets valides des partenaires → 16_ABONNES (source « partenaire:NOM »), remplacés à chaque import. */
+function importerBilletsPartenaires() {
+  const shAbo = initialiserOngletAbonnes_();
+  const maintenant = new Date();
+  const nouvelles = [];
+  const bilan = [];
+  PARTENAIRES_REMISE.forEach(pt => {
+    let skip = 0, total = Infinity, n = 0;
+    while (skip < total) {
+      const d = vivenuGet_('/tickets', { customerId: pt.customerId, top: 100, skip: skip });
+      total = Number(d.total) || 0;
+      const rows = d.rows || [];
+      if (!rows.length) break;
+      rows.forEach(t => {
+        if (!t.barcode || STATUTS_VALIDES.indexOf(String(t.status || '').toUpperCase()) < 0) return;
+        nouvelles.push([String(t.barcode), '', pt.nom, '', pt.nom, 'partenaire:' + pt.nom, true, SAISON_ABONNEMENTS, maintenant]);
+        n++;
+      });
+      skip += rows.length;
+    }
+    bilan.push(pt.nom + ' : ' + n + ' billet(s)');
+  });
+
+  const sources = new Set(PARTENAIRES_REMISE.map(pt => 'partenaire:' + pt.nom));
+  const existant = shAbo.getLastRow() > 1 ? shAbo.getRange(2, 1, shAbo.getLastRow() - 1, ENTETES_ABONNES.length).getValues() : [];
+  const gardees = existant.filter(r => String(r[0]).trim() && !sources.has(String(r[5]).trim()));
+  const toutes = gardees.concat(nouvelles);
+  if (shAbo.getLastRow() > 1) shAbo.getRange(2, 1, shAbo.getLastRow() - 1, ENTETES_ABONNES.length).clearContent();
+  if (toutes.length) {
+    shAbo.getRange(2, 1, toutes.length, ENTETES_ABONNES.length).setValues(toutes);
+    shAbo.getRange(2, 1, toutes.length, 1).setNumberFormat('@');
+  }
+  const msg = 'Billets partenaires — ' + bilan.join(' · ');
+  logDiag('importerBilletsPartenaires', 'INFO', msg);
+  return msg;
+}
+
+function importerBilletsPartenairesMenu() {
+  try {
+    SpreadsheetApp.getActiveSpreadsheet().toast(importerBilletsPartenaires() + '. Rechargez les tablettes.', '✅ Partenaires', 8);
+  } catch (e) {
+    SpreadsheetApp.getUi().alert('Import partenaires impossible', e.message, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
 /** Empreinte envoyée aux tablettes : SHA-256 hex du code normalisé (minuscules, sans espaces). */
 function empreinteCode_(code) {
   const norm = String(code || '').trim().toLowerCase().replace(/\s+/g, '');
@@ -1107,6 +1170,7 @@ function onOpen() {
     .addItem('Import Pennylane Achats',         'importPennylaneAchats')
     .addItem('Import Boutique en ligne',        'importBoutiqueLigne')
     .addItem('🎫 Importer les abonnés (export Tickie)', 'importerAbonnesMenu')
+    .addItem('🤝 Importer les billets partenaires (CROUS)', 'importerBilletsPartenairesMenu')
     .addSeparator()
     .addItem('--- Analyses ---',                'menuTitre3')
     .addItem('Analyser produits',               'analyserProduits')
