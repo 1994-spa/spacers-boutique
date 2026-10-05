@@ -1103,7 +1103,7 @@ function importerBilletsPartenaires() {
   const nouvelles = [];
   const bilan = [];
   PARTENAIRES_REMISE.forEach(pt => {
-    let skip = 0, total = Infinity, n = 0;
+    let skip = 0, total = Infinity, nbBillets = 0;
     while (skip < total) {
       const d = vivenuGet_('/tickets', { customerId: pt.customerId, top: 100, skip: skip });
       total = Number(d.total) || 0;
@@ -1112,11 +1112,11 @@ function importerBilletsPartenaires() {
       rows.forEach(t => {
         if (!t.barcode || STATUTS_VALIDES.indexOf(String(t.status || '').toUpperCase()) < 0) return;
         nouvelles.push([String(t.barcode), '', pt.nom, '', pt.nom, 'partenaire:' + pt.nom, true, SAISON_ABONNEMENTS, maintenant]);
-        n++;
+        nbBillets++;
       });
       skip += rows.length;
     }
-    bilan.push(pt.nom + ' : ' + n + ' billet(s)');
+    bilan.push(pt.nom + ' : ' + nbBillets + ' billet(s)');
   });
 
   const sources = new Set(PARTENAIRES_REMISE.map(pt => 'partenaire:' + pt.nom));
