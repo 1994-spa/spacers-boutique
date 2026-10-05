@@ -1082,8 +1082,14 @@ const PARTENAIRES_REMISE = [
 const VIVENU_API = 'https://vivenu.com/api';
 
 function vivenuGet_(path, params) {
-  const key = PropertiesService.getScriptProperties().getProperty('VIVENU_API_KEY');
-  if (!key) throw new Error('Propriété VIVENU_API_KEY absente : Paramètres du projet › Propriétés du script (copier la clé du projet « Pilotage Boutique »).');
+  // Réutilise la clé Tickie déjà présente dans le projet, quel que soit son nom (VIVENU_API_KEY, TICKIE_API_KEY…)
+  const props = PropertiesService.getScriptProperties().getProperties();
+  let key = props.VIVENU_API_KEY;
+  if (!key) {
+    const nom = Object.keys(props).find(k => /(vivenu|tickie)/i.test(k) && /(key|cle|token)/i.test(k));
+    key = nom ? props[nom] : '';
+  }
+  if (!key) throw new Error('Aucune clé API Tickie trouvée dans les propriétés du script (ex. VIVENU_API_KEY).');
   const qs = Object.keys(params || {}).map(k => encodeURIComponent(k) + '=' + encodeURIComponent(params[k])).join('&');
   const r = UrlFetchApp.fetch(VIVENU_API + path + (qs ? '?' + qs : ''), { headers: { Authorization: 'Bearer ' + key }, muteHttpExceptions: true });
   if (r.getResponseCode() !== 200) throw new Error('Tickie ' + r.getResponseCode() + ' sur ' + path + ' : ' + r.getContentText().slice(0, 200));
