@@ -1603,8 +1603,9 @@ async function lancerSync(){
   for(const s of sessions){
     const sv=ventes.filter(v=>v.session_id===s.id);
     synL('Envoi : '+s.match_label+'…');
-    try{await fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'import_session',session:s,ventes:sv,stock_cloture:s.stock_cloture||[]})});s.statut='synchro';await dPut('sessions',s);ok++;synL('OK : '+s.match_label);}
-    catch(e){synL('ERREUR : '+s.match_label);}
+    // Session marquée « synchronisée » seulement si le CRM confirme l'avoir reçue (sinon elle reste en attente, sans risque de doublon)
+    try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'import_session',session:s,ventes:sv,stock_cloture:s.stock_cloture||[]})});const d=await r.json();if(d.status!=='ok')throw new Error(d.message||'refusé par le CRM');s.statut='synchro';await dPut('sessions',s);ok++;synL('OK : '+s.match_label+' · '+(d.ventes_ajoutees||0)+' ligne(s)');}
+    catch(e){synL('ERREUR : '+s.match_label+' — '+e.message);}
   }
   await rSync();await rHome();toast(ok+'/'+sessions.length+' session'+(ok>1?'s':'')+' synchronisée'+(ok>1?'s':''));
 }
