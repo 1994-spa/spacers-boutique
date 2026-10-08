@@ -370,6 +370,41 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
 .scan-tarif{font-size:22px;font-weight:900}
 .scan-meta{font-size:14px;color:var(--muted)}
 
+/* ── Retraits web : articles payés en ligne avec le billet ── */
+.ret-band{width:100%;display:flex;align-items:center;gap:12px;border-radius:var(--r);padding:12px 14px;font-size:24px;text-align:left;border:2px solid}
+.ret-band span{flex:1;display:flex;flex-direction:column;line-height:1.3}
+.ret-band span b{font-size:16px;color:var(--text)}
+.ret-band span small{font-size:14px;color:var(--muted);font-weight:700}
+.ret-band.todo{background:var(--ok-bg);border-color:var(--ok)}
+.ret-band.done{background:var(--warn-bg);border-color:var(--warn);font-size:15px;font-weight:800;color:var(--warn)}
+.ret-band.none{background:var(--surface-2);border-color:var(--border);font-size:15px;font-weight:700;color:var(--muted)}
+.ret-go{background:var(--ok);color:#fff;border-radius:var(--rs);padding:10px 14px;font-size:15px;white-space:nowrap}
+.ret-fiche{border-radius:var(--r);padding:16px 18px;border:3px solid var(--ok);background:var(--ok-bg);display:flex;flex-direction:column;gap:10px}
+.ret-fiche.orange{border-color:var(--warn);background:var(--warn-bg)}
+.ret-titre{font-family:var(--f-t);font-size:30px;text-transform:uppercase;line-height:1.05;color:var(--ok)}
+.ret-fiche.orange .ret-titre{color:var(--warn)}
+.ret-qui{font-size:17px;line-height:1.45}
+.ret-art{background:var(--surface);border:1px solid var(--border);border-radius:var(--rs);padding:12px 14px}
+.ret-art-h{display:flex;align-items:center;gap:12px}
+.ret-art-h .q{font-size:24px;font-weight:900;color:var(--navy)}
+.ret-art-h .n{font-size:21px;font-weight:900;flex:1}
+.ret-art-h label{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:var(--muted)}
+.ret-art-h input{width:30px;height:30px;accent-color:var(--ok)}
+.ret-deja{font-size:14px;color:var(--muted);font-weight:700;margin-top:4px}
+.ret-unite{margin-top:12px}
+.ret-unite .lib{font-size:16px;font-weight:900;margin-bottom:8px}
+.ret-unite .lib.manque{color:var(--err)}
+.ret-tailles{display:flex;flex-wrap:wrap;gap:10px}
+.ret-tailles button{min-width:84px;height:70px;border-radius:var(--rs);border:2.5px solid var(--navy);background:#fff;color:var(--navy);font-size:24px;font-weight:900;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;padding:0 12px}
+.ret-tailles button small{font-size:12px;font-weight:700;opacity:.8}
+.ret-tailles button.on{background:var(--navy);color:#fff}
+.ret-tailles button.out{border-style:dashed;border-color:var(--faint);color:var(--faint)}
+.ret-confirm{list-style:none;display:flex;flex-direction:column;gap:6px;font-size:20px;font-weight:800}
+.ret-confirm li::before{content:'✔ ';color:var(--ok)}
+.ret-res{display:flex;flex-direction:column;gap:8px;max-height:46dvh;overflow-y:auto}
+.ret-res button{background:var(--surface-2);border:1.5px solid var(--border);border-radius:var(--rs);padding:12px 14px;text-align:left;font-size:16px;line-height:1.35}
+.ret-res button b{font-size:17px}
+
 /* ── Portrait : tout passe en une colonne ── */
 @media (orientation:portrait){
   .cfg-wrap,.hbody,.esp-wrap,.ok-wrap,.cols,.cols.three,.sheet-cols{grid-template-columns:minmax(0,1fr)}
@@ -499,7 +534,7 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
     <div class="col">
       <div class="card">
         <div class="card-t">Procédure match</div>
-        <div class="step"><i>1</i><div><b>Avant le match — avec le wifi</b><span>Synchronisation → « Mettre à jour le catalogue » puis « Charger le match ». Vérifier le stock.</span></div></div>
+        <div class="step"><i>1</i><div><b>Avant le match — avec le wifi</b><span>Synchronisation → « Mettre à jour le catalogue » (charge aussi les retraits web) puis « Charger le match ». Vérifier le stock.</span></div></div>
         <div class="step"><i>2</i><div><b>Pendant le match — hors ligne possible</b><span>Scanner le billet du client, vendre. Erreur → bouton rouge ↩ (30 s). CB : attendre le terminal.</span></div></div>
         <div class="step"><i>3</i><div><b>Après le match</b><span>🏁 FIN → noter les espèces → note au suivant → Clôturer. Avec le wifi → « Synchroniser tout ».</span></div></div>
       </div>
@@ -547,6 +582,7 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
         <div class="minor">
           <button onclick="confirmerVider()">🗑 Vider le panier</button>
           <button onclick="showHistorique()">🕐 Dernières ventes</button>
+          <button onclick="ouvrirRetraits()" style="grid-column:1/-1;color:var(--ok);background:var(--ok-bg)">🎁 Retrait commande web (déjà payé)</button>
         </div>
       </div>
     </div>
@@ -669,8 +705,10 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
         <div class="list-row"><span class="c-mut">Saison</span><b id="synSai">—</b></div>
         <div class="list-row"><span class="c-mut">Produits catalogue</span><b id="synNP">0</b></div>
         <div class="list-row"><span class="c-mut">Cartes abonnés (remise −10 %)</span><b id="synAbo">0</b></div>
+        <div class="list-row"><span class="c-mut">🎁 Retraits web à remettre</span><b id="synRet">0</b></div>
+        <div class="list-row"><span class="c-mut">🎁 Remises à envoyer au CRM</span><b id="synRetAtt">0</b></div>
         <div class="list-row"><span class="c-mut">Sessions en attente</span><b id="synNA">0</b></div>
-        <button class="btn btn-s w100" style="margin-top:10px" onclick="syncCat()">↓ Mettre à jour le catalogue et les abonnés</button>
+        <button class="btn btn-s w100" style="margin-top:10px" onclick="syncCat()">↓ Mettre à jour le catalogue, les abonnés et les retraits</button>
       </div>
       <div class="card">
         <div class="card-t">Paramètres CRM</div>
@@ -843,7 +881,7 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
 
 <div class="ov" id="ov-scan">
   <div class="sheet wide">
-    <div class="stitle">🎫 Scanner le billet du client</div>
+    <div class="stitle" id="scan-title">🎫 Scanner le billet du client</div>
     <div class="sheet-cols">
       <div>
         <div class="scan-frame" id="scan-zone"><video id="scan-video" playsinline autoplay muted></video><div class="scan-target"></div></div>
@@ -857,15 +895,21 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
         </form>
         <div id="scan-result" style="display:none;flex-direction:column;gap:10px">
           <div class="scan-card" id="scan-card"></div>
+          <div id="scan-ret"></div>
           <div class="row">
             <button class="btn btn-ok" style="flex:1" id="btn-use-ticket" onclick="utiliserBillet()">✔ Relier à la vente</button>
             <button class="btn btn-s" onclick="relancerScan()" aria-label="Scanner un autre billet">🔄</button>
           </div>
         </div>
-        <button class="btn btn-q w100" style="margin-top:auto" onclick="fermerScanner()">Continuer sans billet →</button>
+        <button class="btn btn-s w100" id="btn-ret-nom" style="display:none" onclick="ouvrirRetraitRecherche()">🔎 Pas de billet ? Chercher par prénom</button>
+        <button class="btn btn-q w100" style="margin-top:auto" id="btn-scan-fermer" onclick="fermerScanner()">Continuer sans billet →</button>
       </div>
     </div>
   </div>
+</div>
+
+<div class="ov" id="ov-ret">
+  <div class="sheet wide" id="ret-sheet"></div>
 </div>
 
 <div id="toast"></div>
@@ -895,6 +939,9 @@ let PIL={id:'pilotage',url:'',token:'',match:null,billets:{}};
 let billet=null; // billet relié à la vente en cours : {ticket_id, barcode, tarif, prenom, abo, formule}
 // Abonnés : empreintes SHA-256 des cartes (jamais les codes en clair), chargées depuis le CRM, utilisables hors ligne
 let ABO={id:'abonnes',liste:{},maj:null,remise:0.10};
+// Retraits web : articles payés en ligne avec le billet (écharpe, maillot…), à remettre au stand.
+// Empreintes SHA-256 des codes billets, prénom + initiale ; remises en attente d'envoi gardées hors ligne.
+let RET={id:'retraits',retraits:[],tailles:{},maj:null,attente:[]};
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const fmt=n=>(Number(n)||0).toFixed(2).replace('.',',')+' €';
 const fmtS=n=>(Number(n)||0).toFixed(0)+' €';
@@ -911,6 +958,7 @@ async function startup(){
   await initDB();
   const p=await dGet('config','pilotage');if(p)PIL=Object.assign(PIL,p);
   const ab=await dGet('config','abonnes');if(ab)ABO=Object.assign(ABO,ab);
+  const rt=await dGet('config','retraits');if(rt)RET=Object.assign(RET,rt);retIndexer();
   // Seules les ventes faites à partir de cette version partent au pilotage (pas l'historique de la tablette)
   if(!PIL.depuis){PIL.depuis=new Date().toISOString();await dPut('config',PIL);}
   const parLien=await lireLienConfig();
@@ -1492,6 +1540,7 @@ async function rSync(){
   $('synSai').textContent=cfg.saison||'—';
   $('synNP').textContent=prods.length;
   $('synAbo').textContent=Object.keys(ABO.liste||{}).length;
+  rRetSyn();
   $('synUrl').value=cfg.apps_script_url||'';
   $('pilUrl').value=PIL.url||'';$('pilTok').value=PIL.token||'';
   rPilState();
@@ -1533,10 +1582,11 @@ function guardCatalogSourceBoutique(data){
 async function syncCat(){
   const url=CFG.apps_script_url;if(!url){toast('URL Apps Script non configurée');return;}
   synL('Récupération catalogue…');
+  await envoyerRemises(true); // sinon le stock d'un maillot remis mais pas encore envoyé serait écrasé
   try{const r=await fetch(url+'?action=get_catalogue&boutique='+CFG.boutique_id+'&saison='+encodeURIComponent(CFG.saison));
     const data=await r.json();
     if(!guardCatalogSourceBoutique(data))return;
-    if(data.produits&&Array.isArray(data.produits)){await dClr('produits');for(const p of data.produits)await dPut('produits',p);await loadP();$('synNP').textContent=prods.length;synL('Catalogue OK : '+prods.length+' produit(s)');await chargerAbonnes();toast(prods.length+' produit(s) · '+Object.keys(ABO.liste||{}).length+' carte(s) abonné');}
+    if(data.produits&&Array.isArray(data.produits)){await dClr('produits');for(const p of data.produits)await dPut('produits',p);await loadP();$('synNP').textContent=prods.length;synL('Catalogue OK : '+prods.length+' produit(s)');await chargerAbonnes();await chargerRetraits();toast(prods.length+' produit(s) · '+Object.keys(ABO.liste||{}).length+' carte(s) abonné · '+retAFaire()+' retrait(s) web');}
     else{synL('Réponse invalide');toast('Erreur serveur');}
   }catch(e){synL('ERREUR : '+e.message);toast('Erreur de connexion');}
 }
@@ -1609,6 +1659,10 @@ function chargerJsQR(){return new Promise((ok,ko)=>{if(window.jsQR)return ok();c
 function setScanStatus(t){$('scan-status').textContent=t;}
 async function ouvrirScanner(){
   $('scan-result').style.display='none';$('scan-zone').style.display='';$('scan-manual').value='';
+  _retCour=null;$('scan-ret').innerHTML='';
+  $('scan-title').textContent=_modeRetrait?'🎁 Retrait commande web : scanner le billet':'🎫 Scanner le billet du client';
+  $('btn-ret-nom').style.display=_modeRetrait?'':'none';
+  $('btn-scan-fermer').textContent=_modeRetrait?'Fermer':'Continuer sans billet →';
   setScanStatus('📷 Place le QR code du billet dans le cadre');
   $('ov-scan').classList.add('on');
   try{
@@ -1629,6 +1683,8 @@ async function lireImage(){
 function arreterCamera(){clearInterval(_scanIv);_scanIv=null;if(_scanStream){_scanStream.getTracks().forEach(t=>t.stop());_scanStream=null;}}
 function saisieManuelle(e){e.preventDefault();const v=$('scan-manual').value.trim();if(v){arreterCamera();chercherBillet(v);}}
 async function chercherBillet(barcode){
+  _retCour=await chercherRetrait(barcode);
+  if(_modeRetrait&&_retCour){const r=_retCour;fermerScanner();ouvrirRetrait(r,false);return;}
   const ab=await chercherAbonne(barcode);
   if(ab){afficherBillet({valide:true,abo:true,prenom:ab[0],formule:ab[1],tarif:ab[1]||'Abonnement'},barcode);return;}
   const local=(PIL.billets||{})[barcode];
@@ -1650,6 +1706,7 @@ async function chercherBillet(barcode){
 function montrerResultat(cls,html,ok){
   $('scan-zone').style.display='none';$('scan-result').style.display='flex';
   $('scan-card').className='scan-card '+cls;$('scan-card').innerHTML=html;$('btn-use-ticket').disabled=!ok;
+  $('scan-ret').innerHTML=htmlBandeauRetrait();
   setScanStatus(ok?'Billet lu. Relie-le à la vente :':'Billet refusé.');
 }
 // Lu mais non vérifié (hors ligne) : le code est gardé, le serveur le reliera à l'acheteur au retour du réseau
@@ -1673,8 +1730,176 @@ function utiliserBillet(){
   toast(billet.abo?'⭐ Abonné : remise −'+Math.round(tauxRemise(billet)*100)+' % appliquée':'🎫 Billet relié à la vente en cours');
 }
 function relancerScan(){arreterCamera();ouvrirScanner();}
-function fermerScanner(){arreterCamera();$('ov-scan').classList.remove('on');}
+function fermerScanner(){arreterCamera();$('ov-scan').classList.remove('on');_modeRetrait=false;}
 function retirerBillet(){billet=null;rPan();rPayScan();majPaiementEnCours();}
+
+// ── RETRAITS WEB : articles payés en ligne avec le billet, remis au stand (CRM V3.5, 17_RETRAITS) ──
+// Maillots : la taille est demandée au client ; le stock de la taille remise sort à ce moment-là.
+let _retIdx=new Map(),_retCour=null,_retSel={},_retEtape='fiche',_retParNom=false,_modeRetrait=false,_retEnvoi=false;
+const retSlug=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+const retNorm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+const retReste=r=>(r.items||[]).filter(it=>it.q-it.qr>0);
+const retAFaire=()=>(RET.retraits||[]).filter(r=>retReste(r).length).length;
+function retHeure(iso){const d=new Date(iso);return isNaN(d)?'':d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})+' à '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});}
+function retDerniere(r){return (r.items||[]).filter(it=>it.qr>0).sort((a,b)=>String(b.remis_le).localeCompare(String(a.remis_le)))[0]||null;}
+function retIndexer(){
+  _retIdx=new Map();
+  const parCle={};(RET.retraits||[]).forEach(r=>(r.items||[]).forEach(it=>{parCle[it.cle]=it;}));
+  // Remises pas encore reçues par le CRM : rejouées sur la liste téléchargée (une seule fois chacune)
+  (RET.attente||[]).forEach(rm=>{const it=parCle[rm.cle];if(!it||(it._ap||[]).includes(rm.id))return;
+    it.qr+=rm.quantite;if(rm.taille)it.tailles=it.tailles?it.tailles+', '+rm.taille:rm.taille;it.remis_le=rm.horodatage;it.remis_par=rm.benevole;(it._ap=it._ap||[]).push(rm.id);});
+  (RET.retraits||[]).forEach(r=>(r.h||[]).forEach(h=>_retIdx.set(h,r)));
+}
+function rRetSyn(){if($('synRet'))$('synRet').textContent=retAFaire();if($('synRetAtt')){const n=(RET.attente||[]).length;$('synRetAtt').textContent=n;$('synRetAtt').className=n?'c-warn':'';}}
+async function chercherRetrait(code){
+  try{if(!_retIdx.size||!(window.crypto&&crypto.subtle))return null;
+    return _retIdx.get(await sha256Hex(String(code).trim().toLowerCase().replace(/\s+/g,'')))||null;}
+  catch(e){console.error('Retraits : recherche impossible',e);return null;}
+}
+async function chargerRetraits(){
+  const url=CFG.apps_script_url;if(!url)return;
+  try{
+    const d=await (await fetch(url+'?action=get_retraits&boutique='+encodeURIComponent(CFG.boutique_id||'B1'))).json();
+    if(d.status!=='ok'||!Array.isArray(d.retraits))throw new Error(d.message||'réponse invalide (CRM pas encore en V3.5 ?)');
+    RET.retraits=d.retraits;RET.tailles=d.tailles||{};RET.maj=d.maj||new Date().toISOString();
+    retIndexer();await dPut('config',RET);
+    synL('Retraits web OK : '+retAFaire()+' commande(s) avec articles à remettre');
+  }catch(e){synL('Retraits web non chargés : '+e.message+' (la liste précédente est conservée)');}
+  rRetSyn();
+}
+async function envoyerRemises(silencieux){
+  const url=CFG.apps_script_url;
+  if(_retEnvoi||!url||!(RET.attente||[]).length||navigator.onLine===false)return;
+  _retEnvoi=true;
+  const lot=RET.attente.slice(),body=JSON.stringify({action:'remises_retraits',remises:lot});
+  let ok=false;
+  try{
+    const r=await fetch(url,{method:'POST',body});const d=await r.json();
+    if(d.status!=='ok')throw new Error(d.message||'refusé par le CRM');
+    ok=true;if(d.stock_negatif&&d.stock_negatif.length)synL('⚠ Stock négatif dans le CRM après remise : '+d.stock_negatif.join(', '));
+  }catch(e){
+    // Réponse illisible (navigateur) mais réseau présent : envoi sans réponse ; le CRM ignore les doublons (id unique)
+    if(e instanceof TypeError){try{await fetch(url,{method:'POST',mode:'no-cors',body});ok=true;}catch(e2){}}
+    if(!ok){console.error('Retraits : envoi',e);if(!silencieux)toast('Remises non envoyées : elles restent sur la tablette');}
+  }
+  if(ok){const ids=new Set(lot.map(x=>x.id));RET.attente=RET.attente.filter(x=>!ids.has(x.id));await dPut('config',RET);try{synL('Remises web envoyées : '+lot.length);}catch(e){}}
+  _retEnvoi=false;rRetSyn();
+}
+window.addEventListener('online',()=>envoyerRemises(true));
+setInterval(()=>envoyerRemises(true),60000);
+
+function htmlBandeauRetrait(){
+  const r=_retCour;
+  if(!r)return _modeRetrait?'<div class="ret-band none">🎁 Aucun article payé en ligne pour ce billet. Rechargez les retraits (Synchronisation) ou cherchez par prénom.</div>':'';
+  const reste=retReste(r);
+  if(reste.length)return '<button class="ret-band todo" onclick="ouvrirRetraitDepuisScan()">🎁<span><b>Articles déjà payés à remettre</b><small>'+esc(reste.map(it=>(it.q-it.qr)+'× '+it.produit).join(' · '))+'</small></span><b class="ret-go">Remettre →</b></button>';
+  const d=retDerniere(r);
+  return '<div class="ret-band done">🎁 Articles web déjà remis'+(d&&d.remis_le?' le '+esc(retHeure(d.remis_le)):'')+(d&&d.remis_par?' par '+esc(d.remis_par):'')+'. Ne rien redonner.</div>';
+}
+function ouvrirRetraits(){
+  if(!(RET.retraits||[]).length)toast('Liste des retraits vide : Synchronisation → « Mettre à jour le catalogue » (wifi)',4500);
+  _modeRetrait=true;ouvrirScanner();
+}
+function ouvrirRetraitDepuisScan(){const r=_retCour;fermerScanner();ouvrirRetrait(r,false);}
+function ouvrirRetraitRecherche(){fermerScanner();_retCour=null;_retEtape='recherche';$('ov-ret').classList.add('on');rRetrait();setTimeout(()=>{const i=$('ret-nom');if(i)i.focus();},60);}
+function ouvrirRetrait(r,parNom){
+  _retCour=r;_retParNom=!!parNom;_retEtape='fiche';_retSel={};
+  (r.items||[]).forEach(it=>{const n=Math.max(0,it.q-it.qr);_retSel[it.cle]={coche:n>0,tailles:new Array(it.taille?n:0).fill(null)};});
+  if(navigator.vibrate)navigator.vibrate(retReste(r).length?60:[40,60,40]);
+  $('ov-ret').classList.add('on');rRetrait();
+}
+function fermerRetrait(){$('ov-ret').classList.remove('on');_retCour=null;_retEtape='fiche';}
+function retOptions(it){
+  return (RET.tailles[retSlug(it.produit)]||[]).map(o=>{const p=prods.find(x=>refOf(x)===o.ref);return {ref:o.ref,taille:o.taille,stock:p?(Number(stockOf(p))||0):(Number(o.stock)||0)};});
+}
+function retPret(){
+  let un=false;
+  for(const it of (_retCour.items||[])){const s=_retSel[it.cle];if(!s||!s.coche||it.q-it.qr<=0)continue;un=true;
+    if(it.taille&&s.tailles.some(t=>!t))return {ok:false,why:'Choisissez une taille pour chaque maillot (ou décochez-le s\'il ne le prend pas maintenant).'};}
+  return un?{ok:true}:{ok:false,why:'Cochez au moins un article à remettre.'};
+}
+function rRetrait(){
+  const el=$('ret-sheet'),r=_retCour;
+  if(_retEtape==='recherche'||!r){
+    el.innerHTML='<div class="stitle">🎁 Retrait commande web</div>'
+      +'<input class="inp" id="ret-nom" placeholder="Prénom de l\'acheteur" autocomplete="off" oninput="retChercherNom(this.value)">'
+      +'<div class="ret-res" id="ret-res"><div class="scan-meta">Tapez au moins 2 lettres. Vérifiez ensuite le nom et le billet avec le client.</div></div>'
+      +'<div class="row"><button class="btn btn-s" style="flex:1" onclick="fermerRetrait();ouvrirRetraits()">📷 Scanner le billet</button><button class="btn btn-q" onclick="fermerRetrait()">Fermer</button></div>';
+    return;
+  }
+  const qui=esc(r.p)+(r.i?' '+esc(r.i)+'.':'');
+  const reste=retReste(r);
+  if(!reste.length){
+    const d=retDerniere(r);
+    el.innerHTML='<div class="ret-fiche orange"><div class="ret-titre">Déjà remis</div><div class="ret-qui"><b>'+qui+'</b> a déjà reçu ses articles'+(d&&d.remis_le?' le <b>'+esc(retHeure(d.remis_le))+'</b>':'')+(d&&d.remis_par?' (par '+esc(d.remis_par)+')':'')+'.</div>'
+      +r.items.map(it=>'<div class="ret-art"><div class="ret-art-h"><span class="q">'+it.q+'×</span><span class="n">'+esc(it.produit)+'</span></div>'+(it.tailles?'<div class="ret-deja">Taille(s) remise(s) : '+esc(it.tailles)+'</div>':'')+'</div>').join('')
+      +'<div class="ret-qui">Ne rien redonner. En cas de réclamation, notez le nom et prévenez le responsable.</div></div>'
+      +'<button class="btn btn-p btn-big w100" onclick="fermerRetrait()">Fermer</button>';
+    return;
+  }
+  if(_retEtape==='confirm'){
+    const l=[];
+    r.items.forEach(it=>{const s=_retSel[it.cle];if(!s||!s.coche||it.q-it.qr<=0)return;
+      if(it.taille){const o=retOptions(it);s.tailles.forEach(ref=>l.push('1 × '+it.produit+' — taille '+((o.find(x=>x.ref===ref)||{}).taille||ref)));}
+      else l.push((it.q-it.qr)+' × '+it.produit);});
+    el.innerHTML='<div class="stitle">Confirmer la remise à '+qui+' ?</div><ul class="ret-confirm">'+l.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>'
+      +'<div class="row"><button class="btn btn-ok btn-big" style="flex:1" onclick="validerRetrait()">Oui, c\'est remis</button><button class="btn btn-s btn-big" onclick="_retEtape=\'fiche\';rRetrait()">Retour</button></div>';
+    return;
+  }
+  let h='<div class="ret-fiche"><div class="ret-titre">✓ Déjà payé — à remettre</div><div class="ret-qui"><b>'+qui+'</b>'+(r.ev?' · '+esc(r.ev):'')+'<br><b>Ne rien encaisser.</b>'
+    +(_retParNom?'<br>⚠ Trouvé par prénom : vérifiez le nom complet et le billet avec le client.':'')+'</div>';
+  r.items.forEach(it=>{
+    const n=Math.max(0,it.q-it.qr),s=_retSel[it.cle];
+    h+='<div class="ret-art"><div class="ret-art-h"><span class="q">'+n+'×</span><span class="n">'+esc(it.produit)+'</span>'
+      +(n?'<label><input type="checkbox" data-retc="'+esc(it.cle)+'"'+(s.coche?' checked':'')+'> Remettre maintenant</label>':'')+'</div>';
+    if(it.qr>0)h+='<div class="ret-deja">Déjà remis : '+it.qr+(it.tailles?' ('+esc(it.tailles)+')':'')+'</div>';
+    if(n&&it.taille&&s.coche){
+      const opts=retOptions(it);
+      for(let u=0;u<n;u++){
+        const ch=s.tailles[u];
+        h+='<div class="ret-unite"><div class="lib'+(ch?'':' manque')+'">'+(n>1?'Maillot n° '+(u+1)+' — ':'')+(ch?'taille '+esc((opts.find(o=>o.ref===ch)||{}).taille||''):'👉 Demandez la taille au client')+'</div><div class="ret-tailles">';
+        if(!opts.length)h+='<div class="scan-meta">Tailles introuvables : mettez à jour le catalogue ou prévenez le responsable.</div>';
+        opts.forEach(o=>{const pris=s.tailles.filter((t,i)=>i!==u&&t===o.ref).length,dispo=o.stock-pris;
+          h+='<button type="button" class="'+(ch===o.ref?'on':'')+(dispo<=0?' out':'')+'" data-rett="'+esc(o.ref)+'" data-retk="'+esc(it.cle)+'" data-retu="'+u+'">'+esc(o.taille)+'<small>'+(dispo>0?'stock '+dispo:'épuisé')+'</small></button>';});
+        h+='</div></div>';
+      }
+    }
+    h+='</div>';
+  });
+  const pr=retPret();
+  h+='</div><div class="row"><button class="btn btn-ok btn-big" style="flex:1" onclick="_retEtape=\'confirm\';rRetrait()"'+(pr.ok?'':' disabled')+'>✔ Remis au client</button><button class="btn btn-s btn-big" onclick="fermerRetrait()">Fermer</button></div>'
+    +(pr.ok?'':'<div class="scan-meta">'+esc(pr.why)+'</div>');
+  el.innerHTML=h;
+}
+$('ret-sheet').addEventListener('change',e=>{const k=e.target.dataset&&e.target.dataset.retc;if(!k||!_retSel[k])return;_retSel[k].coche=e.target.checked;rRetrait();});
+$('ret-sheet').addEventListener('click',e=>{const b=e.target.closest('[data-rett]');if(!b)return;const s=_retSel[b.dataset.retk];if(!s)return;const u=Number(b.dataset.retu);s.tailles[u]=s.tailles[u]===b.dataset.rett?null:b.dataset.rett;rRetrait();});
+function retChercherNom(t){
+  const z=$('ret-res');if(!z)return;t=retNorm(t);
+  if(t.length<2){z.innerHTML='<div class="scan-meta">Tapez au moins 2 lettres.</div>';return;}
+  const l=(RET.retraits||[]).filter(r=>retNorm(r.p).startsWith(t)).slice(0,15);
+  z.innerHTML=l.length?l.map(r=>{const i=RET.retraits.indexOf(r);return '<button onclick="ouvrirRetrait(RET.retraits['+i+'],true)"><b>'+esc(r.p)+(r.i?' '+esc(r.i)+'.':'')+'</b> — '+esc(r.items.map(it=>it.q+'× '+it.produit).join(', '))+(retReste(r).length?'':' <i>(déjà remis)</i>')+'</button>';}).join('')
+    :'<div class="scan-meta">Personne avec ce prénom dans la liste.</div>';
+}
+async function validerRetrait(){
+  const r=_retCour;if(!r||!retPret().ok)return;
+  const now=new Date().toISOString(),nouv=[];
+  const base={horodatage:now,stand:CFG.boutique_id||'B1',benevole:(sess&&sess.benevole)||'',match:(sess&&sess.match_label)||''};
+  r.items.forEach(it=>{const s=_retSel[it.cle],n=it.q-it.qr;if(!s||!s.coche||n<=0)return;
+    if(it.taille){const o=retOptions(it),par={};s.tailles.forEach(ref=>{par[ref]=(par[ref]||0)+1;});
+      Object.keys(par).forEach(ref=>nouv.push(Object.assign({id:'R'+(CFG.boutique_id||'')+'-'+uid(),cle:it.cle,produit:it.produit,quantite:par[ref],ref,taille:(o.find(x=>x.ref===ref)||{}).taille||''},base)));}
+    else nouv.push(Object.assign({id:'R'+(CFG.boutique_id||'')+'-'+uid(),cle:it.cle,produit:it.produit,quantite:n,ref:'',taille:''},base));});
+  if(!nouv.length)return;
+  RET.attente=(RET.attente||[]).concat(nouv);retIndexer();
+  // Stock local des maillots remis (le CRM fait de même à la réception)
+  for(const rm of nouv){if(!rm.ref)continue;const p=prods.find(x=>refOf(x)===rm.ref);if(!p)continue;
+    p.ss=(stockOf(p)||0)-rm.quantite;p.stock=(Number(p.stock)||0)-rm.quantite;
+    const {ss,...brut}=p;await dPut('produits',brut);}
+  await dPut('config',RET);
+  if(navigator.vibrate)navigator.vibrate(120);
+  fermerRetrait();if(sess)rGrid();rRetSyn();
+  toast('✓ Remise enregistrée — rien à encaisser',3500);
+  envoyerRemises(true);
+}
 
 // ── PWA : fichiers statiques (manifest.json, sw.js) — indispensable à l'installation Android ──
 function rSW(){if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});}
