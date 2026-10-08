@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#001E2D">
+<title>Retraits add-ons — Boutique Spacer's</title>
+<style>
+  :root {
+    --nuit: #001E2D;
+    --nuit-2: #0B3550;
+    --fond: #F3F6F9;
+    --carte: #FFFFFF;
+    --texte: #0E1B26;
+    --doux: #5A6B7A;
+    --trait: #D5DEE6;
+    --ok: #0F8A4B;
+    --ok-fond: #E5F6EC;
+    --alerte: #B85C00;
+    --alerte-fond: #FFF1E0;
+    --neutre-fond: #EEF1F4;
+    --erreur: #B3261E;
+    --rayon: 14px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--fond); color: var(--texte); font-size: 18px;
+  }
+  header {
+    background: var(--nuit); color: #fff; display: flex; align-items: center; gap: 16px;
+    padding: 12px 20px;
+  }
+  header h1 { font-size: 22px; margin: 0; font-weight: 700; letter-spacing: .2px; }
+  header .etat { margin-left: auto; font-size: 15px; opacity: .9; text-align: right; line-height: 1.35; }
+  header .etat b { color: #fff; }
+  .pastille { display: inline-block; min-width: 26px; padding: 2px 8px; border-radius: 99px; background: #fff; color: var(--nuit); font-weight: 700; text-align: center; }
+  .pastille.attente { background: #FFD9A8; }
+  button {
+    font: inherit; border: 0; border-radius: var(--rayon); cursor: pointer;
+    min-height: 56px; padding: 0 20px; font-weight: 600;
+  }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-principal { background: var(--nuit); color: #fff; }
+  .btn-ok { background: var(--ok); color: #fff; }
+  .btn-clair { background: var(--carte); color: var(--nuit); border: 2px solid var(--nuit); }
+  .btn-tete { background: var(--nuit-2); color: #fff; min-height: 46px; font-size: 16px; }
+  main { display: grid; grid-template-columns: 380px 1fr; gap: 20px; padding: 20px; min-height: calc(100% - 70px); }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  .colonne { display: flex; flex-direction: column; gap: 16px; }
+  .bloc { background: var(--carte); border-radius: var(--rayon); padding: 18px; border: 1px solid var(--trait); }
+  .bloc h2 { font-size: 17px; margin: 0 0 12px; color: var(--doux); font-weight: 600; text-transform: uppercase; letter-spacing: .6px; }
+  #btnScan { width: 100%; min-height: 110px; font-size: 26px; display: flex; align-items: center; justify-content: center; gap: 14px; }
+  #btnScan svg { width: 44px; height: 44px; }
+  input[type=text] {
+    font: inherit; width: 100%; min-height: 56px; padding: 0 16px; border-radius: var(--rayon);
+    border: 2px solid var(--trait); background: #fff; color: var(--texte);
+  }
+  input[type=text]:focus { outline: none; border-color: var(--nuit); }
+  .ligne { display: flex; gap: 10px; }
+  .ligne input { flex: 1; }
+  .aide { font-size: 15px; color: var(--doux); margin: 8px 0 0; }
+  #listeNoms { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; max-height: 260px; overflow: auto; }
+  #listeNoms button { background: var(--neutre-fond); color: var(--texte); text-align: left; min-height: 52px; font-weight: 500; }
+  #resultat { min-height: 300px; }
+  .vide { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--doux); padding: 40px; }
+  .vide strong { color: var(--texte); font-size: 22px; display: block; margin-bottom: 8px; }
+  .fiche { border-radius: var(--rayon); padding: 22px; border: 3px solid; }
+  .fiche.verte { background: var(--ok-fond); border-color: var(--ok); }
+  .fiche.orange { background: var(--alerte-fond); border-color: var(--alerte); }
+  .fiche.grise { background: var(--neutre-fond); border-color: var(--trait); }
+  .fiche .titre { font-size: 28px; font-weight: 800; margin: 0 0 4px; }
+  .fiche.verte .titre { color: var(--ok); }
+  .fiche.orange .titre { color: var(--alerte); }
+  .fiche .sous { font-size: 18px; margin: 0 0 18px; }
+  .article { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid var(--trait); }
+  .article .tete { display: flex; align-items: center; gap: 14px; }
+  .article .nom { font-size: 22px; font-weight: 700; }
+  .article .qte { font-size: 22px; font-weight: 800; color: var(--nuit); }
+  .article .deja { font-size: 15px; color: var(--doux); margin-top: 6px; }
+  .article label.coche { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 16px; color: var(--doux); }
+  .article input[type=checkbox] { width: 30px; height: 30px; accent-color: var(--ok); }
+  .unite { margin-top: 14px; }
+  .unite .q { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
+  .unite .q.manque { color: var(--erreur); }
+  .tailles { display: flex; flex-wrap: wrap; gap: 10px; }
+  .tailles button { min-width: 84px; min-height: 68px; background: #fff; border: 2px solid var(--nuit); color: var(--nuit); font-size: 22px; font-weight: 800; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; padding: 6px 12px; }
+  .tailles button small { font-size: 12px; font-weight: 600; opacity: .8; }
+  .tailles button.choisie { background: var(--nuit); color: #fff; }
+  .tailles button.epuise { border-style: dashed; color: var(--doux); border-color: var(--doux); }
+  .actions { display: flex; gap: 12px; margin-top: 18px; }
+  .actions .btn-ok { flex: 1; min-height: 72px; font-size: 24px; }
+  .bandeau { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--nuit); color: #fff; padding: 14px 22px; border-radius: 12px; font-size: 17px; box-shadow: 0 6px 24px rgba(0,0,0,.25); z-index: 50; max-width: 90vw; }
+  .bandeau.erreur { background: var(--erreur); }
+  .voile { position: fixed; inset: 0; background: rgba(0, 20, 32, .72); display: flex; align-items: center; justify-content: center; z-index: 40; padding: 20px; }
+  .modale { background: #fff; border-radius: 18px; padding: 26px; width: min(560px, 100%); }
+  .modale h3 { margin: 0 0 14px; font-size: 24px; }
+  .modale ul { margin: 0 0 18px; padding-left: 22px; font-size: 20px; line-height: 1.6; }
+  .modale .actions button { flex: 1; }
+  #camera { position: fixed; inset: 0; background: #000; z-index: 45; display: flex; flex-direction: column; }
+  #camera video { flex: 1; width: 100%; object-fit: cover; }
+  #camera .cadre { position: absolute; left: 50%; top: 45%; width: min(60vw, 360px); aspect-ratio: 1; transform: translate(-50%, -50%); border: 4px solid #fff; border-radius: 18px; box-shadow: 0 0 0 9999px rgba(0,0,0,.35); pointer-events: none; }
+  #camera .bas { padding: 16px; display: flex; gap: 12px; align-items: center; background: var(--nuit); color: #fff; }
+  #camera .bas span { flex: 1; font-size: 17px; }
+  .reglages { display: grid; gap: 12px; }
+  .choix { display: flex; gap: 10px; }
+  .choix button { flex: 1; background: var(--neutre-fond); color: var(--texte); }
+  .choix button.actif { background: var(--nuit); color: #fff; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎁 Retraits add-ons</h1>
+  <div class="etat">
+    <div>Liste du <b id="majListe">—</b> · stand <b id="libStand">B1</b></div>
+    <div>À envoyer : <span id="nbAttente" class="pastille">0</span> · Bénévole : <b id="libBenevole">—</b></div>
+  </div>
+  <button class="btn-tete" id="btnRecharger">↻ Recharger</button>
+  <button class="btn-tete" id="btnEnvoyer">⇪ Envoyer</button>
+  <button class="btn-tete" id="btnReglages" aria-label="Réglages">⚙</button>
+</header>
+
+<main>
+  <div class="colonne">
+    <div class="bloc">
+      <button class="btn-principal" id="btnScan">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>
+        Scanner un billet
+      </button>
+      <p class="aide">Le QR code du billet, sur le téléphone ou imprimé.</p>
+    </div>
+    <div class="bloc">
+      <h2>Code du billet</h2>
+      <form class="ligne" id="formCode" autocomplete="off">
+        <input type="text" id="saisieCode" placeholder="ex. 004u0xh5st" inputmode="text" autocapitalize="off" spellcheck="false">
+        <button class="btn-clair" type="submit">OK</button>
+      </form>
+      <p class="aide">Si le scan ne passe pas : le code est écrit sous le QR. Une douchette se branche ici aussi.</p>
+    </div>
+    <div class="bloc">
+      <h2>Rechercher par prénom</h2>
+      <input type="text" id="saisieNom" placeholder="Prénom de l'acheteur" autocomplete="off">
+      <div id="listeNoms"></div>
+    </div>
+  </div>
+
+  <div class="bloc" id="resultat">
+    <div class="vide">
+      <strong>Scannez le billet du client</strong>
+      Les articles déjà payés en ligne avec le billet s'afficheront ici.
+    </div>
+  </div>
+</main>
+
+<div id="camera" hidden>
+  <video id="video" playsinline muted></video>
+  <div class="cadre"></div>
+  <div class="bas">
+    <span id="msgCamera">Placez le QR code dans le cadre…</span>
+    <button class="btn-clair" id="btnFermerCamera">Fermer</button>
+  </div>
+</div>
+
+<div class="voile" id="voile" hidden><div class="modale" id="modale"></div></div>
+
+<script>
+'use strict';
+/* =====================================================================
+   Retraits add-ons — page tablette (stand boutique)
+   Données : Apps Script CRM Boutique V3.5, ?action=get_retraits
+   Les codes-barres n'arrivent jamais en clair : empreintes SHA-256 (comme les cartes abonnés).
+   Hors réseau : la liste et les remises sont gardées sur la tablette, envoi dès que possible.
+   ===================================================================== */
+const API_URL = 'https://script.google.com/macros/s/AKfycbz3v2-lSreW_Y7xQVbq4xtDrx_bL1R_KzsbbbOlFQHg5LWVVKaxJZw8vCIo4KGVVyk6ZA/exec';
+const CLES = { donnees: 'retraits_donnees_v1', attente: 'retraits_attente_v1', stand: 'retraits_stand', benevole: 'retraits_benevole', match: 'retraits_match' };
+
+const etat = {
+  donnees: lireJSON(CLES.donnees, null),   // { retraits, tailles, maj }
+  attente: lireJSON(CLES.attente, []),     // remises pas encore reçues par le CRM
+  stand: lireTexte(CLES.stand) || 'B1',
+  benevole: lireTexte(CLES.benevole) || '',
+  match: lireTexte(CLES.match) || '',
+  index: new Map(),                        // empreinte → retrait
+  courant: null,                           // retrait affiché
+  selection: {},                           // cle article → { coche, tailles: [ref|null…] }
+  envoiEnCours: false,
+};
+
+/* ---------- Stockage local (jamais de catch silencieux) ---------- */
+function lireJSON(cle, defaut) {
+  try { const v = localStorage.getItem(cle); return v ? JSON.parse(v) : defaut; }
+  catch (e) { console.error('Lecture ' + cle, e); return defaut; }
+}
+function lireTexte(cle) {
+  try { return localStorage.getItem(cle) || ''; } catch (e) { console.error(e); return ''; }
+}
+function ecrire(cle, valeur) {
+  try { localStorage.setItem(cle, typeof valeur === 'string' ? valeur : JSON.stringify(valeur)); return true; }
+  catch (e) { bandeau('Mémoire de la tablette pleine : envoyez les remises.', true); console.error(e); return false; }
+}
+
+/* ---------- Outils ---------- */
+const $ = id => document.getElementById(id);
+function echapper(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function slug(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+function sansAccent(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim(); }
+async function empreinte(code) {
+  const norm = String(code || '').trim().toLowerCase().replace(/\s+/g, '');
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(norm));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function idUnique() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+function heure(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
+let minuterieBandeau = null;
+function bandeau(texte, erreur) {
+  let b = document.querySelector('.bandeau');
+  if (!b) { b = document.createElement('div'); document.body.appendChild(b); }
+  b.className = 'bandeau' + (erreur ? ' erreur' : '');
+  b.textContent = texte;
+  clearTimeout(minuterieBandeau);
+  minuterieBandeau = setTimeout(() => b.remove(), erreur ? 7000 : 3500);
+}
+function vibrer(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) { /* tablette sans vibreur */ } }
+
+/* ---------- Données ---------- */
+function construireIndex() {
+  etat.index = new Map();
+  if (!etat.donnees) return;
+  appliquerAttenteSurDonnees();
+  etat.donnees.retraits.forEach(r => r.h.forEach(h => etat.index.set(h, r)));
+}
+
+/** Les remises pas encore reçues par le CRM sont rejouées sur la liste téléchargée. */
+function appliquerAttenteSurDonnees() {
+  const parCle = {};
+  etat.donnees.retraits.forEach(r => r.items.forEach(it => { parCle[it.cle] = it; }));
+  etat.attente.forEach(rm => {
+    const it = parCle[rm.cle];
+    if (!it || (it._appliquees || []).includes(rm.id)) return;
+    it.qr += rm.quantite;
+    if (rm.taille) it.tailles = it.tailles ? it.tailles + ', ' + rm.taille : rm.taille;
+    it.remis_le = rm.horodatage; it.remis_par = rm.benevole;
+    (it._appliquees = it._appliquees || []).push(rm.id);
+    const opts = etat.donnees.tailles[slug(it.produit)] || [];
+    const o = opts.find(x => x.ref === rm.ref);
+    if (o) o.stock -= rm.quantite;
+  });
+}
+
+async function recharger() {
+  $('btnRecharger').disabled = true;
+  try {
+    const r = await fetch(API_URL + '?action=get_retraits&boutique=' + encodeURIComponent(etat.stand), { cache: 'no-store' });
+    if (!r.ok) throw new Error('Réponse ' + r.status);
+    const d = await r.json();
+    if (d.status !== 'ok') throw new Error(d.message || 'Réponse inattendue du CRM');
+    etat.donnees = { retraits: d.retraits || [], tailles: d.tailles || {}, maj: d.maj || new Date().toISOString() };
+    ecrire(CLES.donnees, etat.donnees);
+    construireIndex();
+    majEntete();
+    const nb = etat.donnees.retraits.length;
+    bandeau(nb + ' commande(s) avec articles à remettre chargée(s).');
+    if (etat.courant) {
+      const id = etat.courant.id;
+      etat.courant = etat.donnees.retraits.find(x => x.id === id) || null;
+      afficher();
+    }
+  } catch (e) {
+    console.error(e);
+    bandeau('Liste non rechargée (' + e.message + '). La liste déjà sur la tablette reste utilisable.', true);
+  } finally {
+    $('btnRecharger').disabled = false;
+  }
+}
+
+async function envoyer(silencieux) {
+  if (etat.envoiEnCours || !etat.attente.length) { if (!silencieux && !etat.attente.length) bandeau('Rien à envoyer.'); return; }
+  etat.envoiEnCours = true;
+  $('btnEnvoyer').disabled = true;
+  const lot = etat.attente.slice();
+  try {
+    const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'remises_retraits', remises: lot }) });
+    if (!r.ok) throw new Error('Réponse ' + r.status);
+    const d = await r.json();
+    if (d.status !== 'ok') throw new Error(d.message || 'Réponse inattendue du CRM');
+    const envoyes = new Set(lot.map(x => x.id));
+    etat.attente = etat.attente.filter(x => !envoyes.has(x.id));
+    ecrire(CLES.attente, etat.attente);
+    majEntete();
+    if (!silencieux) bandeau('✓ ' + lot.length + ' remise(s) envoyée(s) au CRM.');
+    if (d.stock_negatif && d.stock_negatif.length) bandeau('⚠ Stock négatif dans le CRM : ' + d.stock_negatif.join(', '), true);
+  } catch (e) {
+    console.error(e);
+    if (!silencieux) bandeau('Envoi impossible (' + e.message + '). Les remises restent sur la tablette.', true);
+  } finally {
+    etat.envoiEnCours = false;
+    $('btnEnvoyer').disabled = false;
+  }
+}
+
+function majEntete() {
+  $('majListe').textContent = etat.donnees ? heure(etat.donnees.maj) : 'jamais chargée';
+  $('libStand').textContent = etat.stand === 'B2' ? 'VIP (B2)' : 'Grand Public (B1)';
+  $('libBenevole').textContent = etat.benevole || '—';
+  const n = etat.attente.length;
+  $('nbAttente').textContent = n;
+  $('nbAttente').classList.toggle('attente', n > 0);
+}
+
+/* ---------- Recherche ---------- */
+async function chercherCode(code) {
+  code = String(code || '').trim();
+  if (!code) return;
+  if (!etat.donnees) { bandeau('Liste pas encore chargée : appuyez sur « Recharger ».', true); return; }
+  const h = await empreinte(code);
+  const r = etat.index.get(h) || null;
+  vibrer(r ? 60 : [40, 60, 40]);
+  ouvrir(r, code);
+}
+
+function chercherNom(texte) {
+  const zone = $('listeNoms');
+  zone.innerHTML = '';
+  const t = sansAccent(texte);
+  if (t.length < 2 || !etat.donnees) return;
+  const trouves = etat.donnees.retraits.filter(r => sansAccent(r.p).startsWith(t)).slice(0, 12);
+  if (!trouves.length) { zone.innerHTML = '<p class="aide">Personne avec ce prénom.</p>'; return; }
+  trouves.forEach(r => {
+    const b = document.createElement('button');
+    const reste = r.items.reduce((s, it) => s + Math.max(0, it.q - it.qr), 0);
+    b.innerHTML = '<b>' + echapper(r.p) + ' ' + echapper(r.i) + '.</b> — ' + echapper(r.items.map(it => it.q + '× ' + it.produit).join(', '))
+      + (reste ? '' : ' <i>(déjà remis)</i>');
+    b.addEventListener('click', () => { ouvrir(r, null, true); });
+    zone.appendChild(b);
+  });
+}
+
+/* ---------- Affichage ---------- */
+function ouvrir(retrait, code, parNom) {
+  etat.courant = retrait;
+  etat.courantCode = code;
+  etat.courantParNom = !!parNom;
+  etat.selection = {};
+  if (retrait) retrait.items.forEach(it => {
+    const reste = Math.max(0, it.q - it.qr);
+    etat.selection[it.cle] = { coche: reste > 0, tailles: new Array(it.taille ? reste : 0).fill(null) };
+  });
+  afficher();
+}
+
+function afficher() {
+  const zone = $('resultat');
+  const r = etat.courant;
+  if (!r) {
+    zone.innerHTML = etat.courantCode
+      ? '<div class="fiche grise"><p class="titre">Aucun article à remettre</p><p class="sous">Ce billet n\'a pas d\'écharpe ni de maillot payé en ligne.</p>'
+        + '<p class="aide">Si le client affirme le contraire : rechargez la liste (achat récent) ou cherchez par prénom. En cas de doute, notez son nom et prévenez le responsable.</p></div>'
+      : '<div class="vide"><strong>Scannez le billet du client</strong>Les articles déjà payés en ligne avec le billet s\'afficheront ici.</div>';
+    return;
+  }
+
+  const reste = r.items.reduce((s, it) => s + Math.max(0, it.q - it.qr), 0);
+  const derniere = r.items.filter(it => it.qr > 0).sort((a, b) => String(b.remis_le).localeCompare(String(a.remis_le)))[0];
+  let html = '';
+
+  if (!reste) {
+    html += '<div class="fiche orange"><p class="titre">Déjà remis</p>'
+      + '<p class="sous">' + echapper(r.p) + ' ' + echapper(r.i) + '. a déjà reçu ses articles'
+      + (derniere && derniere.remis_le ? ' le <b>' + echapper(heure(derniere.remis_le)) + '</b>' : '')
+      + (derniere && derniere.remis_par ? ' (par ' + echapper(derniere.remis_par) + ')' : '') + '.</p>';
+    r.items.forEach(it => {
+      html += '<div class="article"><div class="tete"><span class="qte">' + it.q + '×</span><span class="nom">' + echapper(it.produit) + '</span></div>'
+        + (it.tailles ? '<div class="deja">Taille(s) remise(s) : ' + echapper(it.tailles) + '</div>' : '') + '</div>';
+    });
+    html += '<p class="aide">Ne rien redonner. En cas de réclamation, prévenez le responsable.</p></div>';
+    zone.innerHTML = html;
+    return;
+  }
+
+  html += '<div class="fiche verte"><p class="titre">✓ Déjà payé — à remettre</p>'
+    + '<p class="sous"><b>' + echapper(r.p) + ' ' + echapper(r.i) + '.</b>' + (r.ev ? ' · ' + echapper(r.ev) : '') + '<br>Ne rien encaisser.'
+    + (etat.courantParNom ? '<br><b>Trouvé par prénom : vérifiez le nom et le billet avec le client.</b>' : '') + '</p>';
+
+  r.items.forEach(it => {
+    const restant = Math.max(0, it.q - it.qr);
+    const sel = etat.selection[it.cle];
+    html += '<div class="article"><div class="tete"><span class="qte">' + restant + '×</span><span class="nom">' + echapper(it.produit) + '</span>';
+    if (restant) {
+      html += '<label class="coche"><input type="checkbox" data-coche="' + echapper(it.cle) + '"' + (sel.coche ? ' checked' : '') + '> Remettre maintenant</label>';
+    }
+    html += '</div>';
+    if (it.qr > 0) html += '<div class="deja">Déjà remis : ' + it.qr + (it.tailles ? ' (' + echapper(it.tailles) + ')' : '') + '</div>';
+    if (!restant) html += '<div class="deja">Rien à remettre pour cet article.</div>';
+
+    if (restant && it.taille && sel.coche) {
+      const opts = (etat.donnees.tailles[slug(it.produit)] || []);
+      for (let u = 0; u < restant; u++) {
+        const choisi = sel.tailles[u];
+        html += '<div class="unite"><div class="q' + (choisi ? '' : ' manque') + '">' + (restant > 1 ? 'Maillot n° ' + (u + 1) + ' — ' : '')
+          + (choisi ? 'taille ' + echapper((opts.find(o => o.ref === choisi) || {}).taille || '') : 'Demandez la taille au client') + '</div><div class="tailles">';
+        if (!opts.length) html += '<p class="aide">Tailles introuvables dans le catalogue : prévenez le responsable.</p>';
+        opts.forEach(o => {
+          const dispo = o.stock - compterChoix(it.cle, o.ref, u);
+          html += '<button type="button" data-taille="' + echapper(o.ref) + '" data-cle="' + echapper(it.cle) + '" data-unite="' + u + '" class="'
+            + (choisi === o.ref ? 'choisie' : '') + (dispo <= 0 ? ' epuise' : '') + '">' + echapper(o.taille)
+            + '<small>' + (dispo > 0 ? 'stock ' + dispo : 'épuisé') + '</small></button>';
+        });
+        html += '</div></div>';
+      }
+    }
+    html += '</div>';
+  });
+
+  const pret = selectionPrete();
+  html += '<div class="actions"><button class="btn-ok" id="btnRemettre"' + (pret.ok ? '' : ' disabled') + '>Remis au client</button>'
+    + '<button class="btn-clair" id="btnAnnuler">Fermer</button></div>'
+    + (pret.ok ? '' : '<p class="aide">' + echapper(pret.raison) + '</p>') + '</div>';
+  zone.innerHTML = html;
+}
+
+/** Nombre d'unités du même article déjà affectées à cette réf (hors unité u), pour le stock affiché. */
+function compterChoix(cle, ref, saufU) {
+  const sel = etat.selection[cle];
+  return sel ? sel.tailles.filter((t, i) => i !== saufU && t === ref).length : 0;
+}
+
+function selectionPrete() {
+  const r = etat.courant;
+  let auMoinsUn = false;
+  for (const it of r.items) {
+    const sel = etat.selection[it.cle];
+    if (!sel || !sel.coche || it.q - it.qr <= 0) continue;
+    auMoinsUn = true;
+    if (it.taille && sel.tailles.some(t => !t)) return { ok: false, raison: 'Choisissez une taille pour chaque maillot (ou décochez « Remettre maintenant »).' };
+  }
+  return auMoinsUn ? { ok: true } : { ok: false, raison: 'Cochez au moins un article à remettre.' };
+}
+
+/* ---------- Remise ---------- */
+function demanderConfirmation() {
+  const r = etat.courant;
+  const lignes = [];
+  r.items.forEach(it => {
+    const sel = etat.selection[it.cle];
+    if (!sel || !sel.coche || it.q - it.qr <= 0) return;
+    if (it.taille) {
+      const opts = etat.donnees.tailles[slug(it.produit)] || [];
+      sel.tailles.forEach(ref => lignes.push('1 × ' + it.produit + ' — taille ' + ((opts.find(o => o.ref === ref) || {}).taille || ref)));
+    } else {
+      lignes.push((it.q - it.qr) + ' × ' + it.produit);
+    }
+  });
+  modale('<h3>Confirmer la remise à ' + echapper(r.p) + ' ' + echapper(r.i) + '. ?</h3><ul>'
+    + lignes.map(l => '<li>' + echapper(l) + '</li>').join('') + '</ul>'
+    + '<div class="actions"><button class="btn-ok" id="btnConfirmer">Oui, c\'est remis</button><button class="btn-clair" id="btnRetour">Retour</button></div>');
+  $('btnConfirmer').addEventListener('click', () => { fermerModale(); enregistrerRemise(); });
+  $('btnRetour').addEventListener('click', fermerModale);
+}
+
+function enregistrerRemise() {
+  const r = etat.courant;
+  const maintenant = new Date().toISOString();
+  const nouvelles = [];
+  r.items.forEach(it => {
+    const sel = etat.selection[it.cle];
+    const restant = it.q - it.qr;
+    if (!sel || !sel.coche || restant <= 0) return;
+    const base = { horodatage: maintenant, cle: it.cle, produit: it.produit, stand: etat.stand, benevole: etat.benevole, match: etat.match };
+    if (it.taille) {
+      const opts = etat.donnees.tailles[slug(it.produit)] || [];
+      const parRef = {};
+      sel.tailles.forEach(ref => { parRef[ref] = (parRef[ref] || 0) + 1; });
+      Object.keys(parRef).forEach(ref => {
+        nouvelles.push(Object.assign({ id: idUnique(), quantite: parRef[ref], ref, taille: (opts.find(o => o.ref === ref) || {}).taille || '' }, base));
+      });
+    } else {
+      nouvelles.push(Object.assign({ id: idUnique(), quantite: restant, ref: '', taille: '' }, base));
+    }
+  });
+  if (!nouvelles.length) return;
+  etat.attente = etat.attente.concat(nouvelles);
+  if (!ecrire(CLES.attente, etat.attente)) return;
+  appliquerAttenteSurDonnees();
+  ecrire(CLES.donnees, etat.donnees);
+  majEntete();
+  vibrer(120);
+  bandeau('✓ Remise enregistrée.');
+  ouvrir(r, etat.courantCode, etat.courantParNom);
+  envoyer(true);
+}
+
+/* ---------- Caméra ---------- */
+let flux = null, boucleScan = null, detecteur = null;
+async function ouvrirCamera() {
+  if (!('BarcodeDetector' in window)) {
+    bandeau('Scan caméra non disponible sur cet appareil : tapez le code sous le QR.', true);
+    $('saisieCode').focus();
+    return;
+  }
+  try {
+    if (!detecteur) {
+      const formats = await BarcodeDetector.getSupportedFormats();
+      detecteur = new BarcodeDetector({ formats: ['qr_code', 'aztec', 'code_128', 'data_matrix', 'pdf417'].filter(f => formats.includes(f)) });
+    }
+    flux = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    const v = $('video');
+    v.srcObject = flux;
+    await v.play();
+    $('camera').hidden = false;
+    $('msgCamera').textContent = 'Placez le QR code dans le cadre…';
+    boucleScan = setInterval(async () => {
+      try {
+        const codes = await detecteur.detect(v);
+        if (codes && codes.length) {
+          const valeur = codes[0].rawValue;
+          fermerCamera();
+          chercherCode(valeur);
+        }
+      } catch (e) { console.error('Détection', e); }
+    }, 250);
+  } catch (e) {
+    console.error(e);
+    fermerCamera();
+    bandeau('Caméra inaccessible (' + e.message + '). Autorisez la caméra ou tapez le code.', true);
+  }
+}
+function fermerCamera() {
+  clearInterval(boucleScan); boucleScan = null;
+  if (flux) { flux.getTracks().forEach(t => t.stop()); flux = null; }
+  $('camera').hidden = true;
+}
+
+/* ---------- Modale & réglages ---------- */
+function modale(html) { $('modale').innerHTML = html; $('voile').hidden = false; }
+function fermerModale() { $('voile').hidden = true; $('modale').innerHTML = ''; }
+
+function ouvrirReglages(obligatoire) {
+  modale('<h3>' + (obligatoire ? 'Avant de commencer' : 'Réglages') + '</h3><div class="reglages">'
+    + '<label>Votre prénom<input type="text" id="regBenevole" value="' + echapper(etat.benevole) + '" placeholder="ex. Lucie"></label>'
+    + '<label>Match<input type="text" id="regMatch" value="' + echapper(etat.match) + '" placeholder="ex. Spacer\'s vs Narbonne"></label>'
+    + '<div>Stand<div class="choix" style="margin-top:6px"><button type="button" data-stand="B1" class="' + (etat.stand === 'B1' ? 'actif' : '') + '">Grand Public</button>'
+    + '<button type="button" data-stand="B2" class="' + (etat.stand === 'B2' ? 'actif' : '') + '">VIP</button></div></div>'
+    + '<div class="actions"><button class="btn-principal" id="regValider">Valider</button>' + (obligatoire ? '' : '<button class="btn-clair" id="regAnnuler">Annuler</button>') + '</div></div>');
+  let standChoisi = etat.stand;
+  document.querySelectorAll('[data-stand]').forEach(b => b.addEventListener('click', () => {
+    standChoisi = b.dataset.stand;
+    document.querySelectorAll('[data-stand]').forEach(x => x.classList.toggle('actif', x === b));
+  }));
+  $('regValider').addEventListener('click', () => {
+    const nom = $('regBenevole').value.trim();
+    if (!nom) { bandeau('Indiquez votre prénom.', true); return; }
+    const standChange = standChoisi !== etat.stand;
+    etat.benevole = nom; etat.match = $('regMatch').value.trim(); etat.stand = standChoisi;
+    ecrire(CLES.benevole, etat.benevole); ecrire(CLES.match, etat.match); ecrire(CLES.stand, etat.stand);
+    fermerModale(); majEntete();
+    if (standChange || !etat.donnees) recharger();
+  });
+  if (!obligatoire) $('regAnnuler').addEventListener('click', fermerModale);
+}
+
+/* ---------- Événements ---------- */
+$('btnScan').addEventListener('click', ouvrirCamera);
+$('btnFermerCamera').addEventListener('click', fermerCamera);
+$('btnRecharger').addEventListener('click', recharger);
+$('btnEnvoyer').addEventListener('click', () => envoyer(false));
+$('btnReglages').addEventListener('click', () => ouvrirReglages(false));
+$('formCode').addEventListener('submit', e => {
+  e.preventDefault();
+  const v = $('saisieCode').value;
+  $('saisieCode').value = '';
+  chercherCode(v);
+});
+$('saisieNom').addEventListener('input', e => chercherNom(e.target.value));
+$('resultat').addEventListener('change', e => {
+  const cle = e.target.dataset && e.target.dataset.coche;
+  if (!cle) return;
+  etat.selection[cle].coche = e.target.checked;
+  afficher();
+});
+$('resultat').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.id === 'btnRemettre') { demanderConfirmation(); return; }
+  if (b.id === 'btnAnnuler') { etat.courant = null; etat.courantCode = null; afficher(); return; }
+  if (b.dataset.taille) {
+    const sel = etat.selection[b.dataset.cle];
+    const u = Number(b.dataset.unite);
+    const ref = b.dataset.taille;
+    if (!sel) return;
+    sel.tailles[u] = sel.tailles[u] === ref ? null : ref;
+    afficher();
+  }
+});
+window.addEventListener('online', () => envoyer(true));
+setInterval(() => { if (navigator.onLine) envoyer(true); }, 60000);
+
+/* ---------- Démarrage ---------- */
+construireIndex();
+majEntete();
+if (!etat.benevole) ouvrirReglages(true);
+else if (navigator.onLine) recharger();
+</script>
+</body>
+</html>
