@@ -572,7 +572,7 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
       <div class="scanzone" id="scanZone"></div>
       <div class="pitems" id="pItems"></div>
       <div class="pft">
-        <div class="trem" id="pRem" style="display:none"></div>
+        <div id="pRem" style="display:none"></div>
         <div class="trow"><span class="tlbl"><span class="stepn">3</span> Encaisser</span><span class="tval" id="pTot">0,00 €</span></div>
         <div class="paybtns">
           <button class="pb pb-cb" onclick="payer('CB')">💳 CB</button>
@@ -602,7 +602,7 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
 <div id="s-esp" class="screen">
   <div class="esp-wrap">
     <div class="esp-l">
-      <div class="card"><div class="etl">Total à encaisser</div><div class="eto" id="eTo">0,00 €</div><div class="trem" id="eRem" style="display:none"></div></div>
+      <div class="card"><div class="etl">Total à encaisser</div><div class="eto" id="eTo">0,00 €</div><div id="eRem" style="display:none"></div></div>
       <div class="card"><div class="etl">Le client donne (touche le billet reçu)</div><div class="egv" id="eGv">—</div></div>
       <div class="echbox" id="eChBox" style="display:none"><div class="etl" style="color:var(--ok)">Monnaie à rendre</div><div class="echv" id="eChV">0,00 €</div></div>
       <button class="pay-scan" id="espScan" onclick="ouvrirScanner()"></button>
@@ -939,6 +939,8 @@ let PIL={id:'pilotage',url:'',token:'',match:null,billets:{}};
 let billet=null; // billet relié à la vente en cours : {ticket_id, barcode, tarif, prenom, abo, formule}
 // Abonnés : empreintes SHA-256 des cartes (jamais les codes en clair), chargées depuis le CRM, utilisables hors ligne
 let ABO={id:'abonnes',liste:{},maj:null,remise:0.10};
+// Règles du CRM (V3.6) : remise billet et packs, gardées hors ligne
+let REG={id:'regles',remise_billet:0.05,packs:[]};
 // Retraits web : articles payés en ligne avec le billet (écharpe, maillot…), à remettre au stand.
 // Empreintes SHA-256 des codes billets, prénom + initiale ; remises en attente d'envoi gardées hors ligne.
 let RET={id:'retraits',retraits:[],tailles:{},maj:null,attente:[]};
@@ -958,6 +960,7 @@ async function startup(){
   await initDB();
   const p=await dGet('config','pilotage');if(p)PIL=Object.assign(PIL,p);
   const ab=await dGet('config','abonnes');if(ab)ABO=Object.assign(ABO,ab);
+  const rg=await dGet('config','regles');if(rg)REG=Object.assign(REG,rg);
   const rt=await dGet('config','retraits');if(rt)RET=Object.assign(RET,rt);retIndexer();
   // Seules les ventes faites à partir de cette version partent au pilotage (pas l'historique de la tablette)
   if(!PIL.depuis){PIL.depuis=new Date().toISOString();await dPut('config',PIL);}
@@ -1039,7 +1042,7 @@ async function saveCfg(){
 async function loadP(){prods=await dAll('produits');}
 function getAct(cat){let l=prods.filter(p=>p.actif!==false);if(cat&&cat!=='Tous')l=l.filter(p=>p.categorie===cat);return l;}
 function getCats(){return['Tous',...new Set(prods.filter(p=>p.actif!==false).map(p=>p.categorie).filter(Boolean))];}
-const TAILLES=['XXS','XS','S','M','L','XL','XXL','3XL','4XL','TU'];
+const TAILLES=['4 ANS','6 ANS','8 ANS','10 ANS','12 ANS','14 ANS','16 ANS','XXS','XS','S','M','L','XL','XXL','3XL','4XL','TU'];
 function tailleOf(p){
   if(p.taille)return String(p.taille).toUpperCase();
   const m=String(p.nom||'').match(/(?:^|[\s\-–(])(XXS|XS|S|M|L|XL|XXL|3XL|4XL|TU)\)?\s*$/i);
@@ -1273,17 +1276,54 @@ function chQty(id,d){
 }
 // ── REMISE ABONNÉ ─────────────────────────────
 const r2=n=>Math.round((Number(n)||0)*100)/100;
-const tauxRemise=b=>(b&&b.abo)?(Number(ABO.remise)||0.10):0;
-// Remise calculée ligne par ligne (au centime), le total est la somme des lignes : CRM et caisse tombent juste
-function lignesRemisees(items,b){
-  const t=tauxRemise(b);
-  return items.map(i=>{const brut=r2(i.prix_vente*i.qty),rem=r2(brut*t);return{...i,brut,remise:rem,net:r2(brut-rem)};});
+// Remises (V3.6), non cumulables : carte abonné −10 %, sinon billet du match vérifié −5 %.
+// Jamais sur une ligne au tarif partenaire (stand B2). Pas de remise billet si le billet n'a pas pu être vérifié.
+function tauxRemise(b){
+  if(!b||b.valide===false)return 0;
+  if(b.abo)return Number(ABO.remise)||0.10;
+  if(b.nonVerifie)return 0;
+  return Number(REG.remise_billet)||0;
 }
-function totaux(items,b){
-  const l=lignesRemisees(items,b);
-  return{lignes:l,brut:r2(l.reduce((s,x)=>s+x.brut,0)),remise:r2(l.reduce((s,x)=>s+x.remise,0)),net:r2(l.reduce((s,x)=>s+x.net,0))};
+const typeRemise=b=>(b&&b.abo)?'abonne':'billet';
+function estComposant(l,motif){
+  try{const re=new RegExp(motif,'i');return re.test(String(refOf(l)||''))||re.test(String(l.nom||''));}catch(e){return false;}
 }
-function htmlRemise(T){return T.remise>0?'<span>⭐ Remise abonné −'+Math.round(tauxRemise(billet)*100)+' %</span><span><s>'+fmt(T.brut)+'</s>−'+fmt(T.remise)+'</span>':'';}
+// Calcul ligne par ligne au centime : le total est la somme des lignes, CRM et caisse tombent juste.
+// Packs (ex. Maillot + Écharpe) : pour chaque paire, la caisse applique la formule la moins chère pour le client
+// (prix du pack, ou remise abonné/billet sur les deux articles). La remise du pack est répartie au prorata des prix.
+function totaux(items,b,opt){
+  opt=opt||{};
+  const t=opt.sansRemise?0:tauxRemise(b),typ=typeRemise(b);
+  const L=items.map(i=>({...i,brut:r2(i.prix_vente*i.qty),remise:0,packU:0,types:new Set()}));
+  const tl=l=>l.tarif==='partenaire'?0:t;
+  let nbPacks=0,remPack=0,nomPack='',remTaux=0;
+  if(!opt.sansRemise){
+    for(const pk of (REG.packs||[])){
+      const prix=Number((pk.prix||{})[CFG.boutique_id]);if(!(prix>0))continue;
+      const unites=m=>{const u=[];L.forEach(l=>{if(estComposant(l,m))for(let n=l.packU;n<l.qty;n++)u.push(l);});return u.sort((x,y)=>y.prix_vente-x.prix_vente);};
+      const A=unites(pk.a),B=unites(pk.b),n=Math.min(A.length,B.length);
+      for(let k=0;k<n;k++){
+        const a=A[k],c=B[k];if(a===c)continue;
+        const D=r2(a.prix_vente+c.prix_vente-prix);if(D<=0)continue;
+        const sep=r2(a.prix_vente*tl(a))+r2(c.prix_vente*tl(c));
+        if(sep>D)continue; // la remise abonné / billet est plus avantageuse pour le client
+        const pa=r2(D*a.prix_vente/(a.prix_vente+c.prix_vente));
+        a.remise+=pa;c.remise+=r2(D-pa);a.packU++;c.packU++;a.types.add('pack');c.types.add('pack');
+        nbPacks++;remPack+=D;nomPack=pk.nom||'Pack';
+      }
+    }
+    L.forEach(l=>{const n=l.qty-l.packU,tx=tl(l);if(n>0&&tx>0){const rr=r2(l.prix_vente*n*tx);l.remise+=rr;remTaux+=rr;l.types.add(typ);}});
+  }
+  const lignes=L.map(({types,packU,...l})=>{const remise=r2(l.remise);return{...l,remise,net:r2(l.brut-remise),remise_type:[...types].join('+'),nb_pack:packU};});
+  return{lignes,brut:r2(lignes.reduce((s,x)=>s+x.brut,0)),remise:r2(lignes.reduce((s,x)=>s+x.remise,0)),net:r2(lignes.reduce((s,x)=>s+x.net,0)),
+    nbPacks,remPack:r2(remPack),nomPack,remTaux:r2(remTaux),taux:t,typ};
+}
+function htmlRemise(T){
+  let h='';
+  if(T.nbPacks)h+='<div class="trem"><span>📦 '+esc(T.nomPack)+(T.nbPacks>1?' ×'+T.nbPacks:'')+'</span><span>−'+fmt(T.remPack)+'</span></div>';
+  if(T.remTaux>0)h+='<div class="trem"><span>'+(T.typ==='abonne'?'⭐ Remise abonné':'🎫 Remise billet')+' −'+Math.round(T.taux*100)+' %</span><span>−'+fmt(T.remTaux)+'</span></div>';
+  return h?'<div class="trem" style="color:var(--muted)"><span>Prix catalogue</span><span><s>'+fmt(T.brut)+'</s></span></div>'+h:'';
+}
 async function sha256Hex(txt){
   const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(txt));
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -1313,21 +1353,23 @@ function majPaiementEnCours(){
   const T=totaux(pendV.items,billet);pendV.tot=T.net;pendV.T=T;
   if(pendV.mode==='CB'){
     $('cbAmt').textContent=fmt(T.net);
-    $('cbItems').innerHTML=T.lignes.map(i=>'<div><span>'+esc(i.nom)+' ×'+i.qty+'</span><span>'+fmt(i.brut)+'</span></div>').join('')+(T.remise>0?'<div><span>⭐ Remise abonné</span><span>−'+fmt(T.remise)+'</span></div>':'');
+    $('cbItems').innerHTML=T.lignes.map(i=>'<div><span>'+esc(i.nom)+' ×'+i.qty+'</span><span>'+fmt(i.brut)+'</span></div>').join('')
+      +(T.nbPacks?'<div><span>📦 '+esc(T.nomPack)+(T.nbPacks>1?' ×'+T.nbPacks:'')+'</span><span>−'+fmt(T.remPack)+'</span></div>':'')
+      +(T.remTaux>0?'<div><span>'+(T.typ==='abonne'?'⭐ Remise abonné':'🎫 Remise billet')+'</span><span>−'+fmt(T.remTaux)+'</span></div>':'');
   }else{
-    $('eTo').textContent=fmt(T.net);const er=$('eRem');er.innerHTML=htmlRemise(T);er.style.display=T.remise>0?'flex':'none';
+    $('eTo').textContent=fmt(T.net);const er=$('eRem');er.innerHTML=htmlRemise(T);er.style.display=T.remise>0?'block':'none';
     if(espCts)mEsp();
   }
 }
 function rPan(){
   const items=Object.values(pan),T=totaux(items,billet),tot=T.net,cnt=items.reduce((s,i)=>s+i.qty,0);
   $('pBdg').textContent=cnt;$('pTot').textContent=fmt(tot);
-  const pr=$('pRem');pr.innerHTML=htmlRemise(T);pr.style.display=T.remise>0?'flex':'none';
+  const pr=$('pRem');pr.innerHTML=htmlRemise(T);pr.style.display=T.remise>0?'block':'none';
   $('scanZone').innerHTML=billet
     ?(billet.abo
-      ?'<div class="ticket-badge abo">⭐<div><b>Abonné'+(billet.prenom?' · '+esc(billet.prenom):'')+(billet.formule?' · '+esc(billet.formule):'')+'</b><small>Remise −'+Math.round(tauxRemise(billet)*100)+' % appliquée sur tout le panier</small></div><button onclick="retirerBillet()" aria-label="Retirer la carte abonné">✕</button></div>'
-      :'<div class="ticket-badge">🎫<div><b>'+esc(billet.tarif||'Billet scanné')+(billet.prenom?' · '+esc(billet.prenom):'')+'</b><small>'+(billet.nonVerifie?'Sera vérifié au retour du wifi':'Billet relié à cette vente')+'</small></div><button onclick="retirerBillet()" aria-label="Retirer le billet">✕</button></div>')
-    :'<button class="btn-scan" onclick="ouvrirScanner()"><span class="stepn">1</span> 🎫 Scanner le billet ou la carte abonné <small>(−10 % abonnés)</small></button>';
+      ?'<div class="ticket-badge abo">⭐<div><b>Abonné'+(billet.prenom?' · '+esc(billet.prenom):'')+(billet.formule?' · '+esc(billet.formule):'')+'</b><small>Remise −'+Math.round(tauxRemise(billet)*100)+' % appliquée (hors pack et tarif partenaire)</small></div><button onclick="retirerBillet()" aria-label="Retirer la carte abonné">✕</button></div>'
+      :'<div class="ticket-badge">🎫<div><b>'+esc(billet.tarif||'Billet scanné')+(billet.prenom?' · '+esc(billet.prenom):'')+'</b><small>'+(billet.nonVerifie?'Non vérifié (hors ligne) : pas de remise billet':tauxRemise(billet)>0?'Remise −'+Math.round(tauxRemise(billet)*100)+' % appliquée':'Billet relié à cette vente')+'</small></div><button onclick="retirerBillet()" aria-label="Retirer le billet">✕</button></div>')
+    :'<button class="btn-scan" onclick="ouvrirScanner()"><span class="stepn">1</span> 🎫 Scanner le billet ou la carte abonné <small>(−5 % billet · −10 % abonné)</small></button>';
   const el=$('pItems');
   if(!items.length){
     const d=derniere;
@@ -1335,7 +1377,7 @@ function rPan(){
       :'<div class="empty"><span class="stepn">2</span><br>Touche un article<br>pour l\'ajouter</div>';
     return;}
   el.innerHTML=items.map(i=>{const t=tailleOf(i);
-    return '<div class="pi"><div class="pinam">'+esc(t?modeleOf(i):i.nom)+(t?'<small>Taille '+esc(t)+'</small>':'')+'</div><div class="piqty"><button class="qb" onclick="chQty(\''+esc(i.id)+'\',-1)" aria-label="Moins">−</button><div class="qv">'+i.qty+'</div><button class="qb plus" onclick="chQty(\''+esc(i.id)+'\',1)" aria-label="Plus">+</button></div><div class="pipr">'+fmt(i.prix_vente*i.qty)+'</div></div>';
+    return '<div class="pi"><div class="pinam">'+esc(t?modeleOf(i):i.nom)+(t?'<small>Taille '+esc(t)+'</small>':'')+(i.tarif==='partenaire'?'<small>Tarif partenaire</small>':'')+'</div><div class="piqty"><button class="qb" onclick="chQty(\''+esc(i.id)+'\',-1)" aria-label="Moins">−</button><div class="qv">'+i.qty+'</div><button class="qb plus" onclick="chQty(\''+esc(i.id)+'\',1)" aria-label="Plus">+</button></div><div class="pipr">'+fmt(i.prix_vente*i.qty)+'</div></div>';
   }).join('');
 }
 function rBand(){
@@ -1389,8 +1431,8 @@ function payer(mode){
 function rPayScan(){
   ['cbScan','espScan'].forEach(k=>{const el=$(k);if(!el)return;
     if(billet&&billet.abo){el.className='pay-scan ok';el.innerHTML='⭐ Abonné'+(billet.prenom?' · '+esc(billet.prenom):'')+' · −'+Math.round(tauxRemise(billet)*100)+' % déduits';}
-    else if(billet){el.className='pay-scan ok';el.innerHTML='🎫 Billet relié'+(billet.tarif?' · '+esc(billet.tarif):'')+(billet.prenom?' · '+esc(billet.prenom):'');}
-    else{el.className='pay-scan';el.innerHTML='🎫 Pendant qu\'il paie : scanner son billet ou sa carte abonné';}
+    else if(billet){el.className='pay-scan ok';el.innerHTML='🎫 Billet relié'+(billet.tarif?' · '+esc(billet.tarif):'')+(billet.prenom?' · '+esc(billet.prenom):'')+(tauxRemise(billet)>0?' · −'+Math.round(tauxRemise(billet)*100)+' % déduits':'');}
+    else{el.className='pay-scan';el.innerHTML='🎫 Pendant qu\'il paie : scanner son billet (−5 %) ou sa carte abonné (−10 %)';}
   });
 }
 function cbAccepte(){if(!pendV||$('cbYes').disabled)return;enregistrerVente();}
@@ -1425,13 +1467,13 @@ async function enregistrerVente(){
   const {mode,tot,items,monnaie,motif}=pendV;pendV=null;espCts=0;
   const now=new Date().toISOString(),grp=uid(),b=billet;
   // Pas de remise sur un article offert
-  const T=totaux(items,mode==='Offert'?null:b);
+  const T=totaux(items,b,{sansRemise:mode==='Offert'});
   for(const item of T.lignes){
     await dPut('ventes',{id:uid(),session_id:sess.id,boutique_id:CFG.boutique_id,saison:CFG.saison,
       produit_id:item.id,produit_ref:refOf(item),produit_nom:item.nom,categorie:item.categorie,
       quantite:item.qty,prix_unitaire:r2(item.net/item.qty),ca_ligne:item.net,
-      prix_brut:item.prix_vente,remise:item.remise,
-      abonne_code:(item.remise>0&&b)?(b.barcode||''):'',abonne_formule:(item.remise>0&&b)?(b.formule||''):'',
+      prix_brut:item.prix_vente,remise:item.remise,remise_type:item.remise_type||'',tarif:item.tarif||'public',
+      abonne_code:(item.remise>0&&b&&b.abo)?(b.barcode||''):'',abonne_formule:(item.remise>0&&b&&b.abo)?(b.formule||''):'',
       mode_paiement:mode,motif_offert:mode==='Offert'?(motif||''):null,timestamp:now,groupe:grp,
       // Billet relié : identifiants seulement. Le lien vers l'acheteur (nom, email) est fait côté serveur.
       ticket_id:b?(b.ticket_id||null):null,barcode:b?(b.barcode||null):null,client_tarif:b?(b.tarif||null):null,
@@ -1440,7 +1482,7 @@ async function enregistrerVente(){
   billet=null;
   if(mode!=='Offert'){sCA+=tot;sTx++;if(b)sScan++;}
   derniere={tot,mon:mode==='Espèces'?(monnaie||0):0,
-    lib:(mode==='CB'?'💳 CB enregistrée':mode==='Espèces'?'💵 Espèces enregistrées':'🎁 Offert · '+esc(motif||''))+(T.remise>0?' · ⭐ remise abonné −'+fmt(T.remise):b?' · 🎫 billet relié':'')};
+    lib:(mode==='CB'?'💳 CB enregistrée':mode==='Espèces'?'💵 Espèces enregistrées':'🎁 Offert · '+esc(motif||''))+(T.remise>0?' · remise −'+fmt(T.remise)+(T.nbPacks?' (pack)':''):b?' · 🎫 billet relié':'')};
   if(navigator.vibrate)navigator.vibrate([60,30,60]);
   pan={};rPan();rGrid();rBand();showUndo(grp);ss('s-cai');
   setTimeout(pilEnvoyer,32000); // après la fenêtre d'annulation de 30 s
@@ -1586,7 +1628,7 @@ async function syncCat(){
   try{const r=await fetch(url+'?action=get_catalogue&boutique='+CFG.boutique_id+'&saison='+encodeURIComponent(CFG.saison));
     const data=await r.json();
     if(!guardCatalogSourceBoutique(data))return;
-    if(data.produits&&Array.isArray(data.produits)){await dClr('produits');for(const p of data.produits)await dPut('produits',p);await loadP();$('synNP').textContent=prods.length;synL('Catalogue OK : '+prods.length+' produit(s)');await chargerAbonnes();await chargerRetraits();toast(prods.length+' produit(s) · '+Object.keys(ABO.liste||{}).length+' carte(s) abonné · '+retAFaire()+' retrait(s) web');}
+    if(data.produits&&Array.isArray(data.produits)){await dClr('produits');for(const p of data.produits)await dPut('produits',p);await loadP();if(data.regles){REG=Object.assign({},REG,data.regles,{id:'regles'});await dPut('config',REG);}$('synNP').textContent=prods.length;synL('Catalogue OK : '+prods.length+' produit(s)');await chargerAbonnes();await chargerRetraits();toast(prods.length+' produit(s) · '+Object.keys(ABO.liste||{}).length+' carte(s) abonné · '+retAFaire()+' retrait(s) web');}
     else{synL('Réponse invalide');toast('Erreur serveur');}
   }catch(e){synL('ERREUR : '+e.message);toast('Erreur de connexion');}
 }
@@ -1638,7 +1680,7 @@ async function pilEnvoyer(force){
     const ventes=Object.entries(grp).slice(0,40).map(([g,ls])=>{const v0=ls[0],s=sessions[v0.session_id]||{};
       return{id:g,ts:v0.timestamp,eventId:s.tickie_event_id||'',match:s.match_label||'',session:v0.session_id,benevole:s.benevole||'',
         boutique:v0.boutique_id,mode:v0.mode_paiement,motif:v0.motif_offert||'',total:Math.round(ls.reduce((a,x)=>a+x.ca_ligne,0)*100)/100,
-        remise:Math.round(ls.reduce((a,x)=>a+(Number(x.remise)||0),0)*100)/100,abonne:v0.abonne_formule||'',
+        remise:Math.round(ls.reduce((a,x)=>a+(Number(x.remise)||0),0)*100)/100,abonne:v0.abonne_formule||'',remise_type:[...new Set(ls.map(x=>x.remise_type).filter(Boolean))].join(','),
         lignes:ls.map(x=>({ref:x.produit_ref||x.produit_id,nom:x.produit_nom,cat:x.categorie||'',qte:x.quantite,pu:x.prix_unitaire})),
         ticket:(v0.ticket_id||v0.barcode)?{ticket_id:v0.ticket_id||'',barcode:v0.barcode||'',tarif:v0.client_tarif||''}:null};});
     // text/plain : pas de pré-vérification CORS, accepté par Apps Script
@@ -1712,7 +1754,7 @@ function montrerResultat(cls,html,ok){
 // Lu mais non vérifié (hors ligne) : le code est gardé, le serveur le reliera à l'acheteur au retour du réseau
 function afficherNonVerifie(barcode,raison){
   billetLu={ticket_id:'',barcode,tarif:'',prenom:'',valide:true,nonVerifie:true};
-  montrerResultat('warn','<div class="scan-state">⚠️ Billet non vérifié</div><div class="scan-tarif">Code '+esc(barcode)+'</div><div class="scan-meta">'+esc(raison)+' Il sera vérifié et relié à l\'acheteur au retour du réseau.</div>',true);
+  montrerResultat('warn','<div class="scan-state">⚠️ Billet non vérifié</div><div class="scan-tarif">Code '+esc(barcode)+'</div><div class="scan-meta">'+esc(raison)+' Il sera vérifié et relié à l\'acheteur au retour du réseau. Pas de remise billet sans vérification.</div>',true);
 }
 function afficherBillet(t,barcode){
   const valide=t.valide!==false;
@@ -1722,12 +1764,13 @@ function afficherBillet(t,barcode){
   const abo=valide&&(t.abo||/abonnement/i.test(String(t.tarif||'')));
   billetLu={ticket_id:t.ticket_id||t._id||'',barcode:t.barcode||barcode,tarif:t.tarif||'',prenom,valide,abo:!!abo,formule:t.formule||(abo?t.tarif:'')||''};
   if(abo){montrerResultat('','<div class="scan-state">⭐ Carte abonné valide</div><div class="scan-tarif">Remise −'+Math.round((Number(ABO.remise)||0.10)*100)+' % sur le panier</div>'+(prenom?'<div class="scan-meta">'+esc(prenom)+'</div>':'')+(billetLu.formule?'<div class="scan-meta">'+esc(billetLu.formule)+'</div>':''),true);return;}
-  montrerResultat(valide?'':'ko','<div class="scan-state">'+(valide?'✅ Billet valide':'❌ Billet non valide')+'</div><div class="scan-tarif">'+esc(billetLu.tarif||'Tarif inconnu')+'</div>'+(prenom?'<div class="scan-meta">'+esc(prenom)+'</div>':'')+(t.tribune?'<div class="scan-meta">📍 '+esc(t.tribune)+'</div>':''),valide);
+  const remB=valide&&Number(REG.remise_billet)>0?'<div class="scan-meta">🎫 Remise −'+Math.round(REG.remise_billet*100)+' % sur le panier (hors pack et tarif partenaire)</div>':'';
+  montrerResultat(valide?'':'ko','<div class="scan-state">'+(valide?'✅ Billet valide':'❌ Billet non valide')+'</div><div class="scan-tarif">'+esc(billetLu.tarif||'Tarif inconnu')+'</div>'+remB+(prenom?'<div class="scan-meta">'+esc(prenom)+'</div>':'')+(t.tribune?'<div class="scan-meta">📍 '+esc(t.tribune)+'</div>':''),valide);
 }
 function utiliserBillet(){
   if(!billetLu||!billetLu.valide)return;
   billet=billetLu;billetLu=null;fermerScanner();rPan();rPayScan();majPaiementEnCours();
-  toast(billet.abo?'⭐ Abonné : remise −'+Math.round(tauxRemise(billet)*100)+' % appliquée':'🎫 Billet relié à la vente en cours');
+  toast(billet.abo?'⭐ Abonné : remise −'+Math.round(tauxRemise(billet)*100)+' % appliquée':tauxRemise(billet)>0?'🎫 Billet relié : remise −'+Math.round(tauxRemise(billet)*100)+' % appliquée':'🎫 Billet relié à la vente en cours');
 }
 function relancerScan(){arreterCamera();ouvrirScanner();}
 function fermerScanner(){arreterCamera();$('ov-scan').classList.remove('on');_modeRetrait=false;}
