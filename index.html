@@ -1198,6 +1198,13 @@ async function createSess(){
   $('obCta').textContent='Suivant →';
   ss('s-ob');
 }
+// Après un rechargement du catalogue en cours de session : le stock affiché tient compte des ventes déjà faites
+async function recalcStockSession(){
+  if(!sess||sess.statut!=='ouvert')return;
+  const v=(await dAll('ventes')).filter(x=>x.session_id===sess.id);
+  prods.forEach(p=>{const vd=v.filter(x=>x.produit_id===p.id).reduce((s,x)=>s+x.quantite,0);p.ss=Math.max(0,p.stock-vd);});
+  try{rGrid();}catch(e){}
+}
 async function _prepSess(id){
   const all=await dAll('sessions');sess=all.find(s=>s.id===id);if(!sess)return;
   pan={};billet=null;await loadP();
@@ -1250,7 +1257,7 @@ function rGrid(){
     ps.forEach(p=>{
       const st=stockOf(p),rupt=st<=0,low=st>0&&st<=3,t=tailleOf(p),q=pan[p.id]?pan[p.id].qty:0;
       const main=t||p.nom,long=!t;
-      h+='<button class="ptile'+(rupt?' rupt':'')+(q?' incart':'')+'" style="--acc:'+acc+'" data-id="'+esc(p.id)+'"'+(rupt?' disabled':'')+' aria-label="'+esc(p.nom)+', '+fmtP(p.prix_vente)+'">'+
+      h+='<button class="ptile'+(rupt?' rupt':'')+(q?' incart':'')+'" style="--acc:'+acc+'" data-id="'+esc(p.id)+'" aria-label="'+esc(p.nom)+', '+fmtP(p.prix_vente)+'">'+
         (q?'<span class="pt-qty">'+q+'</span>':(rupt?'<span class="pt-flag">RUPTURE</span>':''))+
         '<span class="pt-in"><span class="pt-main'+(long?' long':'')+'">'+esc(main)+'</span>'+
         '<span class="pt-foot"><span class="pt-price">'+fmtP(p.prix_vente)+'</span>'+(rupt?'<span class="pt-stock out">épuisé</span>':low?'<span class="pt-stock low">plus que '+st+'</span>':'')+'</span></span></button>';
@@ -1259,17 +1266,22 @@ function rGrid(){
   });
   g.innerHTML=h;
 }
-$('pgrid').addEventListener('click',e=>{const t=e.target.closest('.ptile');if(t&&!t.disabled)ajt(t.dataset.id);});
+$('pgrid').addEventListener('click',e=>{const t=e.target.closest('.ptile');if(t)ajt(t.dataset.id);});
+// Stock à 0 dans le CRM mais article présent sur la table : vente possible après confirmation (une fois par article et par session)
+const _horsStockOk=new Set();
+function okHorsStock(p){if(_horsStockOk.has(p.id))return true;
+  if(!confirm('Stock affiché à 0 pour « '+p.nom+' ».\n\nL\'article est bien sur la table ? Toucher OK pour le vendre quand même (le responsable corrigera le stock).'))return false;
+  _horsStockOk.add(p.id);return true;}
 function ajt(id){
   const p=prods.find(x=>x.id===id);if(!p)return;
-  const st=stockOf(p);if(st<=0)return;
+  const st=stockOf(p);if(st<=0&&!okHorsStock(p))return;
   derniere=null;if(!pan[id])pan[id]={...p,qty:0};pan[id].qty++;p.ss=st-1;
   if(navigator.vibrate)navigator.vibrate(30);
   rGrid();rPan();
 }
 function chQty(id,d){
   if(!pan[id])return;const p=prods.find(x=>x.id===id);
-  if(d>0&&p&&stockOf(p)<=0){toast('Plus de stock pour cet article');return;}
+  if(d>0&&p&&stockOf(p)<=0&&!okHorsStock(p))return;
   pan[id].qty+=d;if(p)p.ss=(stockOf(p)||0)-d;
   if(pan[id].qty<=0)delete pan[id];
   rGrid();rPan();
@@ -1629,11 +1641,16 @@ async function syncCat(){
   try{const r=await fetch(url+'?action=get_catalogue&boutique='+CFG.boutique_id+'&saison='+encodeURIComponent(CFG.saison));
     const data=await r.json();
     if(!guardCatalogSourceBoutique(data))return;
-    if(data.produits&&Array.isArray(data.produits)){await dClr('produits');for(const p of data.produits)await dPut('produits',p);await loadP();if(data.regles){REG=Object.assign({},REG,data.regles,{id:'regles'});await dPut('config',REG);}$('synNP').textContent=prods.length;synL('Catalogue OK : '+prods.length+' produit(s)');await chargerAbonnes();await chargerRetraits();toast(prods.length+' produit(s) · '+Object.keys(ABO.liste||{}).length+' carte(s) abonné · '+retAFaire()+' retrait(s) web');}
+    if(data.produits&&Array.isArray(data.produits)&&!data.produits.length){synL('Catalogue vide renvoyé par le CRM : catalogue de la tablette conservé');toast('Catalogue vide côté CRM : rien changé');return;}
+    if(data.produits&&Array.isArray(data.produits)){await dClr('produits');for(const p of data.produits)await dPut('produits',p);await loadP();await recalcStockSession();if(data.regles){REG=Object.assign({},REG,data.regles,{id:'regles'});await dPut('config',REG);}$('synNP').textContent=prods.length;synL('Catalogue OK : '+prods.length+' produit(s)');await chargerAbonnes();await chargerRetraits();toast(prods.length+' produit(s) · '+Object.keys(ABO.liste||{}).length+' carte(s) abonné · '+retAFaire()+' retrait(s) web');}
     else{synL('Réponse invalide');toast('Erreur serveur');}
   }catch(e){synL('ERREUR : '+e.message);toast('Erreur de connexion');}
 }
-async function resetApp(){if(!confirm('Réinitialiser ? Toutes les données locales seront supprimées.'))return;await dClr('config');await dClr('sessions');await dClr('ventes');await dClr('produits');location.reload();}
+async function resetApp(){
+  const ventes=await dAll('ventes'),ses=await dAll('sessions');
+  const nonSync=ses.filter(s=>s.statut!=='synchro'&&ventes.some(v=>v.session_id===s.id));
+  if(nonSync.length||(RET.attente||[]).length){alert('Impossible de réinitialiser : '+(nonSync.length?nonSync.length+' session(s) de vente pas encore synchronisée(s)':'')+(nonSync.length&&(RET.attente||[]).length?' et ':'')+((RET.attente||[]).length?(RET.attente.length)+' remise(s) web pas encore envoyée(s)':'')+'.\n\nClôturez et synchronisez d\'abord (avec réseau), ou appelez le responsable.');return;}
+  if(!confirm('Réinitialiser ? Toutes les données locales seront supprimées.'))return;await dClr('config');await dClr('sessions');await dClr('ventes');await dClr('produits');location.reload();}
 
 // ── PILOTAGE LIVE : chargement du match + envoi des ventes au fil de l'eau ──
 function rPilState(){
@@ -1735,7 +1752,8 @@ async function chercherBillet(barcode){
   if(navigator.onLine===false){afficherNonVerifie(barcode,'Hors ligne et billet absent de la liste chargée.');return;}
   setScanStatus('⏳ Recherche du billet…');
   try{
-    const r=await fetch(TICKIE_PROXY_URL+'/ticket/'+encodeURIComponent(barcode));
+    const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),5000);
+    let r;try{r=await fetch(TICKIE_PROXY_URL+'/ticket/'+encodeURIComponent(barcode),{signal:ctl.signal});}finally{clearTimeout(to);}
     if(r.status===404)throw Object.assign(new Error('billet introuvable dans Tickie'),{definitif:true});
     if(!r.ok)throw new Error('erreur '+r.status);
     const t=await r.json();
@@ -1830,6 +1848,8 @@ async function envoyerRemises(silencieux){
   _retEnvoi=false;rRetSyn();
 }
 window.addEventListener('online',()=>envoyerRemises(true));
+setInterval(async()=>{try{if(navigator.onLine===false||!CFG.apps_script_url||$('ov-ret').classList.contains('on'))return;
+  await envoyerRemises(true);await chargerRetraits();}catch(e){}},600000);
 setInterval(()=>envoyerRemises(true),60000);
 
 function htmlBandeauRetrait(){

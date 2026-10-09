@@ -1,7 +1,7 @@
 // Service worker — Spacer's Boutique : la caisse s'ouvre même sans réseau.
 // Pages : réseau d'abord (pour recevoir les mises à jour), cache si hors ligne.
 // Fichiers statiques (icônes, polices, lecteur QR) : cache d'abord.
-const CACHE = 'spacers-boutique-v11';
+const CACHE = 'spacers-boutique-v12';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './fonts/sansation-bold.woff2', './fonts/heaters.woff2',
   'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js'];
 
@@ -24,10 +24,19 @@ self.addEventListener('fetch', e => {
   if (url.pathname.endsWith('/pilotage.html')) return;
 
   if (req.mode === 'navigate') {
-    e.respondWith(
-      fetch(req).then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put('./index.html', copy)); return r; })
-        .catch(() => caches.match('./index.html').then(r => r || caches.match('./')))
-    );
+    // Réseau lent (salle pleine) : au-delà de 4 s on sert la version en cache. Seules les vraies pages (200) sont mises en cache
+    // (jamais une page de portail wifi ou d'erreur).
+    const cache = () => caches.match('./index.html').then(r => r || caches.match('./'));
+    const reseau = fetch(req).then(r => {
+      if (r.ok && r.type === 'basic') { const copy = r.clone(); caches.open(CACHE).then(c => c.put('./index.html', copy)); }
+      return r;
+    });
+    e.respondWith(new Promise(resolve => {
+      let fini = false;
+      const t = setTimeout(() => cache().then(r => { if (r && !fini) { fini = true; resolve(r); } }), 4000);
+      reseau.then(r => { if (!fini) { fini = true; clearTimeout(t); resolve(r); } })
+        .catch(() => cache().then(r => { if (!fini) { fini = true; clearTimeout(t); resolve(r || Response.error()); } }));
+    }));
     return;
   }
   if (url.origin === location.origin || STATIQUES.includes(url.hostname)) {
