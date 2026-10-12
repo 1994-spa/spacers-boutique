@@ -91,6 +91,12 @@ function inclureDepuis_10_10() {
 
 // ── Point d'entrée (déclencheur 10 min) ──────────────────────────────────
 function majInventaire() {
+  const msg = majInventaire_();
+  Logger.log(msg);
+  return msg;
+}
+
+function majInventaire_() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) return 'Mise à jour déjà en cours.';
   try {
