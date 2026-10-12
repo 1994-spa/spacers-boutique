@@ -12,8 +12,14 @@
 // B1 (Grand Public) → tableaux « … GP » ; B2 (VIP) → tableaux « … VIP ».
 // L'onglet « Dépot » n'est jamais touché (une vente ne sort pas du dépôt).
 //
-// Journal : onglet « 🔄 MAJ auto (CRM) » du classeur Inventaire — une ligne par
-// article décompté, avec le stock avant/après. Il sert aussi d'anti-doublon.
+// Onglet « Journal ventes » (3 lieux de vente : Boutique GP, Boutique VIP, Hors match) :
+//   • les ventes caisse et retraits web y sont AJOUTÉS automatiquement (Info « 🔄 … ») ;
+//   • les ventes SAISIES À LA MAIN (VIP, GP ou Hors match/Autre) sont décomptées du stock
+//     dès que la ligne est complète (date, article, taille si besoin, quantité, lieu).
+//     GP/VIP → En boutique + Stock Total ; Hors match → Stock Total seulement.
+//   • colonne « Stock MAJ » : ✓ quand la ligne a été décomptée (stock avant → après),
+//     ⚠ si quelque chose est à vérifier. Une ligne marquée n'est jamais redécomptée.
+// Trace technique (anti-doublon caisse) : onglet masqué « 🔄 MAJ auto (CRM) ».
 //
 // Déclencheur toutes les 10 min (posé par installerInventaire). Les mouvements
 // antérieurs à la mise en service sont ignorés (déjà comptés à la main).
@@ -26,6 +32,9 @@ const INV = {
   ID_PAR_DEFAUT: '1b33hMr4zkgKcwByCRNKket3LpRClclxTssxs25M6xY8',
   ONGLETS: ['En boutique', 'Stock Total'],
   JOURNAL: '🔄 MAJ auto (CRM)',
+  JOURNAL_VENTES: 'Journal ventes',
+  COL_MAJ: 'Stock MAJ',
+  PREFIXE_AUTO: '🔄',
   SH_LIGNES: '21_LIGNES_LIVE',
   SH_REMISES: '17b_REMISES',
   NAVY: '#001E2D',
@@ -35,15 +44,15 @@ const INV = {
 // Familles : reconnaissance du produit CRM → du tableau de l'inventaire.
 // Ajouter une ligne ici pour un nouveau produit.
 const INV_FAMILLES = [
-  { nom: 'Maillot Bleu Nuit',   produit: /mai-bnu|maillot.*bleu nuit/,   tableau: /maillots? bleus? fonces?/ },
-  { nom: 'Maillot Bleu Ciel',   produit: /mai-bci|maillot.*bleu ciel/,   tableau: /maillots? bleus? clairs?/ },
+  { nom: 'Maillot Bleu foncé',  produit: /mai-bnu|maillot.*bleu (nuit|fonce)/, tableau: /maillots? bleus? fonces?/ },
+  { nom: 'Maillot Bleu clair',  produit: /mai-bci|maillot.*bleu (ciel|clair)/, tableau: /maillots? bleus? clairs?/ },
   { nom: 'Maillot Blanc',       produit: /mai-blc|maillot.*blanc/,       tableau: /maillots? blancs?/ },
   { nom: 'T-shirt Nara',        produit: /nara/,                          tableau: /nara/ },
-  { nom: 'T-shirt Freetime',    produit: /free ?time/,                    tableau: /free ?time/ },
-  { nom: 'Écharpe',             produit: /ech-|echarpe/,                  tableau: /echarpes?/ },
+  { nom: 'T-shirt Free time',   produit: /free ?time/,                    tableau: /free ?time/ },
+  { nom: 'Écharpe',             produit: /ech-|echarpe/,                  tableau: /echarpes?/,  tu: true },
   { nom: 'Short',               produit: /sho-|short/,                    tableau: /shorts?/ },
-  { nom: 'Gourde',              produit: /gourde/,                        tableau: /gourdes?/ },
-  { nom: 'Sac',                 produit: /sac/,                           tableau: /sacs?/ },
+  { nom: 'Gourde',              produit: /gourde/,                        tableau: /gourdes?/,   tu: true },
+  { nom: 'Sac',                 produit: /\bsacs?\b/,                    tableau: /sacs?/,      tu: true },
 ];
 
 const INV_JOURNAL_COLS = ['Clé', 'Traité le', 'Date mouvement', 'Origine', 'Match', 'Stand', 'Article',
@@ -66,7 +75,7 @@ function installerInventaire() {
 
 // Liste les tableaux reconnus (à lancer pour vérifier la correspondance)
 function diagnosticInventaire() {
-  const t = invTableaux_();
+  const t = invTableaux_(null);
   const lignes = t.map(function (x) {
     return x.onglet + ' › ' + x.nom + ' → ' + (x.famille ? x.famille.nom + ' ' + (x.stand || '(tous stands)') : 'non relié') +
       ' (' + x.lignes.length + ' taille(s))';
@@ -87,38 +96,74 @@ function majInventaire() {
   try {
     const depuis = new Date(PropertiesService.getScriptProperties().getProperty('INVENTAIRE_DEPUIS') || Date.now());
     const ss = invSS_();
-    const journal = ss.getSheetByName(INV.JOURNAL) || invCreerJournal_(ss);
+    const log = ss.getSheetByName(INV.JOURNAL) || invCreerJournal_(ss);
     const deja = {};
-    if (journal.getLastRow() > 1) {
-      journal.getRange(2, 1, journal.getLastRow() - 1, 1).getValues().forEach(function (r) { deja[String(r[0])] = 1; });
+    if (log.getLastRow() > 1) {
+      log.getRange(2, 1, log.getLastRow() - 1, 1).getValues().forEach(function (r) { deja[String(r[0])] = 1; });
     }
-    const mouvements = invMouvements_().filter(function (m) { return !deja[m.cle] && m.ts && m.ts >= depuis; });
-    if (!mouvements.length) return 'Inventaire : rien de nouveau.';
+    const auto = invMouvements_().filter(function (m) { return !deja[m.cle] && m.ts && m.ts >= depuis; });
+    const meta = invMeta_(ss);
+    const jv = invJournalVentes_(ss, meta);
+    const manuelles = jv ? invLignesManuelles_(jv, depuis) : [];
+    if (!auto.length && !manuelles.length) return 'Inventaire : rien de nouveau.';
 
-    const tableaux = invTableaux_();
+    const tableaux = invTableaux_(meta);
     const maj = {};   // "sheetId|ligne|col" → { range, valeur }
-    const sorties = mouvements.map(function (m) {
-      const fam = invFamille_(m.produit + ' ' + m.ref);
-      const res = {};
-      INV.ONGLETS.forEach(function (onglet) {
-        res[onglet] = fam ? invDecompter_(tableaux, onglet, fam, m.stand, m.taille, m.qte, maj) : { statut: 'produit non reconnu' };
-      });
-      const b = res['En boutique'], s = res['Stock Total'];
-      const statuts = [b, s].map(function (x) { return x.statut; }).filter(function (x) { return x !== 'OK'; });
-      return [m.cle, new Date(), m.ts, m.origine, m.match, m.stand || '', m.produit, m.taille || 'TU', m.qte,
-        b.avant === undefined ? '' : b.avant, b.apres === undefined ? '' : b.apres,
-        s.avant === undefined ? '' : s.avant, s.apres === undefined ? '' : s.apres,
-        statuts.length ? 'À vérifier : ' + statuts.join(' / ') : 'OK'];
+    const traces = [];
+
+    // 1. Ventes caisse + retraits web : décompte, puis ajout au Journal ventes
+    const aEcrire = [];
+    auto.forEach(function (m) {
+      const r = invAppliquer_(tableaux, m, maj);
+      traces.push(invTrace_(m.cle, m, r));
+      aEcrire.push({ m: m, marque: r.marque, famille: r.famille });
+    });
+
+    // 2. Lignes saisies à la main dans Journal ventes
+    manuelles.forEach(function (m) {
+      const r = invAppliquer_(tableaux, m, maj);
+      traces.push(invTrace_('M|' + Utilities.getUuid(), m, r));
+      jv.sh.getRange(m.ligne, jv.cMaj).setValue(r.marque);
     });
 
     Object.keys(maj).forEach(function (k) { maj[k].range.setValue(maj[k].valeur); });
-    journal.getRange(journal.getLastRow() + 1, 1, sorties.length, INV_JOURNAL_COLS.length).setValues(sorties);
-    journal.getRange(2, 2, journal.getLastRow() - 1, 2).setNumberFormat('dd/MM/yyyy HH:mm');
-    const nbOk = sorties.filter(function (r) { return r[13] === 'OK'; }).length;
-    return 'Inventaire : ' + sorties.length + ' article(s) décompté(s), dont ' + nbOk + ' sans anomalie.';
+    if (jv && aEcrire.length) invEcrireJournal_(jv, aEcrire);
+    log.getRange(log.getLastRow() + 1, 1, traces.length, INV_JOURNAL_COLS.length).setValues(traces);
+    log.getRange(2, 2, log.getLastRow() - 1, 2).setNumberFormat('dd/MM/yyyy HH:mm');
+    const nbOk = traces.filter(function (r) { return r[13] === 'OK'; }).length;
+    return 'Inventaire : ' + auto.length + ' vente(s) caisse/retrait et ' + manuelles.length +
+      ' saisie(s) manuelle(s) décomptée(s) — ' + nbOk + ' sans anomalie.';
   } finally {
     lock.releaseLock();
   }
+}
+
+// Décompte un mouvement selon le lieu : GP/VIP → En boutique + Stock Total ; HORS → Stock Total
+function invAppliquer_(tableaux, m, maj) {
+  const fam = invFamille_(m.produit + ' ' + (m.ref || ''));
+  const res = {};
+  if (!fam) {
+    res['En boutique'] = res['Stock Total'] = { statut: 'article non reconnu' };
+  } else if (m.stand === 'HORS') {
+    res['En boutique'] = { statut: 'OK', horsMatch: true };
+    let st = invDecompter_(tableaux, 'Stock Total', fam, 'GP', m.taille, m.qte, maj);
+    if (/pas de tableau/.test(st.statut)) st = invDecompter_(tableaux, 'Stock Total', fam, 'VIP', m.taille, m.qte, maj);
+    res['Stock Total'] = st;
+  } else {
+    INV.ONGLETS.forEach(function (o) { res[o] = invDecompter_(tableaux, o, fam, m.stand, m.taille, m.qte, maj); });
+  }
+  const b = res['En boutique'], s = res['Stock Total'];
+  const pb = [b, s].map(function (x) { return x.statut; }).filter(function (x) { return x !== 'OK'; });
+  const fmt = function (lib, x) { return x.avant === undefined ? '' : lib + ' ' + x.avant + '→' + x.apres; };
+  const detail = [fmt('Boutique', b), fmt('Total', s)].filter(Boolean).join(' · ');
+  return { b: b, s: s, statut: pb.length ? 'À vérifier : ' + pb.join(' / ') : 'OK',
+    marque: (pb.length ? '⚠ ' + pb.join(' / ') : '✓ ' + detail), famille: fam };
+}
+
+function invTrace_(cle, m, r) {
+  const v = function (x) { return x === undefined ? '' : x; };
+  return [cle, new Date(), m.ts || '', m.origine, m.match || '', m.stand || '', m.produit, m.taille || 'TU', m.qte,
+    v(r.b.avant), v(r.b.apres), v(r.s.avant), v(r.s.apres), r.statut];
 }
 
 // ── Sources : ventes caisse (21_LIGNES_LIVE) + retraits web (17b_REMISES) ──
@@ -142,7 +187,7 @@ function invMouvements_() {
       if (vus[cle] > 1) cle += '|' + vus[cle];
       out.push({ cle: cle, origine: 'Vente caisse', ts: invDate_(g(r, 'Horodatage')), match: '',
         stand: INV.STAND[String(g(r, 'Boutique'))] || '', produit: produit, ref: ref,
-        taille: invTailleProduit_(produit, ref), qte: qte });
+        taille: invTailleProduit_(produit, ref), qte: qte, prix: invNum_(g(r, 'CA TTC')), mode: String(g(r, 'Mode') || '') });
     });
   }
 
@@ -157,15 +202,14 @@ function invMouvements_() {
       if (!id || !produit || qte <= 0) return;
       out.push({ cle: 'R|' + id, origine: 'Retrait web', ts: invDate_(g(r, 'horodatage')), match: String(g(r, 'match') || ''),
         stand: INV.STAND[String(g(r, 'stand'))] || 'GP', produit: produit, ref: ref,
-        taille: invNormTaille_(g(r, 'taille')) || invTailleProduit_(produit, ref), qte: qte });
+        taille: invNormTaille_(g(r, 'taille')) || invTailleProduit_(produit, ref), qte: qte, prix: '', mode: '' });
     });
   }
   return out;
 }
 
 // ── Tableaux de l'inventaire (API Sheets : noms et plages des tableaux) ──
-function invTableaux_() {
-  const ss = invSS_();
+function invMeta_(ss) {
   const champs = 'sheets(properties(sheetId,title),tables(name,range))';
   let meta;
   if (typeof Sheets !== 'undefined' && Sheets.Spreadsheets) {
@@ -178,6 +222,12 @@ function invTableaux_() {
       'Dans l\'éditeur Apps Script : Services ➕ › « Google Sheets API » › Ajouter, puis relancer.');
     meta = JSON.parse(r.getContentText());
   }
+  return meta;
+}
+
+function invTableaux_(meta) {
+  const ss = invSS_();
+  meta = meta || invMeta_(ss);
   const out = [];
   (meta.sheets || []).forEach(function (s) {
     const onglet = s.properties.title;
@@ -221,6 +271,103 @@ function invDecompter_(tableaux, onglet, fam, stand, taille, qte, maj) {
   return { statut: apres < 0 ? onglet + ' : stock négatif' : 'OK', avant: cur, apres: apres };
 }
 
+// ── Journal ventes (onglet de la personne en charge de la boutique) ─────
+function invJournalVentes_(ss, meta) {
+  const sh = ss.getSheetByName(INV.JOURNAL_VENTES);
+  if (!sh) return null;
+  const nbC = Math.max(8, sh.getLastColumn());
+  const tete = sh.getRange(1, 1, Math.min(5, Math.max(1, sh.getLastRow())), nbC).getValues();
+  let hdr = -1;
+  tete.forEach(function (r, i) {
+    if (hdr < 0 && r.some(function (v) { return invNorm_(v) === 'article'; })) hdr = i;
+  });
+  if (hdr < 0) return null;
+  const h = {};
+  tete[hdr].forEach(function (v, i) {
+    const k = invNorm_(v);
+    if (k === 'date') h.date = i; else if (k === 'article') h.article = i; else if (k === 'taille') h.taille = i;
+    else if (/^quantit/.test(k)) h.qte = i; else if (k === 'prix') h.prix = i; else if (/^(boutique|lieu)/.test(k)) h.lieu = i;
+    else if (/^infos?$/.test(k)) h.info = i; else if (k === invNorm_(INV.COL_MAJ)) h.maj = i;
+  });
+  // positions par défaut (A Date, B Article, C Taille, D Quantité, E Prix, F Lieu, G Info)
+  ['date', 'article', 'taille', 'qte', 'prix', 'lieu', 'info'].forEach(function (k, i) { if (h[k] === undefined) h[k] = i; });
+  if (h.maj === undefined) {
+    h.maj = Math.max(h.date, h.article, h.taille, h.qte, h.prix, h.lieu, h.info) + 1;
+    sh.getRange(hdr + 1, h.maj + 1).setValue(INV.COL_MAJ).setFontWeight('bold');
+  }
+  // Fin de la zone : juste avant un éventuel tableau placé dessous (titre + 1 ligne vide)
+  let limite = sh.getMaxRows();
+  const feuille = (meta.sheets || []).filter(function (x) { return x.properties.title === INV.JOURNAL_VENTES; })[0];
+  ((feuille && feuille.tables) || []).forEach(function (t) {
+    const debut = t.range.startRowIndex || 0;
+    if (debut > hdr) limite = Math.min(limite, debut - 2);
+  });
+  return { sh: sh, hdr: hdr + 1, c: h, cMaj: h.maj + 1, limite: limite };
+}
+
+function invLignesManuelles_(jv, depuis) {
+  const n = jv.limite - jv.hdr;
+  if (n < 1) return [];
+  const debutJour = new Date(depuis.getFullYear(), depuis.getMonth(), depuis.getDate());
+  const vals = jv.sh.getRange(jv.hdr + 1, 1, n, jv.cMaj).getValues(), c = jv.c, out = [];
+  vals.forEach(function (r, i) {
+    const article = String(r[c.article] || '').trim(), qte = invNum_(r[c.qte]);
+    if (!article || qte <= 0 || r[c.maj] !== '' || String(r[c.info] || '').indexOf(INV.PREFIXE_AUTO) === 0) return;
+    const d = invDate_(r[c.date]), lieu = invLieu_(r[c.lieu]);
+    if (!d || d < debutJour || !lieu) return;                     // ligne incomplète ou antérieure
+    const fam = invFamille_(article), taille = invNormTaille_(r[c.taille]);
+    if (!taille && !(fam && fam.tu)) return;                       // taille pas encore saisie
+    out.push({ ligne: jv.hdr + 1 + i, origine: 'Saisie Journal ventes', ts: d, match: '', stand: lieu,
+      produit: article, ref: '', taille: taille || 'TU', qte: qte });
+  });
+  return out;
+}
+
+function invEcrireJournal_(jv, items) {
+  const c = jv.c, nbCol = jv.cMaj;
+  const n = Math.max(0, jv.limite - jv.hdr);
+  const vals = n ? jv.sh.getRange(jv.hdr + 1, 1, n, nbCol).getValues() : [];
+  const libres = [];
+  vals.forEach(function (r, i) { if (!String(r[c.article] || '').trim()) libres.push(jv.hdr + 1 + i); });
+  if (libres.length < items.length) {
+    const manque = items.length - libres.length, apres = Math.max(jv.hdr, jv.limite);
+    jv.sh.insertRowsAfter(apres, manque);
+    for (let k = 1; k <= manque; k++) libres.push(apres + k);
+  }
+  items.sort(function (a, b) { return a.m.ts - b.m.ts; }).forEach(function (it, k) {
+    const m = it.m, ligne = new Array(nbCol).fill('');
+    ligne[c.date] = Utilities.formatDate(m.ts, 'Europe/Paris', 'dd/MM/yy');
+    ligne[c.article] = (it.famille || invFamille_(m.produit + ' ' + (m.ref || '')) || { nom: m.produit }).nom;
+    ligne[c.taille] = invTailleAffichee_(m.taille);
+    ligne[c.qte] = m.qte;
+    ligne[c.prix] = m.prix === '' ? '' : m.prix;
+    ligne[c.lieu] = m.stand || '';
+    ligne[c.info] = INV.PREFIXE_AUTO + ' ' + (m.origine === 'Retrait web' ? 'Retrait add-on payé en ligne' :
+      'Caisse ' + Utilities.formatDate(m.ts, 'Europe/Paris', 'HH:mm') + (m.mode ? ' · ' + m.mode : ''));
+    ligne[c.maj] = it.marque;
+    jv.sh.getRange(libres[k], 1, 1, nbCol).setValues([ligne]);
+    if (m.prix !== '') jv.sh.getRange(libres[k], c.prix + 1).setNumberFormat('#,##0.00 "€"');
+  });
+}
+
+function invLieu_(v) {
+  const n = invNorm_(v);
+  if (!n) return '';
+  if (/vip/.test(n)) return 'VIP';
+  if (/\bgp\b|grand public/.test(n)) return 'GP';
+  if (/hors|autre|bureau|match/.test(n)) return 'HORS';
+  return '';
+}
+function invTailleAffichee_(t) {
+  if (!t || t === 'TU') return '';
+  return /^\d{3}$/.test(t) ? 'Size ' + t : t;
+}
+function invNum_(v) {
+  if (typeof v === 'number') return v;
+  const n = Number(String(v == null ? '' : v).replace(/[\s €]/g, '').replace(',', '.'));
+  return isNaN(n) ? 0 : n;
+}
+
 // ── Utilitaires ──────────────────────────────────────────────────────────
 function invSS_() {
   return SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('INVENTAIRE_ID') || INV.ID_PAR_DEFAUT);
@@ -231,6 +378,7 @@ function invCreerJournal_(ss) {
     .setBackground(INV.NAVY).setFontColor('#FFFFFF').setFontWeight('bold');
   sh.setFrozenRows(1);
   sh.hideColumns(1);
+  sh.hideSheet();
   return sh;
 }
 function invFamille_(texte) {
@@ -264,8 +412,8 @@ function invEntetes_(ligne) {
 function invDate_(v) {
   if (v instanceof Date) return v;
   if (!v) return null;
-  const m = String(v).match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
-  if (m) return new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0));
+  const m = String(v).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+  if (m) return new Date(m[3].length === 2 ? 2000 + +m[3] : +m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0));
   const d = new Date(v);
   return isNaN(d) ? null : d;
 }

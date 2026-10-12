@@ -60,6 +60,7 @@ Fichier autonome, à ajouter au projet **du classeur** (App_Boutique) puis ▶ `
 
 - Sources : ventes caisse (`21_LIGNES_LIVE`, en direct pendant le match) et retraits d'add-ons web remis au stand (`17b_REMISES`).
 - Chaque article est décompté une fois dans les tableaux des onglets **En boutique** et **Stock Total** correspondant au produit, au stand (B1 → « … GP », B2 → « … VIP ») et à la taille. L'onglet **Dépot** n'est pas touché.
-- Journal / anti-doublon : onglet `🔄 MAJ auto (CRM)` dans l'inventaire (stock avant → après, anomalies « À vérifier »).
+- **Journal ventes** (3 lieux : Boutique GP, Boutique VIP, Hors match) : les ventes caisse et retraits web y sont ajoutés (Info « 🔄 … ») ; les ventes saisies à la main y sont décomptées dès que la ligne est complète — GP/VIP → En boutique + Stock Total, Hors match → Stock Total. Colonne « Stock MAJ » : ✓ stock avant → après, ou ⚠ à vérifier ; une ligne marquée n'est jamais redécomptée.
+- Trace technique / anti-doublon caisse : onglet masqué `🔄 MAJ auto (CRM)`.
 - Seuls les mouvements postérieurs à l'installation sont pris en compte (propriété `INVENTAIRE_DEPUIS`).
 - Nouveau produit : ajouter une ligne dans `INV_FAMILLES` (motif du nom CRM ↔ motif du nom de tableau).
