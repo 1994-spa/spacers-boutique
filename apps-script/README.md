@@ -53,3 +53,13 @@ Fichier autonome : à ajouter au projet **du classeur** (App_Boutique) ou au pro
 - Déclencheur horaire `passerelleAcheteurs` ; si le fichier est dans le projet Pilotage, `relierAcheteurs` l'appelle aussi dès qu'un billet est relié.
 - Propriété facultative `CRM_BILLETTERIE_ID` (posée par l'installation).
 - La synchro de fin de match (`CRM_Boutique_V3`) et les tablettes ne changent pas. Aucun nouveau déploiement Web App n'est nécessaire.
+
+## Mise à jour du classeur « Inventaire 2026 2027 » (`Inventaire_Boutique.gs`)
+
+Fichier autonome, à ajouter au projet **du classeur** (App_Boutique) puis ▶ `installerInventaire` une fois (déclencheur 10 min). ▶ `diagnosticInventaire` liste les tableaux reconnus.
+
+- Sources : ventes caisse (`21_LIGNES_LIVE`, en direct pendant le match) et retraits d'add-ons web remis au stand (`17b_REMISES`).
+- Chaque article est décompté une fois dans les tableaux des onglets **En boutique** et **Stock Total** correspondant au produit, au stand (B1 → « … GP », B2 → « … VIP ») et à la taille. L'onglet **Dépot** n'est pas touché.
+- Journal / anti-doublon : onglet `🔄 MAJ auto (CRM)` dans l'inventaire (stock avant → après, anomalies « À vérifier »).
+- Seuls les mouvements postérieurs à l'installation sont pris en compte (propriété `INVENTAIRE_DEPUIS`).
+- Nouveau produit : ajouter une ligne dans `INV_FAMILLES` (motif du nom CRM ↔ motif du nom de tableau).
