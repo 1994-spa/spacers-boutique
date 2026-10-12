@@ -166,11 +166,18 @@ function invMouvements_() {
 // ── Tableaux de l'inventaire (API Sheets : noms et plages des tableaux) ──
 function invTableaux_() {
   const ss = invSS_();
-  const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + ss.getId() +
-    '?fields=' + encodeURIComponent('sheets(properties(sheetId,title),tables(name,range))');
-  const r = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
-  if (r.getResponseCode() >= 300) throw new Error('Lecture des tableaux impossible (' + r.getResponseCode() + ') : ' + r.getContentText().slice(0, 200));
-  const meta = JSON.parse(r.getContentText());
+  const champs = 'sheets(properties(sheetId,title),tables(name,range))';
+  let meta;
+  if (typeof Sheets !== 'undefined' && Sheets.Spreadsheets) {
+    // Service avancé « Google Sheets API » ajouté au projet (Services ➕) : rien à activer ailleurs
+    meta = Sheets.Spreadsheets.get(ss.getId(), { fields: champs });
+  } else {
+    const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + ss.getId() + '?fields=' + encodeURIComponent(champs);
+    const r = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+    if (r.getResponseCode() >= 300) throw new Error('Lecture des tableaux impossible (' + r.getResponseCode() + '). ' +
+      'Dans l\'éditeur Apps Script : Services ➕ › « Google Sheets API » › Ajouter, puis relancer.');
+    meta = JSON.parse(r.getContentText());
+  }
   const out = [];
   (meta.sheets || []).forEach(function (s) {
     const onglet = s.properties.title;
