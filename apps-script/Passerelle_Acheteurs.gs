@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// PASSERELLE ACHETEURS — fichier à ajouter au projet Apps Script « Pilotage Boutique »
-// (même projet que Pilotage_Boutique.gs : réutilise pbSS_, pbSheet_, pbNum_,
-//  pbFamilleTarif_, PB, PB_I, PB_NB, PB_LIGNES_COLS).
+// PASSERELLE ACHETEURS — fichier AUTONOME : fonctionne dans le projet du classeur
+// (App_Boutique) comme dans le projet « Pilotage Boutique ». Il ne dépend d'aucune
+// fonction des autres fichiers ; toutes ses fonctions sont préfixées pa / PA.
 //
 // 1. 01_VENTES (CRM Boutique) : chaque ligne vendue en tablette reçoit l'acheteur
 //    et le billet scanné (ID vente, client Tickie, email, nom, ID billet,
@@ -14,16 +14,20 @@
 //    (acheteur, billet, profil, match, produit, montant), reconstruit à chaque passage.
 //    Pendant de BUVETTE_COMMANDES pour la buvette.
 //
-// Déclenchement : à la fin de relierAcheteurs (toutes les 10 min, dès qu'un billet est
-// relié) + déclencheur horaire posé par installerPasserelle (rattrape la synchro de
-// fin de match). Relançable à la main : ▶ passerelleAcheteurs.
+// Déclenchement : déclencheur horaire posé par installerPasserelle ; en plus, si ce
+// fichier est dans le projet Pilotage, relierAcheteurs l'appelle dès qu'un billet est
+// relié. Relançable à la main : ▶ passerelleAcheteurs.
 //
 // Propriété du script (facultative) : CRM_BILLETTERIE_ID — id du classeur
 // « CRM_Billetterie_Spacers ». Par défaut : PA.BILLETTERIE_ID_PAR_DEFAUT.
 // ═══════════════════════════════════════════════════════════════════════════
 
 const PA = {
+  BOUTIQUE_ID_PAR_DEFAUT: '1mE9gSCtetFgnWEt0kA6cS2lcgJDe7oPRLDiXdGhH2EQ',
   BILLETTERIE_ID_PAR_DEFAUT: '1aYRgYcKqQ17xGz4t52_rJlBS5DZq0SHwZdopxNHE10Q',
+  SH_LIVE: '20_VENTES_LIVE',
+  SH_LIGNES: '21_LIGNES_LIVE',
+  NAVY: '#001E2D',
   SH_VENTES: '01_VENTES',
   SH_BILLETTERIE: 'BOUTIQUE_COMMANDES',
   SH_MATCHES: '🏆 MATCHES',
@@ -47,8 +51,28 @@ function installerPasserelle() {
     if (t.getHandlerFunction() === 'passerelleAcheteurs') ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('passerelleAcheteurs').timeBased().everyHours(1).create();
-  Logger.log('CRM Boutique : ' + pbSS_().getName() + '\nCRM Billetterie : ' + paBilletterieSS_().getName());
+  Logger.log('CRM Boutique : ' + paBoutiqueSS_().getName() + '\nCRM Billetterie : ' + paBilletterieSS_().getName());
   Logger.log(passerelleAcheteurs());
+}
+
+// Classeur CRM Boutique : celui du projet s'il est lié au classeur, sinon par identifiant
+function paBoutiqueSS_() {
+  const id = PropertiesService.getScriptProperties().getProperty('CRM_BOUTIQUE_ID');
+  if (id) return SpreadsheetApp.openById(id);
+  const actif = SpreadsheetApp.getActiveSpreadsheet();
+  return actif || SpreadsheetApp.openById(PA.BOUTIQUE_ID_PAR_DEFAUT);
+}
+function paSheet_(nom) { return paBoutiqueSS_().getSheetByName(nom); }
+function paNum_(v) {
+  if (typeof v === 'number') return v;
+  const n = Number(String(v == null ? '' : v).replace(/[\s\u00a0€]/g, '').replace(',', '.'));
+  return isNaN(n) ? 0 : n;
+}
+function paFamilleTarif_(tarif, code) {
+  if (!tarif) return code ? 'Billet à vérifier' : 'Sans billet';
+  if (/abonn|commandant|pilote|spationaute/i.test(tarif)) return 'Abonné';
+  if (/invitation|gratuit|licenci/i.test(tarif)) return 'Invité / gratuit';
+  return 'Billet payant';
 }
 
 function paBilletterieSS_() {
@@ -75,40 +99,40 @@ function passerelleAcheteurs() {
 // ── Lecture de 20_VENTES_LIVE + 21_LIGNES_LIVE ───────────────────────────
 // Renvoie { ventes: {idVente: {...}}, lignes: [{...}] }
 function paLireLive_() {
-  const sh = pbSheet_(PB.SH_LIVE), shL = pbSheet_(PB.SH_LIGNES);
+  const sh = paSheet_(PA.SH_LIVE), shL = paSheet_(PA.SH_LIGNES);
   const ventes = {}, lignes = [];
   if (sh && sh.getLastRow() > 1) {
-    sh.getRange(2, 1, sh.getLastRow() - 1, PB_NB).getValues().forEach(function (r) {
-      const id = String(r[PB_I['ID vente']] || '').trim();
+    const d = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+    const h = paIndexEntetes_(d[0]);
+    const g = function (r, nom) { const i = h[paNorm_(nom)]; return i === undefined ? '' : r[i]; };
+    d.slice(1).forEach(function (r) {
+      const id = String(g(r, 'ID vente') || '').trim();
       if (!id) return;
-      const tarif = String(r[PB_I['Tarif billet']] || '');
-      const code = String(r[PB_I['Code-barres']] || '');
+      const tarif = String(g(r, 'Tarif billet') || ''), code = String(g(r, 'Code-barres') || '');
       ventes[id] = {
-        id: id,
-        ts: paDate_(r[PB_I['Horodatage']]),
-        eventId: String(r[PB_I['ID événement Tickie']] || ''),
-        match: String(r[PB_I['Match']] || ''),
-        boutique: String(r[PB_I['Boutique']] || ''),
-        session: String(r[PB_I['Session']] || ''),
-        mode: String(r[PB_I['Mode']] || ''),
-        idBillet: String(r[PB_I['ID billet']] || ''),
-        code: code,
-        tarif: tarif,
-        client: String(r[PB_I['Client Tickie']] || ''),
-        email: String(r[PB_I['Email acheteur']] || '').toLowerCase().trim(),
-        nom: String(r[PB_I['Nom acheteur']] || ''),
-        profil: (tarif || code) ? pbFamilleTarif_(tarif, code) : '',
+        id: id, ts: paDate_(g(r, 'Horodatage')), eventId: String(g(r, 'ID événement Tickie') || ''),
+        match: String(g(r, 'Match') || ''), boutique: String(g(r, 'Boutique') || ''),
+        session: String(g(r, 'Session') || ''), mode: String(g(r, 'Mode') || ''),
+        idBillet: String(g(r, 'ID billet') || ''), code: code, tarif: tarif,
+        client: String(g(r, 'Client Tickie') || ''),
+        email: String(g(r, 'Email acheteur') || '').toLowerCase().trim(),
+        nom: String(g(r, 'Nom acheteur') || ''),
+        profil: (tarif || code) ? paFamilleTarif_(tarif, code) : '',
       };
     });
   }
   if (shL && shL.getLastRow() > 1) {
-    shL.getRange(2, 1, shL.getLastRow() - 1, PB_LIGNES_COLS.length).getValues().forEach(function (l) {
-      const id = String(l[0] || '').trim();
+    const d = shL.getRange(1, 1, shL.getLastRow(), shL.getLastColumn()).getValues();
+    const h = paIndexEntetes_(d[0]);
+    const g = function (r, nom) { const i = h[paNorm_(nom)]; return i === undefined ? '' : r[i]; };
+    d.slice(1).forEach(function (l) {
+      const id = String(g(l, 'ID vente') || '').trim();
       if (!id || !ventes[id]) return;
       lignes.push({
-        idVente: id, ts: paDate_(l[1]), ref: String(l[4] || ''), produit: String(l[5] || ''),
-        cat: String(l[6] || ''), qte: pbNum_(l[7]), pu: pbNum_(l[8]), ca: pbNum_(l[9]),
-        mode: String(l[10] || ventes[id].mode),
+        idVente: id, ts: paDate_(g(l, 'Horodatage')), ref: String(g(l, 'Réf.') || ''),
+        produit: String(g(l, 'Produit') || ''), cat: String(g(l, 'Catégorie') || ''),
+        qte: paNum_(g(l, 'Qté')), pu: paNum_(g(l, 'PU TTC')), ca: paNum_(g(l, 'CA TTC')),
+        mode: String(g(l, 'Mode') || ventes[id].mode),
       });
     });
   }
@@ -117,7 +141,7 @@ function paLireLive_() {
 
 // ── 1. 01_VENTES : acheteur et billet sur chaque ligne tablette ──────────
 function paEnrichirVentes_(live) {
-  const sh = pbSheet_(PA.SH_VENTES);
+  const sh = paSheet_(PA.SH_VENTES);
   if (!sh || sh.getLastRow() < 2) return 0;
 
   const cols = paAssurerColonnes_(sh, PA_COLS_VENTES);            // {nom: n° colonne 1-based}
@@ -138,7 +162,7 @@ function paEnrichirVentes_(live) {
   data.slice(1).forEach(function (r) {
     const v = String(r[iIdV] || '');
     if (!v) return;
-    const k = cleLigne(v, r[iProd], pbNum_(r[iQte]));
+    const k = cleLigne(v, r[iProd], paNum_(r[iQte]));
     prises[k] = (prises[k] || 0) + 1;
   });
 
@@ -171,7 +195,7 @@ function paEnrichirVentes_(live) {
     const session = String(r[iCmd] || '').split('_')[0];
     const cands = parSession[session];
     if (!cands) return;
-    const prod = paNorm_(r[iProd]), qte = pbNum_(r[iQte]), ca = pbNum_(r[iCA]), ts = paDate_(r[iDate]);
+    const prod = paNorm_(r[iProd]), qte = paNum_(r[iQte]), ca = paNum_(r[iCA]), ts = paDate_(r[iDate]);
     let best = null, ecart = Infinity;
     cands.forEach(function (c) {
       if (!c.libre || paNorm_(c.l.produit) !== prod || c.l.qte !== qte || Math.abs(c.l.ca - ca) > 0.01) return;
@@ -211,15 +235,9 @@ function paEcrireAcheteur_(r, cols, iEmail, v) {
 // ── 2. CRM Billetterie : BOUTIQUE_COMMANDES ──────────────────────────────
 function paPousserBilletterie_(live) {
   const ss = paBilletterieSS_();
-  let sh = ss.getSheetByName(PA.SH_BILLETTERIE);
-  if (!sh) {
-    sh = ss.insertSheet(PA.SH_BILLETTERIE);
-    sh.getRange(1, 1, 1, PA_COLS_BILLETTERIE.length).setValues([PA_COLS_BILLETTERIE])
-      .setBackground(PB.NAVY).setFontColor('#FFFFFF').setFontWeight('bold');
-    sh.setFrozenRows(1);
-  }
+  const sh = ss.getSheetByName(PA.SH_BILLETTERIE) || paCreerOnglet_(ss, PA.SH_BILLETTERIE, PA_COLS_BILLETTERIE);
   const idMatch = paIdsMatchs_(ss);
-  const tz = pbTz_(), now = new Date();
+  const tz = 'Europe/Paris', now = new Date();
   const tsDe = function (l) { return l.ts || live.ventes[l.idVente].ts || now; };
   const rows = live.lignes.slice().sort(function (a, b) { return tsDe(b) - tsDe(a); }).map(function (l) {
     const v = live.ventes[l.idVente];
@@ -245,9 +263,9 @@ function paPousserBilletterie_(live) {
 
 // tickie_event_id → match_id depuis 🏆 MATCHES (en-tête cherché dans les 5 premières lignes)
 function paIdsMatchs_(ss) {
-  const out = {}, sh = ss.getSheetByName(PA.SH_MATCHES);
-  if (!sh || sh.getLastRow() < 2) return out;
-  const data = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+  const out = {}, shM = ss.getSheetByName(PA.SH_MATCHES);
+  if (!shM || shM.getLastRow() < 2) return out;
+  const data = shM.getRange(1, 1, shM.getLastRow(), shM.getLastColumn()).getValues();
   for (let i = 0; i < Math.min(5, data.length); i++) {
     const h = paIndexEntetes_(data[i]);
     const iId = h[paNorm_('match_id')], iEv = h[paNorm_('tickie_event_id')];
@@ -259,6 +277,13 @@ function paIdsMatchs_(ss) {
 }
 
 // ── Utilitaires ──────────────────────────────────────────────────────────
+function paCreerOnglet_(ss, nom, entetes) {
+  const sh = ss.insertSheet(nom);
+  sh.getRange(1, 1, 1, entetes.length).setValues([entetes])
+    .setBackground(PA.NAVY).setFontColor('#FFFFFF').setFontWeight('bold');
+  sh.setFrozenRows(1);
+  return sh;
+}
 function paNorm_(s) {
   return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
 }

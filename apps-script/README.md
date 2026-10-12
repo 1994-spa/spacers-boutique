@@ -46,10 +46,10 @@ Crée 📖 SOMMAIRE, 📊 TABLEAU DE BORD (formules, sélecteur de saison) et �
 
 ## Passerelle acheteurs (`Passerelle_Acheteurs.gs`)
 
-À ajouter au projet **Pilotage Boutique** (➕ Fichier › Script, nom `Passerelle_Acheteurs`), puis ▶ `installerPasserelle` une fois. Le journal affiche le nom des deux classeurs et le premier bilan.
+Fichier autonome : à ajouter au projet **du classeur** (App_Boutique) ou au projet **Pilotage Boutique** (➕ Fichier › Script, nom `Passerelle_Acheteurs`), puis ▶ `installerPasserelle` une fois. Le journal affiche le nom des deux classeurs et le premier bilan.
 
 - **01_VENTES** : chaque ligne vendue en tablette reçoit à droite `ID vente`, `Client Tickie`, `Email acheteur`, `Nom acheteur`, `ID billet`, `Code-barres`, `Tarif billet`, `Profil acheteur` (Abonné / Billet payant / Invité / gratuit / Sans billet) ; la colonne historique `email` est aussi remplie. Rapprochement avec `21_LIGNES_LIVE` : même session de caisse, produit, quantité, CA, ±3 min. Relançable sans doublon.
 - **CRM Billetterie** : onglet `BOUTIQUE_COMMANDES`, une ligne par article (acheteur, billet, profil, `ID_MATCH` lu dans 🏆 MATCHES, produit, montant, paiement), reconstruit à chaque passage — pendant de `BUVETTE_COMMANDES`.
-- Déclencheur horaire `passerelleAcheteurs` ; en plus, `relierAcheteurs` l'appelle dès qu'un billet est relié (toutes les 10 min pendant le match).
+- Déclencheur horaire `passerelleAcheteurs` ; si le fichier est dans le projet Pilotage, `relierAcheteurs` l'appelle aussi dès qu'un billet est relié.
 - Propriété facultative `CRM_BILLETTERIE_ID` (posée par l'installation).
 - La synchro de fin de match (`CRM_Boutique_V3`) et les tablettes ne changent pas. Aucun nouveau déploiement Web App n'est nécessaire.
