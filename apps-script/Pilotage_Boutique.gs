@@ -343,7 +343,13 @@ function relierAcheteurs() {
     relies++;
   });
   rg.setValues(data);
-  if (relies) majClientsBoutique();
+  if (relies) {
+    majClientsBoutique();
+    // Passerelle_Acheteurs.gs : 01_VENTES + CRM Billetterie (si le fichier est installé)
+    if (typeof passerelleAcheteurs === 'function') {
+      try { passerelleAcheteurs(); } catch (e) { Logger.log('Passerelle acheteurs : ' + e); }
+    }
+  }
 }
 
 // 23_CLIENTS_BOUTIQUE : une ligne par acheteur identifié (hors « Offert »)
