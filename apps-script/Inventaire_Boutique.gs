@@ -318,9 +318,16 @@ function invLignesManuelles_(jv, depuis) {
   const vals = jv.sh.getRange(jv.hdr + 1, 1, n, jv.cMaj).getValues(), c = jv.c, out = [];
   vals.forEach(function (r, i) {
     const article = String(r[c.article] || '').trim(), qte = invNum_(r[c.qte]);
-    if (!article || qte <= 0 || r[c.maj] !== '' || String(r[c.info] || '').indexOf(INV.PREFIXE_AUTO) === 0) return;
+    const marque = String(r[c.maj] || '');
+    if (!article || qte <= 0 || (marque && marque.indexOf('— non décompté') !== 0) ||
+        String(r[c.info] || '').indexOf(INV.PREFIXE_AUTO) === 0) return;
     const d = invDate_(r[c.date]), lieu = invLieu_(r[c.lieu]);
-    if (!d || d < debutJour || !lieu) return;                     // ligne incomplète ou antérieure
+    if (!d || !lieu) return;                                      // ligne incomplète
+    if (d < debutJour) {                                          // antérieure : signalée, jamais décomptée
+      jv.sh.getRange(jv.hdr + 1 + i, jv.cMaj).setValue('— non décompté : daté avant la mise en service (' +
+        Utilities.formatDate(depuis, 'Europe/Paris', 'dd/MM/yy') + '). Corriger la date pour le décompter.');
+      return;
+    }
     const fam = invFamille_(article), taille = invNormTaille_(r[c.taille]);
     if (!taille && !(fam && fam.tu)) return;                       // taille pas encore saisie
     out.push({ ligne: jv.hdr + 1 + i, origine: 'Saisie Journal ventes', ts: d, match: '', stand: lieu,
