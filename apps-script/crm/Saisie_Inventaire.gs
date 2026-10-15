@@ -399,7 +399,7 @@ function si_construireApres_(inv, match, leger) {
   });
   const rT = SI.A_CAISSE + 3;
   sh.getRange(SI.A_CAISSE + 1, 1, 2, H1.length).setValues(lignesC.map(l => l.map(v => (typeof v === 'string' && v[0] === '=') ? '' : v)));
-  lignesC.forEach((l, j) => { const r = SI.A_CAISSE + 1 + j; sh.getRange(r, 10).setFormula(l[9]); sh.getRange(r, 11).setFormula(l[10]); });
+  lignesC.forEach((l, j) => { const r = SI.A_CAISSE + 1 + j; sh.getRange(r, 10).setFormula(si_f_(inv, l[9])); sh.getRange(r, 11).setFormula(si_f_(inv, l[10])); });
   sh.getRange(rT, 1).setValue('TOTAL').setFontWeight('bold');
   ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'].forEach(col => {
     sh.getRange(col + rT).setFormula('=SUM(' + col + (SI.A_CAISSE + 1) + ':' + col + (SI.A_CAISSE + 2) + ')');
@@ -444,9 +444,9 @@ function si_construireApres_(inv, match, leger) {
       const r = r0 + i;
       f.push(['=IF(I' + r + '="","",I' + r + '-H' + r + ')']);
     }
-    sh.getRange(r0, 10, n, 1).setFormulas(f);
-    sh.getRange(r0, 13, n, 1).setFormulas(f.map((_, i) => ['=IF(L' + (r0 + i) + '="","",L' + (r0 + i) + '-K' + (r0 + i) + ')']));
-    sh.getRange(r0, 16, n, 1).setFormulas(f.map((_, i) => ['=IF(O' + (r0 + i) + '="","",O' + (r0 + i) + '-N' + (r0 + i) + ')']));
+    sh.getRange(r0, 10, n, 1).setFormulas(f.map(x => [si_f_(inv, x[0])]));
+    sh.getRange(r0, 13, n, 1).setFormulas(f.map((_, i) => [si_f_(inv, '=IF(L' + (r0 + i) + '="","",L' + (r0 + i) + '-K' + (r0 + i) + ')')]));
+    sh.getRange(r0, 16, n, 1).setFormulas(f.map((_, i) => [si_f_(inv, '=IF(O' + (r0 + i) + '="","",O' + (r0 + i) + '-N' + (r0 + i) + ')')]));
     [9, 12, 15].forEach(c => sh.getRange(r0, c, n, 1).setBackground(SI.JAUNE).setHorizontalAlignment('center')
       .setDataValidation(SpreadsheetApp.newDataValidation().requireNumberGreaterThanOrEqualTo(0).setAllowInvalid(false).build()));
     [8, 11, 14].forEach(c => sh.getRange(r0, c, n, 1).setBackground(SI.GRIS));
@@ -567,14 +567,14 @@ function si_reparerLive_(inv) {
       vals.forEach((r, i) => {
         const ligne = 5 + i;
         if (String(r[0]).trim() && String(r[1]).trim() !== 'TOTAL' && String(aff[i][0]).indexOf('#') === 0) {
-          st.getRange(ligne, 10).setFormula('=IF(I' + ligne + '="","",I' + ligne + '-G' + ligne + ')');
+          st.getRange(ligne, 10).setFormula(si_f_(inv, '=IF(I' + ligne + '="","",I' + ligne + '-G' + ligne + ')'));
         }
       });
     }
     const vl = inv.getSheetByName('🔄 VENTES LIVE');
     if (vl && vl.getLastRow() > 4 && String(vl.getRange('H2').getDisplayValue()).indexOf('#') === 0) {
       const der = vl.getLastRow();
-      vl.getRange('H2').setFormula('="Pointées : "&COUNTIF(A5:A' + der + ',TRUE)&" / ' + (der - 4) + '"');
+      vl.getRange('H2').setFormula(si_f_(inv, '="Pointées : "&COUNTIF(A5:A' + der + ',TRUE)&" / ' + (der - 4) + '"'));
     }
   } catch (e) { console.warn('Réparation LIVE : ' + e.message); }
 }
@@ -647,6 +647,17 @@ function si_protegerAvertissement_(sh, cle, range) {
     sh.getProtections(SpreadsheetApp.ProtectionType.RANGE).filter(p => p.getDescription() === cle).forEach(p => p.remove());
     range.protect().setDescription(cle).setWarningOnly(true);
   } catch (e) { /* protection facultative */ }
+}
+
+/**
+ * Séparateur d'arguments selon la langue du classeur : un classeur réglé en français (virgule décimale)
+ * n'accepte que « ; » — avec « , » la formule s'affiche #ERROR!. Nos formules n'ont pas de nombre décimal.
+ */
+function si_f_(ss, formule) {
+  let loc = '';
+  try { loc = String(ss.getSpreadsheetLocale() || ''); } catch (e) { loc = ''; }
+  const virgule = /^(en|ja|zh|ko|he|iw|th|hi)(_|$)/i.test(loc) || !loc;
+  return virgule ? formule : formule.replace(/,/g, ';');
 }
 
 function si_r2_(v) { return Math.round((Number(v) || 0) * 100) / 100; }
