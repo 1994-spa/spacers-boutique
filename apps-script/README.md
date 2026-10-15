@@ -29,6 +29,7 @@ Le pilotage est un **projet Apps Script séparé** (comme `Tickie_Receiver`) : s
 | 21_LIGNES_LIVE | une ligne par article vendu (réf., produit, qté, PU, CA) |
 | 22_TABLETTES | dernier chargement du match et dernière remontée de ventes par boutique |
 | 23_CLIENTS_BOUTIQUE | une ligne par acheteur identifié : achats, articles, CA, premier/dernier achat, matchs, tarifs |
+| 24_TRANSFERTS_LIVE | une ligne par article passé d'une boutique à l'autre : course du volant pour un client ou réassort (de, vers, réf., qté, motif, match, bénévole) |
 
 Les ventes « Offert » sont reçues mais exclues du CA et de la fiche client. Le tableau de bord du pilotage lit uniquement 20/21 ; la comptabilité reste sur 01_VENTES.
 
@@ -64,3 +65,18 @@ Fichier autonome, à ajouter au projet **du classeur** (App_Boutique) puis ▶ `
 - Trace technique / anti-doublon caisse : onglet masqué `🔄 MAJ auto (CRM)`.
 - Seuls les mouvements postérieurs à l'installation sont pris en compte (propriété `INVENTAIRE_DEPUIS`).
 - Nouveau produit : ajouter une ligne dans `INV_FAMILLES` (motif du nom CRM ↔ motif du nom de tableau).
+
+## Transferts entre boutiques (courses du volant, réassort)
+
+Les deux boutiques n'ont pas le même stock (le gros du stock est en GP) et il n'y a pas d'internet sur place.
+
+**En caisse (tablette)**
+- Article à 0 au stand mais présent dans l'autre boutique : la carte devient orange « 🏃 GP » avec le stock estimé (« 0 ici · ≈4 en GP »). Au toucher, la caisse demande si le volant va le chercher. Le client paie normalement ; la ligne du panier porte « 🏃 à chercher en GP ».
+- Après l'encaissement, le bouton **« 🏃 N à rapporter de GP »** clignote. Quand le volant revient : **✔ Remis**. Article introuvable : **Introuvable** (la ligne est retirée de la vente, montant à rembourser affiché).
+- **📦 Recevoir de GP** : le volant rapporte plusieurs articles d'un coup (réassort).
+- Le stock GP affiché vient du CRM (`03_PRODUITS.stock_B1`, chargé avec le catalogue) : indicatif tant que la boutique GP n'a pas de tablette.
+
+**Côté serveur** — la vente reste celle du stand qui encaisse (01_VENTES et synchro de fin de match inchangées) ; seul l'emplacement du stock bouge :
+- `Pilotage_Boutique.gs` : action `transferts` → 24_TRANSFERTS_LIVE (idempotent). **Gérer les déploiements → ✏️ → Nouvelle version** après mise à jour du fichier.
+- `Inventaire_Boutique.gs` : −qté dans le tableau du stand de départ, +qté dans celui d'arrivée (En boutique + Stock Total), trace dans `🔄 MAJ auto (CRM)`.
+- `crm/Transferts_Boutique.gs` : à ajouter au projet du classeur (à côté de `Stock_Boutique.gs`), puis ▶ `installerTransferts` une fois. Applique les transferts à `03_PRODUITS` (stock_B1 / stock_B2) avec deux mouvements TRANSFERT dans 11_MOUVEMENTS_STOCK ; colonne « Appliqué 03_PRODUITS » dans 24 (✓ / ⚠).

@@ -6,6 +6,9 @@
 // Chaque article qui sort de la boutique est décompté UNE fois :
 //   • vente en caisse (tablette)  → 21_LIGNES_LIVE (arrive pendant le match)
 //   • retrait d'un add-on payé en ligne, remis au stand → 17b_REMISES
+// Les transferts entre boutiques (24_TRANSFERTS_LIVE : course du volant pour un client,
+// réassort) déplacent l'article : −qté dans le tableau du stand de départ, +qté dans celui
+// d'arrivée (onglets « En boutique » et « Stock Total »). Pas de ligne dans « Journal ventes ».
 // dans les tableaux de l'onglet « En boutique » ET de l'onglet « Stock Total »
 // dont le nom correspond au produit et au stand (ex. « Maillots Bleus foncés GP »,
 // « Echarpes VIP »), sur la ligne de la bonne taille, colonne « Stock ».
@@ -37,6 +40,7 @@ const INV = {
   PREFIXE_AUTO: '🔄',
   SH_LIGNES: '21_LIGNES_LIVE',
   SH_REMISES: '17b_REMISES',
+  SH_TRF: '24_TRANSFERTS_LIVE',
   NAVY: '#001E2D',
   STAND: { B1: 'GP', B2: 'VIP' },
 };
@@ -120,6 +124,7 @@ function majInventaire_() {
     // 1. Ventes caisse + retraits web : décompte, puis ajout au Journal ventes
     const aEcrire = [];
     auto.forEach(function (m) {
+      if (m.transfert) { traces.push(invTrace_(m.cle, m, invAppliquerTransfert_(tableaux, m, maj))); return; }
       const r = invAppliquer_(tableaux, m, maj);
       traces.push(invTrace_(m.cle, m, r));
       aEcrire.push({ m: m, marque: r.marque, famille: r.famille });
@@ -137,7 +142,8 @@ function majInventaire_() {
     log.getRange(log.getLastRow() + 1, 1, traces.length, INV_JOURNAL_COLS.length).setValues(traces);
     log.getRange(2, 2, log.getLastRow() - 1, 2).setNumberFormat('dd/MM/yyyy HH:mm');
     const nbOk = traces.filter(function (r) { return r[13] === 'OK'; }).length;
-    return 'Inventaire : ' + auto.length + ' vente(s) caisse/retrait et ' + manuelles.length +
+    const nbT = auto.filter(function (m) { return m.transfert; }).length;
+    return 'Inventaire : ' + (auto.length - nbT) + ' vente(s) caisse/retrait, ' + nbT + ' transfert(s) entre boutiques et ' + manuelles.length +
       ' saisie(s) manuelle(s) décomptée(s) — ' + nbOk + ' sans anomalie.';
   } finally {
     lock.releaseLock();
@@ -164,6 +170,21 @@ function invAppliquer_(tableaux, m, maj) {
   const detail = [fmt('Boutique', b), fmt('Total', s)].filter(Boolean).join(' · ');
   return { b: b, s: s, statut: pb.length ? 'À vérifier : ' + pb.join(' / ') : 'OK',
     marque: (pb.length ? '⚠ ' + pb.join(' / ') : '✓ ' + detail), famille: fam };
+}
+
+// Transfert : −qté au stand de départ, +qté au stand d'arrivée, dans chaque onglet.
+// Trace : colonnes « avant / après » = stand de départ.
+function invAppliquerTransfert_(tableaux, m, maj) {
+  const fam = invFamille_(m.produit + ' ' + (m.ref || ''));
+  if (!fam) { const x = { statut: 'article non reconnu' }; return { b: x, s: x, statut: 'À vérifier : article non reconnu' }; }
+  const res = {}, pb = [];
+  INV.ONGLETS.forEach(function (o) {
+    const sort = invDecompter_(tableaux, o, fam, m.transfert.de, m.taille, m.qte, maj);
+    const entre = invDecompter_(tableaux, o, fam, m.transfert.vers, m.taille, -m.qte, maj);
+    [sort, entre].forEach(function (x) { if (x.statut !== 'OK') pb.push(x.statut); });
+    res[o] = { statut: sort.statut, avant: sort.avant, apres: sort.apres };
+  });
+  return { b: res['En boutique'], s: res['Stock Total'], statut: pb.length ? 'À vérifier : ' + pb.join(' / ') : 'OK', famille: fam };
 }
 
 function invTrace_(cle, m, r) {
@@ -209,6 +230,21 @@ function invMouvements_() {
       out.push({ cle: 'R|' + id, origine: 'Retrait web', ts: invDate_(g(r, 'horodatage')), match: String(g(r, 'match') || ''),
         stand: INV.STAND[String(g(r, 'stand'))] || 'GP', produit: produit, ref: ref,
         taille: invNormTaille_(g(r, 'taille')) || invTailleProduit_(produit, ref), qte: qte, prix: '', mode: '' });
+    });
+  }
+  const shT = crm.getSheetByName(INV.SH_TRF);
+  if (shT && shT.getLastRow() > 1) {
+    const d = shT.getRange(1, 1, shT.getLastRow(), shT.getLastColumn()).getValues();
+    const h = invEntetes_(d[0]);
+    const g = function (r, n) { const i = h[invNorm_(n)]; return i === undefined ? '' : r[i]; };
+    d.slice(1).forEach(function (r) {
+      const id = String(g(r, 'ID transfert') || ''), produit = String(g(r, 'Produit') || ''), ref = String(g(r, 'Réf.') || '');
+      const qte = Number(g(r, 'Qté')) || 0, de = INV.STAND[String(g(r, 'De'))], vers = INV.STAND[String(g(r, 'Vers'))];
+      if (!id || !produit || qte <= 0 || !de || !vers || de === vers) return;
+      out.push({ cle: 'T|' + id, origine: 'Transfert ' + de + ' → ' + vers + ' (' + String(g(r, 'Motif') || '') + ')',
+        ts: invDate_(g(r, 'Remis le')) || invDate_(g(r, 'Horodatage')), match: String(g(r, 'Match') || ''),
+        stand: de + '→' + vers, produit: produit, ref: ref, taille: invTailleProduit_(produit, ref), qte: qte,
+        transfert: { de: de, vers: vers } });
     });
   }
   return out;

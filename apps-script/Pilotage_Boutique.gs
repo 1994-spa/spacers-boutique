@@ -14,6 +14,10 @@
 //  4. Déclencheur toutes les 10 min : billet scanné → acheteur Tickie
 //     (id client, email, nom) dans 20_VENTES_LIVE, puis fiche 23_CLIENTS_BOUTIQUE.
 //
+//  5. Transferts entre boutiques (action=transferts, idempotent) → 24_TRANSFERTS_LIVE :
+//     article cherché dans l'autre boutique pour un client (course du volant) ou réassort.
+//     Lu par Inventaire_Boutique.gs (classeur Inventaire) et Transferts_Boutique.gs (03_PRODUITS).
+//
 // La synchronisation de fin de match vers 01_VENTES (stock, Pennylane) reste
 // celle de CRM_Boutique_V3 : ce module ne sert qu'au pilotage et au lien acheteur.
 //
@@ -30,6 +34,7 @@ const PB = {
   SH_LIGNES: '21_LIGNES_LIVE',
   SH_TAB: '22_TABLETTES',
   SH_CLIENTS: '23_CLIENTS_BOUTIQUE',
+  SH_TRF: '24_TRANSFERTS_LIVE',
   BOUTIQUES: { B1: 'Grand Public', B2: 'VIP' },
   NAVY: '#001E2D', DAY: '#91BEE6',   // charte 26-27 (jaune proscrit)
 };
@@ -39,6 +44,8 @@ const PB_LIVE_COLS = ['Reçu le', 'Horodatage', 'ID vente', 'ID événement Tick
 const PB_I = {}; PB_LIVE_COLS.forEach(function (c, i) { PB_I[c] = i; });
 const PB_NB = PB_LIVE_COLS.length;
 const PB_LIGNES_COLS = ['ID vente', 'Horodatage', 'ID événement Tickie', 'Boutique', 'Réf.', 'Produit', 'Catégorie', 'Qté', 'PU TTC', 'CA TTC', 'Mode'];
+const PB_TRF_COLS = ['Reçu le', 'Horodatage', 'Remis le', 'ID transfert', 'De', 'Vers', 'Réf.', 'Produit', 'Qté', 'Motif',
+  'Match', 'Session', 'Bénévole', 'ID vente', 'ID événement Tickie'];
 const PB_CLIENTS_COLS = ['Email', 'Nom', 'Client Tickie', 'Achats', 'Articles', 'CA TTC', 'Premier achat', 'Dernier achat', 'Matchs', 'Tarifs', 'Mis à jour'];
 
 // ── Installation (à lancer une fois depuis l'éditeur : ▶ installerPilotage) ──
@@ -58,6 +65,7 @@ function installerPilotage() {
   mk(PB.SH_LIGNES, PB_LIGNES_COLS);
   mk(PB.SH_TAB, ['Boutique', 'Match', 'Dernier chargement', 'Dernière remontée']);
   mk(PB.SH_CLIENTS, PB_CLIENTS_COLS);
+  mk(PB.SH_TRF, PB_TRF_COLS);
   if (!props.getProperty('PILOTAGE_TOKEN')) props.setProperty('PILOTAGE_TOKEN', Utilities.getUuid().replace(/-/g, '').slice(0, 20));
   ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'relierAcheteurs') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('relierAcheteurs').timeBased().everyMinutes(10).create();
@@ -104,6 +112,11 @@ function doPost(e) {
   try {
     if (body.action === 'ventes') {
       const recus = pbEnregistrerVentes_(body.ventes || [], body.boutique || '');
+      if (body.boutique) pbJournal_(body.boutique, null, 4);
+      return pbJson_({ status: 'ok', recus: recus });
+    }
+    if (body.action === 'transferts') {
+      const recus = pbEnregistrerTransferts_(body.transferts || []);
       if (body.boutique) pbJournal_(body.boutique, null, 4);
       return pbJson_({ status: 'ok', recus: recus });
     }
@@ -230,6 +243,34 @@ function pbEnregistrerVentes_(ventes, boutique) {
   });
   if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, PB_NB).setValues(rows);
   if (lignes.length) shL.getRange(shL.getLastRow() + 1, 1, lignes.length, PB_LIGNES_COLS.length).setValues(lignes);
+  return recus;
+}
+
+// ── Transferts entre boutiques (idempotent sur l'ID transfert) ───────────
+// Course : article vendu au stand qui encaisse, rapporté de l'autre boutique par le volant.
+// Réassort : plusieurs articles rapportés d'un coup. Seul l'emplacement du stock change.
+function pbEnregistrerTransferts_(transferts) {
+  const ss = pbSS_();
+  let sh = ss.getSheetByName(PB.SH_TRF);
+  if (!sh) {
+    sh = ss.insertSheet(PB.SH_TRF);
+    sh.getRange(1, 1, 1, PB_TRF_COLS.length).setValues([PB_TRF_COLS]).setBackground(PB.NAVY).setFontColor('#FFFFFF').setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  const iId = PB_TRF_COLS.indexOf('ID transfert') + 1, last = sh.getLastRow(), deja = {};
+  if (last > 1) sh.getRange(2, iId, last - 1, 1).getValues().forEach(function (r) { deja[String(r[0])] = 1; });
+  const rows = [], recus = [], now = new Date();
+  transferts.forEach(function (t) {
+    if (!t || !t.id) return;
+    recus.push(t.id);   // accusé de réception même si la ligne est inexploitable : la tablette ne la renvoie pas en boucle
+    const q = pbNum_(t.qte);
+    if (!(q > 0) || !PB.BOUTIQUES[t.de] || !PB.BOUTIQUES[t.vers] || t.de === t.vers) return;
+    if (deja[String(t.id)]) return;
+    deja[String(t.id)] = 1;
+    rows.push([now, new Date(t.ts || Date.now()), t.remis ? new Date(t.remis) : '', t.id, t.de, t.vers, t.ref || '', t.nom || '', q,
+      t.motif === 'vente' ? 'Course (vente)' : 'Réassort', t.match || '', t.session || '', t.benevole || '', t.vente || '', t.eventId || '']);
+  });
+  if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, PB_TRF_COLS.length).setValues(rows);
   return recus;
 }
 

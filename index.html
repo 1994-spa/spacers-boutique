@@ -405,6 +405,30 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
 .ret-res button{background:var(--surface-2);border:1.5px solid var(--border);border-radius:var(--rs);padding:12px 14px;text-align:left;font-size:16px;line-height:1.35}
 .ret-res button b{font-size:17px}
 
+/* ── Courses GP : article absent du stand, le volant va le chercher dans l'autre boutique ── */
+.ptile.gp{border:2px dashed var(--warn);background:#FFFBF5}
+.pt-flag.gp{background:var(--warn)}
+.pt-stock.gp{color:var(--warn)}
+.pi.gp{background:var(--warn-bg);border:1.5px dashed var(--warn)}
+.pinam small.gp{color:var(--warn);font-weight:800}
+.minor button.crs{color:var(--warn);background:var(--warn-bg)}
+.minor button.crs.on{background:var(--warn);color:#fff;font-weight:900;animation:crs 1.6s ease-in-out infinite}
+@keyframes crs{50%{box-shadow:0 0 0 4px rgba(138,75,0,.25)}}
+.done .d-course{margin-top:6px;background:var(--warn-bg);border:2px solid var(--warn);border-radius:var(--r);padding:8px 14px;color:var(--warn);font-weight:900;font-size:15px}
+.course-q{font-size:17px;line-height:1.5}
+.course-q b{font-size:19px}
+.crow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--divider)}
+.crow:last-child{border:none}
+.crow .ci{flex:1;min-width:0;font-size:16px;line-height:1.35}
+.crow .ci b{font-size:18px}
+.crow .ci small{display:block;font-size:13px;color:var(--muted);font-weight:600}
+.crow .cok{height:56px;padding:0 16px;border-radius:var(--rs);background:var(--ok);color:#fff;font-weight:900;font-size:16px}
+.crow .cko{height:56px;padding:0 12px;border-radius:var(--rs);background:var(--surface);border:1.5px solid var(--err);color:var(--err);font-weight:800;font-size:13px}
+.rrow{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--divider)}
+.rrow:last-child{border:none}
+.rrow .ri{flex:1;min-width:0;font-size:15px;font-weight:700}
+.rrow .ri small{display:block;font-size:12px;color:var(--muted);font-weight:600}
+
 /* ── Portrait : tout passe en une colonne ── */
 @media (orientation:portrait){
   .cfg-wrap,.hbody,.esp-wrap,.ok-wrap,.cols,.cols.three,.sheet-cols{grid-template-columns:minmax(0,1fr)}
@@ -583,6 +607,8 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
           <button onclick="confirmerVider()">🗑 Vider le panier</button>
           <button onclick="showHistorique()">🕐 Dernières ventes</button>
           <button onclick="ouvrirRetraits()" style="grid-column:1/-1;color:var(--ok);background:var(--ok-bg)">🎁 Retrait commande web (déjà payé)</button>
+          <button id="btnCourses" class="crs" onclick="ouvrirCourses()">🏃 Courses GP</button>
+          <button id="btnReassort" onclick="ouvrirReassort()">📦 Recevoir de GP</button>
         </div>
       </div>
     </div>
@@ -707,6 +733,7 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
         <div class="list-row"><span class="c-mut">Cartes abonnés (remise −10 %)</span><b id="synAbo">0</b></div>
         <div class="list-row"><span class="c-mut">🎁 Retraits web à remettre</span><b id="synRet">0</b></div>
         <div class="list-row"><span class="c-mut">🎁 Remises à envoyer au CRM</span><b id="synRetAtt">0</b></div>
+        <div class="list-row"><span class="c-mut">🏃 Transferts entre boutiques à envoyer</span><b id="synTrf">0</b></div>
         <div class="list-row"><span class="c-mut">Sessions en attente</span><b id="synNA">0</b></div>
         <button class="btn btn-s w100" style="margin-top:10px" onclick="syncCat()">↓ Mettre à jour le catalogue, les abonnés et les retraits</button>
       </div>
@@ -744,6 +771,7 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
     <div class="stitle">🏁 Clôturer le match</div>
     <div class="sheet-cols">
       <div style="display:flex;flex-direction:column;gap:12px">
+        <div id="cloCourses" style="display:none"></div>
         <div class="esphigh" style="margin:0;flex-direction:column;align-items:flex-start;gap:4px">
           <div class="esphl">ÉTAPE 1 — ESPÈCES À REMETTRE</div>
           <div class="esphv" id="cloEsp">0 €</div>
@@ -912,6 +940,35 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
   <div class="sheet wide" id="ret-sheet"></div>
 </div>
 
+<div class="ov" id="ov-course">
+  <div class="sheet">
+    <div class="stitle">🏃 Pas en stock ici</div>
+    <div class="course-q" id="courseTxt"></div>
+    <button class="btn btn-big w100" style="background:var(--warn);color:#fff" onclick="courseOui()" id="courseOuiBtn">🏃 Oui, le volant va le chercher</button>
+    <button class="btn btn-s w100" onclick="courseTable()">L'article est sur la table : le vendre d'ici</button>
+    <button class="btn btn-q w100" onclick="fermerCourse()">Annuler</button>
+  </div>
+</div>
+
+<div class="ov" id="ov-courses">
+  <div class="sheet">
+    <div class="stitle" id="coursesTit">🏃 Courses à faire</div>
+    <div class="c-mut" style="font-size:14px;margin-top:-6px" id="coursesSub"></div>
+    <div id="coursesList"></div>
+    <button class="btn btn-p w100" onclick="document.getElementById('ov-courses').classList.remove('on')">Fermer</button>
+  </div>
+</div>
+
+<div class="ov" id="ov-reassort">
+  <div class="sheet">
+    <div class="stitle" id="reasTit">📦 Recevoir de GP</div>
+    <div class="c-mut" style="font-size:14px;margin-top:-6px" id="reasSub"></div>
+    <div id="reasList" class="scroll" style="max-height:52dvh"></div>
+    <button class="btn btn-ok btn-big w100" id="reasOk" onclick="validerReassort()" disabled>✔ Articles reçus</button>
+    <button class="btn btn-q w100" onclick="document.getElementById('ov-reassort').classList.remove('on')">Annuler</button>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -944,6 +1001,13 @@ let REG={id:'regles',remise_billet:0.05,packs:[]};
 // Retraits web : articles payés en ligne avec le billet (écharpe, maillot…), à remettre au stand.
 // Empreintes SHA-256 des codes billets, prénom + initiale ; remises en attente d'envoi gardées hors ligne.
 let RET={id:'retraits',retraits:[],tailles:{},maj:null,attente:[]};
+// Transferts entre les deux boutiques (le stock est différent dans chaque boutique, pas d'internet sur place) :
+//  • motif 'vente'    : article vendu ici mais absent du stand, le volant va le chercher dans l'autre boutique.
+//    Statut 'a_livrer' puis 'remis' (ou 'introuvable' : la ligne est retirée de la vente).
+//  • motif 'reassort' : le volant rapporte plusieurs articles d'un coup (statut 'remis' d'emblée).
+// Un transfert 'remis' part au pilotage (24_TRANSFERTS_LIVE) : l'inventaire et 03_PRODUITS passent l'article
+// d'une boutique à l'autre ; la vente, elle, reste une vente du stand qui a encaissé.
+let TRF={id:'transferts',liste:[]};
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const fmt=n=>(Number(n)||0).toFixed(2).replace('.',',')+' €';
 const fmtS=n=>(Number(n)||0).toFixed(0)+' €';
@@ -962,6 +1026,7 @@ async function startup(){
   const ab=await dGet('config','abonnes');if(ab)ABO=Object.assign(ABO,ab);
   const rg=await dGet('config','regles');if(rg)REG=Object.assign(REG,rg);
   const rt=await dGet('config','retraits');if(rt)RET=Object.assign(RET,rt);retIndexer();
+  const tf=await dGet('config','transferts');if(tf)TRF=Object.assign(TRF,tf);
   // Seules les ventes faites à partir de cette version partent au pilotage (pas l'historique de la tablette)
   if(!PIL.depuis){PIL.depuis=new Date().toISOString();await dPut('config',PIL);}
   const parLien=await lireLienConfig();
@@ -1202,14 +1267,14 @@ async function createSess(){
 async function recalcStockSession(){
   if(!sess||sess.statut!=='ouvert')return;
   const v=(await dAll('ventes')).filter(x=>x.session_id===sess.id);
-  prods.forEach(p=>{const vd=v.filter(x=>x.produit_id===p.id).reduce((s,x)=>s+x.quantite,0);p.ss=Math.max(0,p.stock-vd);});
+  prods.forEach(p=>{p.ss=stockLocal(p,v);});
   try{rGrid();}catch(e){}
 }
 async function _prepSess(id){
   const all=await dAll('sessions');sess=all.find(s=>s.id===id);if(!sess)return;
   pan={};billet=null;await loadP();
   const v=(await dAll('ventes')).filter(v=>v.session_id===id);
-  prods.forEach(p=>{const vd=v.filter(x=>x.produit_id===p.id).reduce((s,x)=>s+x.quantite,0);p.ss=Math.max(0,p.stock-vd);});
+  prods.forEach(p=>{p.ss=stockLocal(p,v);});
   const vc=v.filter(x=>x.mode_paiement!=='Offert');
   sCA=vc.reduce((s,x)=>s+x.ca_ligne,0);sTx=new Set(vc.map(x=>x.groupe||x.id)).size;sScan=new Set(vc.filter(x=>x.ticket_id||x.barcode).map(x=>x.groupe||x.id)).size;derniere=null;curCat='Tous';
   rCai();
@@ -1238,7 +1303,8 @@ function rCai(){
   $('caiMat').textContent=sess.match_label+(sess.benevole?' · '+sess.benevole:'');
   $('caiDat').textContent=sess.date+(sess.heure?' · '+sess.heure:'')+' · '+(CFG.boutique_nom||'');
   $('caiBdg').textContent=CFG.boutique_id||'B?';
-  rCatBar();rGrid();rPan();rBand();
+  $('btnReassort').textContent='📦 Recevoir de '+nomPt(autreB());
+  rCatBar();rGrid();rPan();rBand();rCourses();
 }
 function rCatBar(){$('catbar').innerHTML=getCats().map(c=>'<button class="cpill'+(c===curCat?' on':'')+'" data-cat="'+esc(c)+'">'+esc(c)+'</button>').join('');}
 $('catbar').addEventListener('click',e=>{const b=e.target.closest('[data-cat]');if(b){curCat=b.dataset.cat;rCatBar();rGrid();}});
@@ -1255,12 +1321,12 @@ function rGrid(){
     const acc=accentOf(ps[0]),dispo=ps.reduce((s,p)=>s+Math.max(0,stockOf(p)||0),0);
     h+='<section><div class="pgroup-h"><span class="swatch" style="background:'+acc+'"></span><b>'+esc(mod)+'</b><span>'+(prix.length===1?fmtP(prix[0]):fmtP(Math.min(...prix))+' – '+fmtP(Math.max(...prix)))+' · '+dispo+' en stock</span></div><div class="ptiles">';
     ps.forEach(p=>{
-      const st=stockOf(p),rupt=st<=0,low=st>0&&st<=3,t=tailleOf(p),q=pan[p.id]?pan[p.id].qty:0;
+      const st=stockOf(p),au=stockAutreEst(p),gp=st<=0&&(au===null||au>0),rupt=st<=0&&!gp,low=st>0&&st<=3,t=tailleOf(p),q=qtePan(p.id);
       const main=t||p.nom,long=!t;
-      h+='<button class="ptile'+(rupt?' rupt':'')+(q?' incart':'')+'" style="--acc:'+acc+'" data-id="'+esc(p.id)+'" aria-label="'+esc(p.nom)+', '+fmtP(p.prix_vente)+'">'+
-        (q?'<span class="pt-qty">'+q+'</span>':(rupt?'<span class="pt-flag">RUPTURE</span>':''))+
+      h+='<button class="ptile'+(rupt?' rupt':'')+(gp?' gp':'')+(q?' incart':'')+'" style="--acc:'+acc+'" data-id="'+esc(p.id)+'" aria-label="'+esc(p.nom)+', '+fmtP(p.prix_vente)+(gp?', à chercher en '+nomPt(autreB()):'')+'">'+
+        (q?'<span class="pt-qty">'+q+'</span>':(rupt?'<span class="pt-flag">RUPTURE</span>':gp?'<span class="pt-flag gp">🏃 '+nomPt(autreB())+'</span>':''))+
         '<span class="pt-in"><span class="pt-main'+(long?' long':'')+'">'+esc(main)+'</span>'+
-        '<span class="pt-foot"><span class="pt-price">'+fmtP(p.prix_vente)+'</span>'+(rupt?'<span class="pt-stock out">épuisé</span>':low?'<span class="pt-stock low">plus que '+st+'</span>':'')+'</span></span></button>';
+        '<span class="pt-foot"><span class="pt-price">'+fmtP(p.prix_vente)+'</span>'+(rupt?'<span class="pt-stock out">épuisé</span>':gp?'<span class="pt-stock gp">'+(au===null?'à chercher en '+nomPt(autreB()):'0 ici · ≈'+au+' en '+nomPt(autreB()))+'</span>':low?'<span class="pt-stock low">plus que '+st+'</span>':'')+'</span></span></button>';
     });
     h+='</div></section>';
   });
@@ -1274,18 +1340,48 @@ function okHorsStock(p){if(_horsStockOk.has(p.id))return true;
   _horsStockOk.add(p.id);return true;}
 function ajt(id){
   const p=prods.find(x=>x.id===id);if(!p)return;
-  const st=stockOf(p);if(st<=0&&!okHorsStock(p))return;
-  derniere=null;if(!pan[id])pan[id]={...p,qty:0};pan[id].qty++;p.ss=st-1;
+  const st=stockOf(p);
+  if(st<=0){
+    // Déjà une course pour cet article dans le panier : on en ajoute une sans redemander
+    if(pan[id+'@'+autreB()]){ajoutPan(p,autreB());return;}
+    const au=stockAutreEst(p);
+    if(au===null||au>0){demanderCourse(p);return;}
+    if(!okHorsStock(p))return;
+  }
+  ajoutPan(p,'');
+}
+// src : '' = stock du stand ; 'B1'/'B2' = article à chercher dans l'autre boutique (ligne séparée du panier)
+function ajoutPan(p,src){
+  const k=p.id+(src?'@'+src:'');
+  derniere=null;if(!pan[k])pan[k]={...p,qty:0,k,src};pan[k].qty++;
+  if(!src)p.ss=(stockOf(p)||0)-1;
   if(navigator.vibrate)navigator.vibrate(30);
   rGrid();rPan();
 }
-function chQty(id,d){
-  if(!pan[id])return;const p=prods.find(x=>x.id===id);
-  if(d>0&&p&&stockOf(p)<=0&&!okHorsStock(p))return;
-  pan[id].qty+=d;if(p)p.ss=(stockOf(p)||0)-d;
-  if(pan[id].qty<=0)delete pan[id];
+function chQty(k,d){
+  const it=pan[k];if(!it)return;const p=prods.find(x=>x.id===it.id);
+  if(!it.src){
+    if(d>0&&p&&stockOf(p)<=0&&!okHorsStock(p))return;
+    if(p)p.ss=(stockOf(p)||0)-d;
+  }
+  it.qty+=d;
+  if(it.qty<=0)delete pan[k];
   rGrid();rPan();
 }
+const qtePan=id=>Object.values(pan).filter(i=>i.id===id).reduce((s,i)=>s+i.qty,0);
+// ── Courses dans l'autre boutique ─────────────
+let _courseP=null;
+function demanderCourse(p){
+  _courseP=p;const au=stockAutreEst(p),a=nomPt(autreB()),ici=nomPt(CFG.boutique_id);
+  $('courseTxt').innerHTML='Plus de <b>'+esc(p.nom)+'</b> en boutique '+ici+'.<br>'+
+    (au===null?'Stock '+a+' inconnu (catalogue à recharger) : le volant vérifie sur place.':'Il en reste <b>≈'+au+'</b> en boutique '+a+'.')+
+    '<br><br>Le client paie ici, maintenant. Le volant va chercher l\'article en '+a+' et le rapporte.';
+  $('courseOuiBtn').textContent='🏃 Oui, le volant va le chercher en '+a;
+  $('ov-course').classList.add('on');
+}
+function fermerCourse(){_courseP=null;$('ov-course').classList.remove('on');}
+function courseOui(){const p=_courseP;fermerCourse();if(p)ajoutPan(p,autreB());}
+function courseTable(){const p=_courseP;fermerCourse();if(!p)return;_horsStockOk.add(p.id);ajoutPan(p,'');}
 // ── REMISE ABONNÉ ─────────────────────────────
 const r2=n=>Math.round((Number(n)||0)*100)/100;
 // Remises (V3.6), non cumulables : carte abonné −10 %, sinon billet du match vérifié −5 %.
@@ -1365,7 +1461,7 @@ function majPaiementEnCours(){
   const T=totaux(pendV.items,billet);pendV.tot=T.net;pendV.T=T;
   if(pendV.mode==='CB'){
     $('cbAmt').textContent=fmt(T.net);
-    $('cbItems').innerHTML=T.lignes.map(i=>'<div><span>'+esc(i.nom)+' ×'+i.qty+'</span><span>'+fmt(i.brut)+'</span></div>').join('')
+    $('cbItems').innerHTML=T.lignes.map(i=>'<div><span>'+(i.src?'🏃 ':'')+esc(i.nom)+' ×'+i.qty+'</span><span>'+fmt(i.brut)+'</span></div>').join('')
       +(T.nbPacks?'<div><span>📦 '+esc(T.nomPack)+(T.nbPacks>1?' ×'+T.nbPacks:'')+'</span><span>−'+fmt(T.remPack)+'</span></div>':'')
       +(T.remTaux>0?'<div><span>'+(T.typ==='abonne'?'⭐ Remise abonné':'🎫 Remise billet')+'</span><span>−'+fmt(T.remTaux)+'</span></div>':'');
   }else{
@@ -1385,11 +1481,11 @@ function rPan(){
   const el=$('pItems');
   if(!items.length){
     const d=derniere;
-    el.innerHTML=d?'<div class="done"><div class="d-ico">✓</div><div class="d-amt">'+fmt(d.tot)+'</div><div class="d-mod">'+d.lib+'</div>'+(d.mon>0?'<div class="d-chg"><span>Monnaie à rendre</span><b>'+fmt(d.mon)+'</b></div>':'')+'<div class="d-next">Client suivant : touche un article</div></div>'
+    el.innerHTML=d?'<div class="done"><div class="d-ico">✓</div><div class="d-amt">'+fmt(d.tot)+'</div><div class="d-mod">'+d.lib+'</div>'+(d.mon>0?'<div class="d-chg"><span>Monnaie à rendre</span><b>'+fmt(d.mon)+'</b></div>':'')+(d.course?'<div class="d-course">🏃 '+d.course+' article'+(d.course>1?'s':'')+' à chercher en '+nomPt(autreB())+' : préviens le volant</div>':'')+'<div class="d-next">Client suivant : touche un article</div></div>'
       :'<div class="empty"><span class="stepn">2</span><br>Touche un article<br>pour l\'ajouter</div>';
     return;}
   el.innerHTML=items.map(i=>{const t=tailleOf(i);
-    return '<div class="pi"><div class="pinam">'+esc(t?modeleOf(i):i.nom)+(t?'<small>Taille '+esc(t)+'</small>':'')+(i.tarif==='partenaire'?'<small>Tarif partenaire</small>':'')+'</div><div class="piqty"><button class="qb" onclick="chQty(\''+esc(i.id)+'\',-1)" aria-label="Moins">−</button><div class="qv">'+i.qty+'</div><button class="qb plus" onclick="chQty(\''+esc(i.id)+'\',1)" aria-label="Plus">+</button></div><div class="pipr">'+fmt(i.prix_vente*i.qty)+'</div></div>';
+    return '<div class="pi'+(i.src?' gp':'')+'"><div class="pinam">'+esc(t?modeleOf(i):i.nom)+(t?'<small>Taille '+esc(t)+'</small>':'')+(i.src?'<small class="gp">🏃 à chercher en '+nomPt(i.src)+'</small>':'')+(i.tarif==='partenaire'?'<small>Tarif partenaire</small>':'')+'</div><div class="piqty"><button class="qb" onclick="chQty(\''+esc(i.k)+'\',-1)" aria-label="Moins">−</button><div class="qv">'+i.qty+'</div><button class="qb plus" onclick="chQty(\''+esc(i.k)+'\',1)" aria-label="Plus">+</button></div><div class="pipr">'+fmt(i.prix_vente*i.qty)+'</div></div>';
   }).join('');
 }
 function rBand(){
@@ -1402,13 +1498,13 @@ async function rPilBand(){
   const el=$('bPil');if(!el)return;
   if(!PIL.url||!PIL.token){el.textContent='—';el.className='cav';return;}
   const dep=Date.parse(PIL.depuis||0)||0;
-  const n=(await dAll('ventes')).filter(v=>!v.pil_envoye&&Date.parse(v.timestamp)>=dep).reduce((s,v)=>s.add(v.groupe||v.id),new Set()).size;
+  const n=(await dAll('ventes')).filter(v=>!v.pil_envoye&&Date.parse(v.timestamp)>=dep).reduce((s,v)=>s.add(v.groupe||v.id),new Set()).size+trfAEnvoyer(true).length;
   el.textContent=n?n+' en attente':'✓ à jour';el.className='cav '+(n?'wt':'gr');
 }
 function confirmerVider(){$('ov-vider').classList.add('on');}
 function viderConfirme(){$('ov-vider').classList.remove('on');viderPan();}
 function demanderQuitter(){$('ov-quitter').classList.add('on');}
-function viderPan(){Object.values(pan).forEach(i=>{const p=prods.find(x=>x.id===i.id);if(p)p.ss=(stockOf(p)||0)+i.qty;});pan={};billet=null;rPan();rGrid();}
+function viderPan(){Object.values(pan).forEach(i=>{if(i.src)return;const p=prods.find(x=>x.id===i.id);if(p)p.ss=(stockOf(p)||0)+i.qty;});pan={};billet=null;rPan();rGrid();}
 
 async function showHistorique(){
   const all=(await dAll('ventes')).filter(v=>v.session_id===sess.id);
@@ -1489,14 +1585,19 @@ async function enregistrerVente(){
       mode_paiement:mode,motif_offert:mode==='Offert'?(motif||''):null,timestamp:now,groupe:grp,
       // Billet relié : identifiants seulement. Le lien vers l'acheteur (nom, email) est fait côté serveur.
       ticket_id:b?(b.ticket_id||null):null,barcode:b?(b.barcode||null):null,client_tarif:b?(b.tarif||null):null,
-      client_email:null,client_nom:null,client_tribune:null,pil_envoye:false});
+      client_email:null,client_nom:null,client_tribune:null,pil_envoye:false,
+      stock_source:item.src||CFG.boutique_id,a_chercher:!!item.src});
   }
+  // Articles pris dans l'autre boutique : une course par ligne, à confirmer « Remis » quand le volant revient
+  const courses=T.lignes.filter(i=>i.src);
+  for(const i of courses)TRF.liste.push(nouveauTransfert(i,i.qty,'vente',{groupe:grp,de:i.src,statut:'a_livrer',ts:now}));
+  if(courses.length)await dPut('config',TRF);
   billet=null;
   if(mode!=='Offert'){sCA+=tot;sTx++;if(b)sScan++;}
-  derniere={tot,mon:mode==='Espèces'?(monnaie||0):0,
+  derniere={tot,mon:mode==='Espèces'?(monnaie||0):0,course:courses.reduce((s,i)=>s+i.qty,0),
     lib:(mode==='CB'?'💳 CB enregistrée':mode==='Espèces'?'💵 Espèces enregistrées':'🎁 Offert · '+esc(motif||''))+(T.remise>0?' · remise −'+fmt(T.remise)+(T.nbPacks?' (pack)':''):b?' · 🎫 billet relié':'')};
   if(navigator.vibrate)navigator.vibrate([60,30,60]);
-  pan={};rPan();rGrid();rBand();showUndo(grp);ss('s-cai');
+  pan={};rPan();rGrid();rBand();rCourses();showUndo(grp);ss('s-cai');
   setTimeout(pilEnvoyer,32000); // après la fenêtre d'annulation de 30 s
 }
 
@@ -1511,7 +1612,8 @@ async function annuler(){
   const btn=$('undo'),grp=btn._g;if(!grp)return;
   clearInterval(undoIv);btn.classList.remove('on');btn._g=null;
   const all=await dAll('ventes'),del=all.filter(v=>v.groupe===grp);let caU=0,off=false;
-  for(const v of del){caU+=v.ca_ligne||0;off=v.mode_paiement==='Offert';const p=prods.find(x=>x.id===v.produit_id);if(p)p.ss=(stockOf(p)||0)+v.quantite;await dDel('ventes',v.id);}
+  for(const v of del){caU+=v.ca_ligne||0;off=v.mode_paiement==='Offert';const p=prods.find(x=>x.id===v.produit_id);if(p&&!v.a_chercher)p.ss=(stockOf(p)||0)+v.quantite;await dDel('ventes',v.id);}
+  if(TRF.liste.some(t=>t.groupe===grp)){TRF.liste=TRF.liste.filter(t=>t.groupe!==grp);await dPut('config',TRF);rCourses();}
   if(!off){sCA=Math.max(0,sCA-caU);sTx=Math.max(0,sTx-1);if(del.some(v=>v.ticket_id||v.barcode))sScan=Math.max(0,sScan-1);}
   derniere=null;
   rGrid();rBand();
@@ -1534,7 +1636,7 @@ async function showRecap(){
   const pm={};vc.forEach(x=>{if(!pm[x.produit_nom])pm[x.produit_nom]={nb:0,ca:0};pm[x.produit_nom].nb+=x.quantite;pm[x.produit_nom].ca+=x.ca_ligne;});
   const top=Object.entries(pm).sort((a,b)=>b[1].ca-a[1].ca).slice(0,8);
   $('rProd').innerHTML=top.map(([n,val])=>'<div class="list-row"><span>'+esc(n)+' <span class="c-mut">×'+val.nb+'</span></span><b>'+fmtS(val.ca)+'</b></div>').join('')||'<div class="empty">Aucune vente</div>';
-  $('rSto').innerHTML=triProduits(prods.filter(p=>p.actif!==false)).map(p=>{const vd=v.filter(x=>x.produit_id===p.id).reduce((s,x)=>s+x.quantite,0),rest=Math.max(0,p.stock-vd),pct=p.stock>0?Math.round(rest/p.stock*100):0,cl=rest===0?'var(--err)':pct<30?'var(--warn)':'var(--ok)';
+  $('rSto').innerHTML=triProduits(prods.filter(p=>p.actif!==false)).map(p=>{const rest=stockLocal(p,v),base=Math.max(1,(Number(p.stock)||0)+recuPour(p)),pct=Math.min(100,Math.round(rest/base*100)),cl=rest===0?'var(--err)':pct<30?'var(--warn)':'var(--ok)';
     return '<div class="strow"><span class="stnam">'+esc(p.nom)+'</span><div class="stbg"><div class="stfil" style="width:'+pct+'%;background:'+cl+'"></div></div><span class="stval" style="color:'+cl+'">'+rest+'</span></div>';
   }).join('')||'<div class="empty">Aucun produit</div>';
   ss('s-rec');
@@ -1542,7 +1644,7 @@ async function showRecap(){
 async function ouvrirCloture(){
   const v=(await dAll('ventes')).filter(x=>x.session_id===sess.id);
   $('cloEsp').textContent=fmt(v.filter(x=>x.mode_paiement==='Espèces').reduce((s,x)=>s+x.ca_ligne,0));
-  $('cloNote').value='';$('ov-cloture').classList.add('on');
+  $('cloNote').value='';rCloCourses();$('ov-cloture').classList.add('on');
 }
 async function cloSess(){
   $('ov-cloture').classList.remove('on');
@@ -1551,7 +1653,7 @@ async function cloSess(){
   if(s){
     s.statut='clos';s.note_transmission=$('cloNote').value.trim();
     const v=(await dAll('ventes')).filter(x=>x.session_id===s.id);
-    s.stock_cloture=prods.map(p=>{const vd=v.filter(x=>x.produit_id===p.id).reduce((a,x)=>a+x.quantite,0);return{produit_id:p.id,produit_nom:p.nom,stock_restant:Math.max(0,p.stock-vd)};});
+    s.stock_cloture=prods.map(p=>({produit_id:p.id,produit_nom:p.nom,stock_restant:stockLocal(p,v)}));
     await dPut('sessions',s);
   }
   if(navigator.vibrate)navigator.vibrate([100,50,100]);
@@ -1573,8 +1675,8 @@ async function rPilotage(){
   if(lastNote){$('pilNoteTxt').textContent=lastNote.note_transmission;$('pilNoteMeta').textContent='De '+(lastNote.benevole||'bénévole précédent')+' · '+lastNote.date;$('pilNotePrec').style.display='block';}
   else $('pilNotePrec').style.display='none';
   $('pilStock').innerHTML=prods.length?triProduits(prods.filter(p=>p.actif!==false)).map(p=>{
-    const cl=p.stock===0?'c-err':p.stock<=3?'c-warn':'c-ok';
-    return '<div class="list-row"><span>'+esc(p.nom)+'</span><b class="'+cl+'">'+p.stock+'</b></div>';
+    const cl=p.stock===0?'c-err':p.stock<=3?'c-warn':'c-ok',au=stockAutreEst(p);
+    return '<div class="list-row"><span>'+esc(p.nom)+(au!==null?' <span class="c-mut" style="font-size:12px">· ≈'+au+' en '+nomPt(autreB())+'</span>':'')+'</span><b class="'+cl+'">'+p.stock+'</b></div>';
   }).join(''):'<div class="empty">Catalogue vide</div>';
 }
 async function saveContact(){
@@ -1595,6 +1697,7 @@ async function rSync(){
   $('synNP').textContent=prods.length;
   $('synAbo').textContent=Object.keys(ABO.liste||{}).length;
   rRetSyn();
+  {const n=trfAEnvoyer(true).length;$('synTrf').textContent=n;$('synTrf').className=n?'c-warn':'';}
   $('synUrl').value=cfg.apps_script_url||'';
   $('pilUrl').value=PIL.url||'';$('pilTok').value=PIL.token||'';
   rPilState();
@@ -1642,13 +1745,15 @@ async function syncCat(){
     const data=await r.json();
     if(!guardCatalogSourceBoutique(data))return;
     if(data.produits&&Array.isArray(data.produits)&&!data.produits.length){synL('Catalogue vide renvoyé par le CRM : catalogue de la tablette conservé');toast('Catalogue vide côté CRM : rien changé');return;}
-    if(data.produits&&Array.isArray(data.produits)){await dClr('produits');for(const p of data.produits)await dPut('produits',p);await loadP();await recalcStockSession();if(data.regles){REG=Object.assign({},REG,data.regles,{id:'regles'});await dPut('config',REG);}$('synNP').textContent=prods.length;synL('Catalogue OK : '+prods.length+' produit(s)');await chargerAbonnes();await chargerRetraits();toast(prods.length+' produit(s) · '+Object.keys(ABO.liste||{}).length+' carte(s) abonné · '+retAFaire()+' retrait(s) web');}
+    if(data.produits&&Array.isArray(data.produits)){await stockAutreBoutique(url,data.produits);await dClr('produits');for(const p of data.produits)await dPut('produits',p);await loadP();await recalcStockSession();if(data.regles){REG=Object.assign({},REG,data.regles,{id:'regles'});await dPut('config',REG);}$('synNP').textContent=prods.length;synL('Catalogue OK : '+prods.length+' produit(s)');await chargerAbonnes();await chargerRetraits();toast(prods.length+' produit(s) · '+Object.keys(ABO.liste||{}).length+' carte(s) abonné · '+retAFaire()+' retrait(s) web');}
     else{synL('Réponse invalide');toast('Erreur serveur');}
   }catch(e){synL('ERREUR : '+e.message);toast('Erreur de connexion');}
 }
 async function resetApp(){
   const ventes=await dAll('ventes'),ses=await dAll('sessions');
   const nonSync=ses.filter(s=>s.statut!=='synchro'&&ventes.some(v=>v.session_id===s.id));
+  const trfNE=trfAEnvoyer(true).length+TRF.liste.filter(t=>t.statut==='a_livrer').length;
+  if(trfNE){alert('Impossible de réinitialiser : '+trfNE+' transfert(s) entre boutiques pas encore envoyé(s) ou course(s) en attente.\n\nMarquez les courses remises et synchronisez d\'abord (avec réseau), ou appelez le responsable.');return;}
   if(nonSync.length||(RET.attente||[]).length){alert('Impossible de réinitialiser : '+(nonSync.length?nonSync.length+' session(s) de vente pas encore synchronisée(s)':'')+(nonSync.length&&(RET.attente||[]).length?' et ':'')+((RET.attente||[]).length?(RET.attente.length)+' remise(s) web pas encore envoyée(s)':'')+'.\n\nClôturez et synchronisez d\'abord (avec réseau), ou appelez le responsable.');return;}
   if(!confirm('Réinitialiser ? Toutes les données locales seront supprimées.'))return;await dClr('config');await dClr('sessions');await dClr('ventes');await dClr('produits');location.reload();}
 
@@ -1689,6 +1794,7 @@ async function pilEnvoyer(force){
   if(_envoi||!PIL.url||!PIL.token||navigator.onLine===false){rPilBand();return;}
   _envoi=true;
   try{
+    await envoyerTransferts(force);
     const toutes=await dAll('ventes'),limite=Date.now()-31000;
     const depuis=Date.parse(PIL.depuis||0)||0;
     const enAttente=toutes.filter(v=>!v.pil_envoye&&Date.parse(v.timestamp)>=depuis&&(force||Date.parse(v.timestamp)<limite||!(undoIv&&$('undo')._g===v.groupe)));
@@ -1963,6 +2069,135 @@ async function validerRetrait(){
   fermerRetrait();if(sess)rGrid();rRetSyn();
   toast('✓ Remise enregistrée — rien à encaisser',3500);
   envoyerRemises(true);
+}
+
+// ── TRANSFERTS ENTRE BOUTIQUES (courses du volant, réassort) ──
+const autreB=()=>CFG.boutique_id==='B2'?'B1':'B2';
+const nomPt=b=>b==='B1'?'GP':b==='B2'?'VIP':String(b||'');
+const trfActifs=()=>(TRF.liste||[]).filter(t=>t.statut!=='introuvable');
+// Transferts postérieurs au dernier chargement du catalogue : pas encore dans le stock renvoyé par le CRM
+const trfRecents=()=>{const d=Date.parse(CFG.cat_maj||0)||0;return trfActifs().filter(t=>Date.parse(t.ts)>=d);};
+const recuPour=p=>trfRecents().filter(t=>t.produit_id===p.id&&t.vers===CFG.boutique_id).reduce((s,t)=>s+t.qte,0);
+// Stock du stand : catalogue + transferts reçus − ventes de la session (un article cherché ailleurs entre puis sort : net 0)
+function stockLocal(p,ventes){
+  const vd=ventes.filter(x=>x.produit_id===p.id).reduce((s,x)=>s+x.quantite,0);
+  return Math.max(0,(Number(p.stock)||0)+recuPour(p)-vd);
+}
+// Stock estimé de l'autre boutique (null si inconnu) : catalogue − courses / réassorts partis depuis − panier en cours
+function stockAutreEst(p){
+  if(p.stock_autre===undefined||p.stock_autre===null||p.stock_autre==='')return null;
+  const a=autreB(),mv=trfRecents().filter(t=>t.produit_id===p.id).reduce((s,t)=>s+(t.vers===a?t.qte:0)-(t.de===a?t.qte:0),0);
+  const panA=pan[p.id+'@'+a]?pan[p.id+'@'+a].qty:0;
+  return Math.max(0,(Number(p.stock_autre)||0)+mv-panA);
+}
+function nouveauTransfert(p,qte,motif,o){
+  o=o||{};const now=o.ts||new Date().toISOString();
+  return {id:'T'+(CFG.boutique_id||'')+'-'+uid(),ts:now,de:o.de||autreB(),vers:CFG.boutique_id,produit_id:p.id,ref:refOf(p),nom:p.nom,
+    qte:qte,motif:motif,statut:o.statut||'remis',remis_ts:o.statut==='a_livrer'?null:now,groupe:o.groupe||null,
+    session_id:sess?sess.id:'',match:sess?sess.match_label:'',benevole:sess?sess.benevole||'':'',eventId:sess?sess.tickie_event_id||'':'',pil_envoye:false};
+}
+// Prêts à partir au pilotage : remis, et sortis de la fenêtre d'annulation de la vente (30 s)
+function trfAEnvoyer(tous){
+  const lim=Date.now()-31000;
+  return (TRF.liste||[]).filter(t=>!t.pil_envoye&&t.statut==='remis'&&(tous||t.motif!=='vente'||Date.parse(t.ts)<lim));
+}
+// Au chargement du catalogue : stock de l'autre boutique, pour savoir si le volant a une chance de trouver l'article
+async function stockAutreBoutique(url,produits){
+  try{
+    const r=await fetch(url+'?action=get_catalogue&boutique='+autreB()+'&saison='+encodeURIComponent(CFG.saison));
+    const d=await r.json();
+    if(!Array.isArray(d.produits)||!d.produits.length)throw new Error('catalogue '+nomPt(autreB())+' vide');
+    const m={};d.produits.forEach(x=>{m[x.id]=Number(x.stock)||0;});
+    produits.forEach(p=>{p.stock_autre=(p.id in m)?m[p.id]:0;});
+    synL('Stock '+nomPt(autreB())+' OK : '+d.produits.length+' produit(s)');
+  }catch(e){synL('Stock '+nomPt(autreB())+' non chargé : '+e.message);}
+  CFG.cat_maj=new Date().toISOString();await dPut('config',{...CFG,id:'main',key:'main'});
+}
+async function envoyerTransferts(force){
+  const lot=trfAEnvoyer(!!force).slice(0,40);
+  if(!lot.length||!PIL.url||!PIL.token||navigator.onLine===false)return;
+  try{
+    const r=await fetch(PIL.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'transferts',token:PIL.token,boutique:CFG.boutique_id,
+      transferts:lot.map(t=>({id:t.id,ts:t.ts,remis:t.remis_ts,de:t.de,vers:t.vers,ref:t.ref,nom:t.nom,qte:t.qte,motif:t.motif,match:t.match,session:t.session_id,benevole:t.benevole,eventId:t.eventId,vente:t.groupe||''}))})});
+    const res=await r.json();
+    if(res.status!=='ok')throw new Error(res.message||'refus');
+    const recus=new Set(res.recus||[]);
+    lot.forEach(t=>{if(recus.has(t.id))t.pil_envoye=true;});
+    await dPut('config',TRF);
+  }catch(e){/* réseau coupé ou pilotage pas encore à jour : nouvel essai plus tard */}
+}
+// Bouton « Courses » : orange et clignotant tant qu'un article payé attend le volant
+function rCourses(){
+  const b=$('btnCourses');if(!b)return;
+  const n=TRF.liste.filter(t=>t.statut==='a_livrer').reduce((s,t)=>s+t.qte,0);
+  b.className='crs'+(n?' on':'');
+  b.textContent=n?'🏃 '+n+' à rapporter de '+nomPt(autreB()):'🏃 Courses '+nomPt(autreB());
+}
+function ouvrirCourses(){rListeCourses();$('ov-courses').classList.add('on');}
+function rListeCourses(){
+  const a=nomPt(autreB()),att=TRF.liste.filter(t=>t.statut==='a_livrer').sort((x,y)=>x.ts.localeCompare(y.ts));
+  const faites=TRF.liste.filter(t=>t.motif==='vente'&&t.statut!=='a_livrer'&&(!sess||t.session_id===sess.id)).sort((x,y)=>y.ts.localeCompare(x.ts)).slice(0,5);
+  const h=iso=>iso?new Date(iso).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
+  $('coursesTit').textContent='🏃 Courses en '+a;
+  $('coursesSub').textContent=att.length?'Articles déjà payés : le volant les rapporte de la boutique '+a+'. Touche « Remis » quand le client a son article.':'Aucune course en attente.';
+  $('coursesList').innerHTML=att.map(t=>{const p=prods.find(x=>x.id===t.produit_id)||{nom:t.nom},tl=tailleOf(p);
+    return '<div class="crow"><div class="ci"><b>'+t.qte+' × '+esc(tl?modeleOf(p):t.nom)+(tl?' · '+esc(tl):'')+'</b><small>Payé à '+h(t.ts)+'</small></div><button class="cko" onclick="courseIntrouvable(\''+esc(t.id)+'\')">Introuvable</button><button class="cok" onclick="courseRemise(\''+esc(t.id)+'\')">✔ Remis</button></div>';}).join('')
+    +(faites.length?'<div class="hist" style="margin-top:12px">Dernières courses</div>'+faites.map(t=>'<div class="list-row"><span>'+t.qte+' × '+esc(t.nom)+'</span><b class="'+(t.statut==='remis'?'c-ok':'c-err')+'" style="font-size:13px">'+(t.statut==='remis'?'✔ remis '+h(t.remis_ts):'✕ introuvable')+'</b></div>').join(''):'');
+}
+async function courseRemise(id){
+  const t=TRF.liste.find(x=>x.id===id);if(!t)return;
+  t.statut='remis';t.remis_ts=new Date().toISOString();await dPut('config',TRF);
+  if(navigator.vibrate)navigator.vibrate(60);
+  rListeCourses();rCourses();toast('✓ '+t.qte+' × '+t.nom+' remis au client');pilEnvoyer();
+}
+// L'article n'est pas dans l'autre boutique : la ligne est retirée de la vente, le client est remboursé
+async function courseIntrouvable(id){
+  const t=TRF.liste.find(x=>x.id===id);if(!t)return;
+  const lignes=(await dAll('ventes')).filter(v=>v.groupe===t.groupe&&v.produit_id===t.produit_id&&v.a_chercher);
+  const mt=lignes.filter(v=>v.mode_paiement!=='Offert').reduce((s,v)=>s+(v.ca_ligne||0),0);
+  if(!confirm('Article introuvable en '+nomPt(t.de)+' : '+t.qte+' × '+t.nom+'.\n\nIl sera retiré de la vente.'+(mt>0?'\nRembourse '+fmt(mt)+' au client (espèces, ou annulation sur le terminal CB).':'')+'\n\nToucher OK pour confirmer.'))return;
+  for(const v of lignes)await dDel('ventes',v.id);
+  t.statut='introuvable';t.remis_ts=new Date().toISOString();await dPut('config',TRF);
+  if(sess&&lignes.length&&lignes[0].session_id===sess.id){
+    sCA=Math.max(0,sCA-mt);
+    const reste=(await dAll('ventes')).some(v=>v.groupe===t.groupe);
+    if(!reste&&mt>0){sTx=Math.max(0,sTx-1);if(lignes.some(v=>v.ticket_id||v.barcode))sScan=Math.max(0,sScan-1);}
+    rBand();rGrid();
+  }
+  rListeCourses();rCourses();
+  toast(mt>0?'Retiré de la vente : rembourse '+fmt(mt)+' au client':'Retiré de la vente',5000);
+}
+function rCloCourses(){
+  const el=$('cloCourses'),n=TRF.liste.filter(t=>t.statut==='a_livrer').length;
+  if(!n){el.style.display='none';return;}
+  el.className='state-line wait';el.style.display='block';
+  el.innerHTML='🏃 '+n+' course'+(n>1?'s':'')+' '+nomPt(autreB())+' pas encore confirmée'+(n>1?'s':'')+'. Si le client a bien son article : <button class="btn btn-s" style="margin-top:8px;height:44px;width:100%" onclick="ouvrirCourses()">Voir les courses</button>';
+}
+// Réassort : le volant rapporte plusieurs articles de l'autre boutique
+let _reas={};
+function ouvrirReassort(){
+  if(!sess){toast('Ouvre d\'abord la caisse du match');return;}
+  _reas={};const a=nomPt(autreB());
+  $('reasTit').textContent='📦 Recevoir de '+a;
+  $('reasSub').textContent='Articles rapportés de la boutique '+a+' : ils passent dans le stock '+nomPt(CFG.boutique_id)+'.';
+  rReassort();$('ov-reassort').classList.add('on');
+}
+function rReassort(){
+  const l=triProduits(prods.filter(p=>p.actif!==false));
+  $('reasList').innerHTML=l.length?l.map(p=>{const q=_reas[p.id]||0,au=stockAutreEst(p);
+    return '<div class="rrow"><div class="ri">'+esc(p.nom)+'<small>ici '+(stockOf(p)||0)+(au!==null?' · ≈'+au+' en '+nomPt(autreB()):'')+'</small></div><div class="piqty"><button class="qb" onclick="reasQ(\''+esc(p.id)+'\',-1)" aria-label="Moins">−</button><div class="qv">'+q+'</div><button class="qb plus" onclick="reasQ(\''+esc(p.id)+'\',1)" aria-label="Plus">+</button></div></div>';}).join('')
+    :'<div class="empty">Catalogue vide</div>';
+  const n=Object.values(_reas).reduce((s,q)=>s+q,0);
+  $('reasOk').disabled=!n;$('reasOk').textContent=n?'✔ '+n+' article'+(n>1?'s':'')+' reçu'+(n>1?'s':''):'✔ Articles reçus';
+}
+function reasQ(id,d){_reas[id]=Math.max(0,(_reas[id]||0)+d);rReassort();}
+async function validerReassort(){
+  const l=Object.entries(_reas).filter(([,q])=>q>0);if(!l.length)return;
+  for(const [id,q] of l){const p=prods.find(x=>x.id===id);if(!p)continue;
+    TRF.liste.push(nouveauTransfert(p,q,'reassort'));p.ss=(stockOf(p)||0)+q;}
+  await dPut('config',TRF);_reas={};
+  $('ov-reassort').classList.remove('on');rGrid();
+  toast('✓ Réassort enregistré');pilEnvoyer();
 }
 
 // ── PWA : fichiers statiques (manifest.json, sw.js) — indispensable à l'installation Android ──
