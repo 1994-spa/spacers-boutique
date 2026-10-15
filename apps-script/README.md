@@ -80,3 +80,13 @@ Les deux boutiques n'ont pas le même stock (le gros du stock est en GP) et il n
 - `Pilotage_Boutique.gs` : action `transferts` → 24_TRANSFERTS_LIVE (idempotent). **Gérer les déploiements → ✏️ → Nouvelle version** après mise à jour du fichier.
 - `Inventaire_Boutique.gs` : −qté dans le tableau du stand de départ, +qté dans celui d'arrivée (En boutique + Stock Total), trace dans `🔄 MAJ auto (CRM)`.
 - `crm/Transferts_Boutique.gs` : à ajouter au projet du classeur (à côté de `Stock_Boutique.gs`), puis ▶ `installerTransferts` une fois. Applique les transferts à `03_PRODUITS` (stock_B1 / stock_B2) avec deux mouvements TRANSFERT dans 11_MOUVEMENTS_STOCK ; colonne « Appliqué 03_PRODUITS » dans 24 (✓ / ⚠).
+
+## Saisie depuis le classeur « Inventaire 2026 2027 » (`crm/Saisie_Inventaire.gs`)
+
+La personne en charge de la boutique travaille uniquement dans son classeur Inventaire (aucun accès au CRM ni au code).
+À ajouter au projet **du classeur CRM** (➕ Fichier › Script, nom `Saisie_Inventaire`), puis ▶ `installerSaisieInventaire` une fois.
+
+- **📦 PRÉPARATION STOCK** (avant match) : stock CRM Dépôt / GP / VIP par article ; cases jaunes = reçu au dépôt, dépôt → GP/VIP, GP ↔ VIP, retours au dépôt ; case « Valider » → `enregistrerReception` / `enregistrerRepartition` / `enregistrerTransfert` (02_ACHATS, 03_PRODUITS, 11_MOUVEMENTS_STOCK signés « Inventaire · prénom »). Ligne contrôlée avant application ; chaque case vidée dès son opération enregistrée (pas de double application en cas d'erreur).
+- **🏁 APRÈS MATCH** : rapport des ventes tablette (01_VENTES) par match — CA GP/VIP, CB, espèces, offerts, articles vendus, stock CRM ; saisie relevé TPE, espèces comptées, stock compté ; « Valider le contrôle » → `enregistrerInventaire` (écarts), onglet `25_CONTROLES_CAISSE`, rapport par mail.
+- Déclencheurs : à la modification du classeur Inventaire (programme le traitement dans la minute) + toutes les 5 min (traitement, rafraîchissement des colonnes grises sans toucher aux saisies, réparation des `#ERROR!` de 🔄 STOCK LIVE / VENTES LIVE).
+- Propriété facultative `INVENTAIRE_ID` (sinon l'identifiant par défaut du classeur Inventaire).
