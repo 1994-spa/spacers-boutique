@@ -359,6 +359,7 @@ function si_construireApres_(inv, match, leger) {
       });
       // colonnes H, K, N uniquement (les saisies I, L, O et les formules ne sont pas réécrites)
       [[0, 8], [3, 11], [6, 14]].forEach(t => sh.getRange(SI.A_ART + 1, t[1], n, 1).setValues(stock.map(s => [s[t[0]] === undefined ? '' : s[t[0]]])));
+      si_formulesApres_(inv, sh, SI.A_ART + 1, refs.filter(r => String(r[0]).trim() !== '').length);
     }
     return;
   }
@@ -463,6 +464,21 @@ function si_construireApres_(inv, match, leger) {
   }
   sh.getRange('A6').setValue('Rapport mis à jour le ' + sb_fmt_(new Date()) + ' · ' + vm.length + ' ligne(s) de vente tablette pour ce match.')
     .setFontStyle('italic');
+}
+
+/** (Ré)écrit les formules d'écart de l'onglet APRÈS MATCH avec le séparateur du classeur (ne touche à aucune saisie). */
+function si_formulesApres_(inv, sh, r0, n) {
+  for (let j = 0; j < 2; j++) {
+    const r = SI.A_CAISSE + 1 + j;
+    sh.getRange(r, 10, 1, 2).setFormulas([[si_f_(inv, '=IF(H' + r + '="","",H' + r + '-E' + r + ')'), si_f_(inv, '=IF(I' + r + '="","",I' + r + '-F' + r + ')')]]);
+  }
+  if (n < 1) return;
+  const f = (a, b, r) => si_f_(inv, '=IF(' + a + r + '="","",' + a + r + '-' + b + r + ')');
+  const lignes = [];
+  for (let i = 0; i < n; i++) lignes.push(r0 + i);
+  sh.getRange(r0, 10, n, 1).setFormulas(lignes.map(r => [f('I', 'H', r)]));
+  sh.getRange(r0, 13, n, 1).setFormulas(lignes.map(r => [f('L', 'K', r)]));
+  sh.getRange(r0, 16, n, 1).setFormulas(lignes.map(r => [f('O', 'N', r)]));
 }
 
 /** Enregistre le contrôle : écarts de stock → CRM, caisse → 25_CONTROLES_CAISSE, rapport par mail. */
