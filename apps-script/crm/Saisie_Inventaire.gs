@@ -66,6 +66,7 @@ function installerSaisieInventaire() {
   ScriptApp.newTrigger('majSaisieInventaire').timeBased().everyMinutes(5).create();
   si_construirePreparation_(inv);
   si_construireApres_(inv, '');
+  si_construireNotice_(inv);
   si_reparerLive_(inv);
   Logger.log('Classeur : « ' + inv.getName() + ' ». Onglets « ' + SI.PREP + ' » et « ' + SI.APRES + ' » prêts. ' +
              'Déclencheurs posés (modification + 5 min).');
@@ -75,6 +76,7 @@ function installerSaisieInventaire() {
 function majSaisieInventaire() {
   const inv = SpreadsheetApp.openById(si_idInventaire_());
   si_traiterDemandes_(inv);
+  si_construireNotice_(inv);
   si_construirePreparation_(inv);
   const shA = inv.getSheetByName(SI.APRES);
   si_construireApres_(inv, shA ? String(shA.getRange('B4').getValue()).trim() : '', true);
@@ -138,6 +140,81 @@ function si_traiterDemandes_(inv) {
     si_construireApres_(inv, String(shA.getRange('B4').getValue()).trim());
     shA.getRange('A6').setValue(msg);
   }
+}
+
+/* ============================== 📖 MODE D'EMPLOI ============================== */
+
+const SI_NOTICE_VERSION = 'notice-v1';
+
+/** Onglet de notice pas à pas, en tête du classeur. Recréé seulement si absent ou si la version change. */
+function si_construireNotice_(inv) {
+  const NOM = '📖 MODE D\'EMPLOI';
+  let sh = inv.getSheetByName(NOM);
+  if (sh && sh.getRange('A1').getNote() === SI_NOTICE_VERSION) return;
+  if (sh) sh.clear(); else sh = inv.insertSheet(NOM, 0);
+
+  // [texte, style] — styles : T titre, S section, E étape, X exemple, I info, A attention, V vide
+  const L = [
+    ['📖 MODE D\'EMPLOI — Boutique : stock et contrôle des matchs', 'T'],
+    ['Tu travailles uniquement dans ce classeur. Tout ce que tu valides part dans le CRM du club en 1 à 2 minutes.', 'I'],
+    ['', 'V'],
+    ['LES 3 RÈGLES', 'S'],
+    ['🟨 Cases JAUNES = c\'est toi qui les remplis.', 'E'],
+    ['⬜ Cases GRISES = elles viennent du CRM. On n\'y touche pas (Google affiche un avertissement si on essaie).', 'E'],
+    ['☑️ Rien n\'est enregistré tant que tu n\'as pas coché la case « ✅ Valider ». Ton prénom est obligatoire.', 'E'],
+    ['', 'V'],
+    ['① AVANT LE MATCH — onglet « 📦 PRÉPARATION STOCK »', 'S'],
+    ['Chaque ligne = un article (une taille). Les colonnes grises montrent le stock actuel : Dépôt · Boutique GP · Boutique VIP · Total.', 'I'],
+    ['1. Écris ton prénom en B4.', 'E'],
+    ['2. Une livraison est arrivée ? Écris le fournisseur et le n° de facture en E4, puis la quantité reçue dans la colonne « ➕ Reçu au dépôt ».', 'E'],
+    ['3. Ce que tu installes en boutique : colonnes « Dépôt → GP » et « Dépôt → VIP ».', 'E'],
+    ['4. Si besoin : « GP → VIP » / « VIP → GP » (déplacer entre boutiques), « GP → Dépôt » / « VIP → Dépôt » (rapporter au dépôt).', 'E'],
+    ['5. Coche « ✅ Valider » (H4). Le message « ⏳ Validation reçue » s\'affiche.', 'E'],
+    ['6. Attends 1 à 2 minutes : la colonne « Résultat » affiche ✅ et le nouveau stock, les cases jaunes se vident toutes seules.', 'E'],
+    ['EXEMPLE — livraison Monprinteur de samedi : 25 mugs reçus, 15 pour la boutique GP, 10 pour la VIP.', 'X'],
+    ['→ Ligne MUG-BLC-TU : « Reçu au dépôt » = 25 · « Dépôt → GP » = 15 · « Dépôt → VIP » = 10. En E4 : « Monprinteur devis 527 ». Prénom en B4, puis Valider.', 'X'],
+    ['→ Résultat : « ✅ +25 reçu, 15 → GP, 10 → VIP · maintenant dépôt 0 / GP 15 / VIP 10 ».', 'X'],
+    ['', 'V'],
+    ['② LE JOUR DU MATCH — la tablette', 'S'],
+    ['1. Avant l\'ouverture, en wifi : Synchronisation → « Mettre à jour le catalogue », puis « 🎫 Charger le match ». Le stock que tu as préparé apparaît sur la tablette.', 'E'],
+    ['2. Pendant le match : la caisse marche sans internet.', 'E'],
+    ['3. À la fermeture : clôturer la caisse, puis « Synchroniser tout » dès qu\'il y a du réseau. C\'est ça qui envoie les ventes au CRM.', 'E'],
+    ['4. Remise à zéro de la tablette : seulement APRÈS la synchronisation (la tablette refuse tant que des ventes ne sont pas parties).', 'E'],
+    ['', 'V'],
+    ['③ APRÈS LE MATCH — onglet « 🏁 APRÈS MATCH »', 'S'],
+    ['Le rapport des tablettes s\'affiche tout seul : chiffre d\'affaires par boutique (CB, espèces, offerts), articles vendus, stock restant.', 'I'],
+    ['⚠ Ne compte rien tant que la tablette n\'a pas fait « Synchroniser tout » : sinon les ventes ne sont pas encore déduites.', 'A'],
+    ['1. Vérifie le match en B4 (le dernier est choisi tout seul ; la liste déroulante donne les autres).', 'E'],
+    ['2. CAISSE : « CB relevé TPE » = total du ticket de fin de journée du terminal. « Espèces comptées » = espèces dans la caisse MOINS le fond de caisse.', 'E'],
+    ['3. STOCK : compte les articles et écris les quantités dans « Compté GP », « Compté VIP » (et « Compté dépôt » si tu le fais). Case vide = pas compté.', 'E'],
+    ['4. Les écarts se calculent seuls : 0 = parfait ; en rouge = différence (négatif = il en manque).', 'E'],
+    ['5. Ton prénom en E4, une adresse en J4 si tu veux une copie du mail, un commentaire en B5 si besoin (ex. « TPE en panne 10 minutes »).', 'E'],
+    ['6. Coche « ✅ Valider le contrôle » (H4). En 1 à 2 minutes : le stock du CRM est corrigé, le contrôle de caisse est enregistré et le rapport part par mail à Clément.', 'E'],
+    ['EXEMPLE : le CRM dit 33 écharpes en GP, tu en comptes 31 → écart −2 en rouge. Après validation, le CRM passe à 31 et Clément le voit dans le mail.', 'X'],
+    ['', 'V'],
+    ['EN CAS DE SOUCI', 'S'],
+    ['❌ « Indiquez votre nom » → remplir B4 (ou E4 après match), puis recocher.', 'E'],
+    ['❌ « pas assez au dépôt / en GP / en VIP » → la quantité demandée dépasse le stock : recompter ou corriger, puis revalider. Rien n\'a été changé.', 'E'],
+    ['❌ « coût d\'achat inconnu » ou article absent de la liste → prévenir Clément.', 'E'],
+    ['Rien ne bouge après 5 minutes → recocher la case Valider ; si ça continue, prévenir Clément.', 'E'],
+    ['Dons, cadeaux partenaires, casse : ne passent pas par ce tableau, ils sont saisis par Clément.', 'I'],
+    ['', 'V'],
+    ['Les onglets « 🔄 … LIVE » sont en lecture seule (mis à jour automatiquement). Les anciens onglets (Stock Total, En boutique, Dépot) restent pour l\'historique.', 'I'],
+  ];
+  sh.getRange(1, 1, L.length, 1).setValues(L.map(l => [l[0]]));
+  sh.setColumnWidth(1, 980);
+  sh.getRange(1, 1, L.length, 1).setWrap(true).setVerticalAlignment('middle').setFontSize(11).setFontFamily('Arial');
+  const style = { T: ['#0b1f3a', '#ffffff', 16, true], S: ['#0b1f3a', '#ffffff', 12, true], E: ['#ffffff', '#111111', 11, false],
+                  X: ['#fff2cc', '#5b4400', 11, false], I: ['#eef1f5', '#333333', 11, false], A: ['#fde2e1', '#991b1b', 11, true], V: ['#ffffff', '#111111', 6, false] };
+  L.forEach((l, i) => {
+    const s = style[l[1]], r = sh.getRange(i + 1, 1);
+    r.setBackground(s[0]).setFontColor(s[1]).setFontSize(s[2]).setFontWeight(s[3] ? 'bold' : 'normal');
+    if (l[1] === 'X') r.setFontStyle('italic');
+    if (l[1] === 'V' || l[1] === 'T') sh.setRowHeight(i + 1, l[1] === 'V' ? 8 : 36);   // les autres lignes s'ajustent au texte
+  });
+  sh.getRange('A1').setNote(SI_NOTICE_VERSION);
+  sh.setHiddenGridlines(true);
+  sh.setTabColor('#f59e0b');
 }
 
 /* ============================ 📦 PRÉPARATION STOCK ============================ */
