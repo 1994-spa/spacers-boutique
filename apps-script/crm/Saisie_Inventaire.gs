@@ -410,9 +410,11 @@ function si_calendrier_() {
       const jour = Utilities.formatDate(d, 'Europe/Paris', 'yyyy-MM-dd');
       const nom = String(r[c['Match'] - 1]).trim();
       const j = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'][Number(Utilities.formatDate(d, 'Europe/Paris', 'u')) % 7];
+      const hBrut = r[c['Heure'] - 1];
+      const heure = hBrut instanceof Date ? Utilities.formatDate(d, 'Europe/Paris', 'HH:mm') : String(hBrut || '');
       return { ligne: i + 2, id: String(r[c['ID événement Tickie'] - 1]), nom: nom, jour: jour, passe: jour < auj,
                tablettes: String(r[c['Tablettes'] - 1]).indexOf('✅') === 0,
-               libelle: j + ' ' + Utilities.formatDate(d, 'Europe/Paris', 'dd/MM') + ' ' + String(r[c['Heure'] - 1] || '') + ' — ' + nom };
+               libelle: j + ' ' + Utilities.formatDate(d, 'Europe/Paris', 'dd/MM') + ' ' + heure + ' — ' + nom };
     });
 }
 
