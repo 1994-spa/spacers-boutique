@@ -1005,7 +1005,8 @@ let RET={id:'retraits',retraits:[],tailles:{},maj:null,attente:[]};
 //  • motif 'vente'    : article vendu ici mais absent du stand, le volant va le chercher dans l'autre boutique.
 //    Statut 'a_livrer' puis 'remis' (ou 'introuvable' : la ligne est retirée de la vente).
 //  • motif 'reassort' : le volant rapporte plusieurs articles d'un coup (statut 'remis' d'emblée).
-// Un transfert 'remis' part au pilotage (24_TRANSFERTS_LIVE) : l'inventaire et 03_PRODUITS passent l'article
+// Un transfert 'remis' part au CRM à la synchro (« Synchroniser tout », action=transferts) et, si le pilotage est
+// configuré, au fil de l'eau (24_TRANSFERTS_LIVE) : l'inventaire et 03_PRODUITS passent l'article
 // d'une boutique à l'autre ; la vente, elle, reste une vente du stand qui a encaissé.
 let TRF={id:'transferts',liste:[]};
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -1697,12 +1698,12 @@ async function rSync(){
   $('synNP').textContent=prods.length;
   $('synAbo').textContent=Object.keys(ABO.liste||{}).length;
   rRetSyn();
-  {const n=trfAEnvoyer(true).length;$('synTrf').textContent=n;$('synTrf').className=n?'c-warn':'';}
+  {const n=trfAEnvoyer(true,'crm_envoye').length;$('synTrf').textContent=n;$('synTrf').className=n?'c-warn':'';}
   $('synUrl').value=cfg.apps_script_url||'';
   $('pilUrl').value=PIL.url||'';$('pilTok').value=PIL.token||'';
   rPilState();
   const sessions=await dAll('sessions'),att=sessions.filter(s=>s.statut==='clos');
-  $('synNA').textContent=att.length;$('synBtn').disabled=att.length===0;
+  $('synNA').textContent=att.length;$('synBtn').disabled=att.length===0&&!trfAEnvoyer(true,'crm_envoye').length;
   const ventes=await dAll('ventes'),el=$('synCards');
   if(!att.length){el.innerHTML='<div class="empty">Aucune session en attente</div>';return;}
   el.innerHTML=att.map(s=>{const sv=ventes.filter(v=>v.session_id===s.id),ca=sv.filter(v=>v.mode_paiement!=='Offert').reduce((x,v)=>x+v.ca_ligne,0);
@@ -1722,7 +1723,8 @@ async function lancerSync(){
     try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'import_session',session:s,ventes:sv,stock_cloture:s.stock_cloture||[]})});const d=await r.json();if(d.status!=='ok')throw new Error(d.message||'refusé par le CRM');s.statut='synchro';await dPut('sessions',s);ok++;synL('OK : '+s.match_label+' · '+(d.ventes_ajoutees||0)+' ligne(s)');}
     catch(e){synL('ERREUR : '+s.match_label+' — '+e.message);}
   }
-  await rSync();await rHome();toast(ok+'/'+sessions.length+' session'+(ok>1?'s':'')+' synchronisée'+(ok>1?'s':''));
+  const nt=await envoyerTransfertsCRM(url);
+  await rSync();await rHome();toast(ok+'/'+sessions.length+' session'+(ok>1?'s':'')+' synchronisée'+(ok>1?'s':'')+(nt?' · '+nt+' transfert'+(nt>1?'s':''):''));
 }
 // Garde-fou : une tablette boutique ne doit jamais charger le catalogue buvette
 function bvtWrongCatalog(t){
@@ -1752,7 +1754,7 @@ async function syncCat(){
 async function resetApp(){
   const ventes=await dAll('ventes'),ses=await dAll('sessions');
   const nonSync=ses.filter(s=>s.statut!=='synchro'&&ventes.some(v=>v.session_id===s.id));
-  const trfNE=trfAEnvoyer(true).length+TRF.liste.filter(t=>t.statut==='a_livrer').length;
+  const trfNE=trfAEnvoyer(true,'crm_envoye').length+TRF.liste.filter(t=>t.statut==='a_livrer').length;
   if(trfNE){alert('Impossible de réinitialiser : '+trfNE+' transfert(s) entre boutiques pas encore envoyé(s) ou course(s) en attente.\n\nMarquez les courses remises et synchronisez d\'abord (avec réseau), ou appelez le responsable.');return;}
   if(nonSync.length||(RET.attente||[]).length){alert('Impossible de réinitialiser : '+(nonSync.length?nonSync.length+' session(s) de vente pas encore synchronisée(s)':'')+(nonSync.length&&(RET.attente||[]).length?' et ':'')+((RET.attente||[]).length?(RET.attente.length)+' remise(s) web pas encore envoyée(s)':'')+'.\n\nClôturez et synchronisez d\'abord (avec réseau), ou appelez le responsable.');return;}
   if(!confirm('Réinitialiser ? Toutes les données locales seront supprimées.'))return;await dClr('config');await dClr('sessions');await dClr('ventes');await dClr('produits');location.reload();}
@@ -2097,9 +2099,27 @@ function nouveauTransfert(p,qte,motif,o){
     session_id:sess?sess.id:'',match:sess?sess.match_label:'',benevole:sess?sess.benevole||'':'',eventId:sess?sess.tickie_event_id||'':'',pil_envoye:false};
 }
 // Prêts à partir au pilotage : remis, et sortis de la fenêtre d'annulation de la vente (30 s)
-function trfAEnvoyer(tous){
-  const lim=Date.now()-31000;
-  return (TRF.liste||[]).filter(t=>!t.pil_envoye&&t.statut==='remis'&&(tous||t.motif!=='vente'||Date.parse(t.ts)<lim));
+// champ : 'pil_envoye' (pilotage, facultatif) ou 'crm_envoye' (CRM, obligatoire avant réinitialisation)
+function trfAEnvoyer(tous,champ){
+  const lim=Date.now()-31000,f=champ||'pil_envoye';
+  return (TRF.liste||[]).filter(t=>!t[f]&&t.statut==='remis'&&(tous||t.motif!=='vente'||Date.parse(t.ts)<lim));
+}
+const trfPourEnvoi=t=>({id:t.id,ts:t.ts,remis:t.remis_ts,de:t.de,vers:t.vers,ref:t.ref,nom:t.nom,qte:t.qte,motif:t.motif,match:t.match,session:t.session_id,benevole:t.benevole,eventId:t.eventId,vente:t.groupe||''});
+// Envoi au CRM (même URL que la synchro de fin de match) : 24_TRANSFERTS_LIVE + stocks GP/VIP de 03_PRODUITS
+async function envoyerTransfertsCRM(url){
+  const lot=trfAEnvoyer(true,'crm_envoye');
+  if(!lot.length)return 0;
+  synL('Envoi : '+lot.length+' transfert(s) entre boutiques…');
+  try{
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'transferts',boutique:CFG.boutique_id,transferts:lot.map(trfPourEnvoi)})});
+    const d=await r.json();
+    if(d.status!=='ok')throw new Error(d.message||'refusé par le CRM');
+    const recus=new Set(d.recus||[]);let n=0;
+    lot.forEach(t=>{if(recus.has(t.id)){t.crm_envoye=true;n++;}});
+    await dPut('config',TRF);
+    synL('OK : '+n+' transfert(s) · '+(d.message||''));
+    return n;
+  }catch(e){synL('ERREUR transferts — '+e.message+(/inconnue/i.test(e.message)?' (CRM_Boutique_V3.gs à mettre à jour)':''));return 0;}
 }
 // Au chargement du catalogue : stock de l'autre boutique, pour savoir si le volant a une chance de trouver l'article
 async function stockAutreBoutique(url,produits){
@@ -2118,7 +2138,7 @@ async function envoyerTransferts(force){
   if(!lot.length||!PIL.url||!PIL.token||navigator.onLine===false)return;
   try{
     const r=await fetch(PIL.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'transferts',token:PIL.token,boutique:CFG.boutique_id,
-      transferts:lot.map(t=>({id:t.id,ts:t.ts,remis:t.remis_ts,de:t.de,vers:t.vers,ref:t.ref,nom:t.nom,qte:t.qte,motif:t.motif,match:t.match,session:t.session_id,benevole:t.benevole,eventId:t.eventId,vente:t.groupe||''}))})});
+      transferts:lot.map(trfPourEnvoi)})});
     const res=await r.json();
     if(res.status!=='ok')throw new Error(res.message||'refus');
     const recus=new Set(res.recus||[]);

@@ -7,6 +7,8 @@
  *                    si Organisation_Classeur.gs est présent
  * V3.3 (04/10/2026) : menu « 🎟️ Add-ons Tickie » si Tickie_Produits.gs / Tickie_Addons.gs
  *                    sont présents (import des ventes add-on, stock, prix CRM → Tickie)
+ * V3.5 (16/10/2026) : doPost action=transferts (articles passés de GP à VIP par le volant / réassort),
+ *                    traité par Transferts_Boutique.gs → 24_TRANSFERTS_LIVE + stocks de 03_PRODUITS
  * V3.4 (05/10/2026) : remise abonnés −10 %
  *   - Onglet 16_ABONNES (cartes valides) alimenté par l'export billets Tickie (16b_IMPORT_ABONNES)
  *     + billets partenaires lus dans Tickie (CROUS : menu « 🤝 Importer les billets partenaires »,
@@ -229,7 +231,7 @@ function doGet(e) {
     const action = e && e.parameter && e.parameter.action || 'ping';
 
     if (action === 'ping') {
-      return jsonResponse({ status: 'ok', app: 'boutique', version: 'V3.4', timestamp: new Date().toISOString() });
+      return jsonResponse({ status: 'ok', app: 'boutique', version: 'V3.5', timestamp: new Date().toISOString() });
     }
 
     if (action === 'get_abonnes') {
@@ -269,6 +271,13 @@ function doPost(e) {
     if (action === 'import_session') {
       const result = importSessionDepuisTablet(payload);
       return jsonResponse({ status: 'ok', ...result });
+    }
+
+    if (action === 'transferts') {
+      if (typeof tb_recevoirTransferts_ !== 'function') {
+        return jsonResponse({ status: 'error', message: 'Transferts_Boutique.gs absent du projet Apps Script' });
+      }
+      return jsonResponse(Object.assign({ status: 'ok' }, tb_recevoirTransferts_(payload.transferts || [])));
     }
 
     return jsonResponse({ status: 'error', message: 'Action inconnue : ' + action });

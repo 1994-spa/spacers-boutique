@@ -76,10 +76,12 @@ Les deux boutiques n'ont pas le même stock (le gros du stock est en GP) et il n
 - **📦 Recevoir de GP** : le volant rapporte plusieurs articles d'un coup (réassort).
 - Le stock GP affiché vient du CRM (`03_PRODUITS.stock_B1`, chargé avec le catalogue) : indicatif tant que la boutique GP n'a pas de tablette.
 
-**Côté serveur** — la vente reste celle du stand qui encaisse (01_VENTES et synchro de fin de match inchangées) ; seul l'emplacement du stock bouge :
-- `Pilotage_Boutique.gs` : action `transferts` → 24_TRANSFERTS_LIVE (idempotent). **Gérer les déploiements → ✏️ → Nouvelle version** après mise à jour du fichier.
-- `Inventaire_Boutique.gs` : −qté dans le tableau du stand de départ, +qté dans celui d'arrivée (En boutique + Stock Total), trace dans `🔄 MAJ auto (CRM)`.
-- `crm/Transferts_Boutique.gs` : à ajouter au projet du classeur (à côté de `Stock_Boutique.gs`), puis ▶ `installerTransferts` une fois. Applique les transferts à `03_PRODUITS` (stock_B1 / stock_B2) avec deux mouvements TRANSFERT dans 11_MOUVEMENTS_STOCK ; colonne « Appliqué 03_PRODUITS » dans 24 (✓ / ⚠).
+**Côté serveur** — la vente reste celle du stand qui encaisse (01_VENTES inchangé) ; seul l'emplacement du stock bouge. Tout passe par le projet **du classeur** (pas besoin du projet Pilotage) :
+- `crm/CRM_Boutique_V3.gs` V3.5 : `doPost` action `transferts`, envoyée par la tablette avec **« Synchroniser tout »** (même URL que la synchro de fin de match).
+- `crm/Transferts_Boutique.gs` : nouveau fichier à côté de `Stock_Boutique.gs`, puis ▶ `installerTransferts` une fois. Écrit 24_TRANSFERTS_LIVE (anti-doublon sur l'ID) et applique à `03_PRODUITS` (stock_B1 / stock_B2) avec deux mouvements TRANSFERT dans 11_MOUVEMENTS_STOCK ; colonne « Appliqué 03_PRODUITS » (✓ / ⚠).
+- Puis **Déployer → Gérer les déploiements → ✏️ → Nouvelle version** (l'URL des tablettes ne change pas).
+- `Inventaire_Boutique.gs` : lit 24_TRANSFERTS_LIVE ; −qté dans le tableau du stand de départ, +qté dans celui d'arrivée (En boutique + Stock Total).
+- Facultatif : si le projet Pilotage est installé, la tablette lui envoie aussi les transferts au fil de l'eau (même onglet 24, pas de doublon).
 
 ## Saisie depuis le classeur « Inventaire 2026 2027 » (`crm/Saisie_Inventaire.gs`)
 
