@@ -198,13 +198,90 @@ function pbCompterEntrees_(eventId) {   // null si le contrôle d'accès n'est p
 }
 
 // ── Match actif des tablettes ────────────────────────────────────────────
-function pbActif_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('PB_MATCH_ACTIF') || 'null'); } catch (e) { return null; } }
+function pbActifStocke_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('PB_MATCH_ACTIF') || 'null'); } catch (e) { return null; } }
+function pbAujourdhui_() { return Utilities.formatDate(new Date(), pbTz_(), 'yyyy-MM-dd'); }
+function pbEnregistrerActif_(ev) {
+  const a = { eventId: ev.id, nom: ev.nom, date: ev.date, dateMatch: ev.dateMatch, saved: new Date().toISOString() };
+  PropertiesService.getScriptProperties().setProperty('PB_MATCH_ACTIF', JSON.stringify(a));
+  return a;
+}
+/**
+ * Match envoyé aux tablettes, dans cet ordre :
+ *  1. le match coché dans l'onglet 04b_CALENDRIER du CRM (choix du tableau de bord ou de la personne en charge
+ *     de la boutique depuis son classeur Inventaire), s'il n'est pas passé ;
+ *  2. sinon le dernier match choisi, s'il n'est pas passé ;
+ *  3. sinon le PROCHAIN match Tickie (aujourd'hui compris) : plus de match passé resté « actif ».
+ */
+function pbActif_() {
+  const auj = pbAujourdhui_();
+  let choix = null;
+  try { choix = pbCalendrierChoix_(); } catch (e) { choix = null; }
+  const stocke = pbActifStocke_();
+  if (choix && choix.dateMatch >= auj) {
+    if (!stocke || stocke.eventId !== choix.eventId) {
+      const ev = pbEvent_(choix.eventId);
+      if (ev) return pbEnregistrerActif_(ev);
+    } else return stocke;
+  }
+  if (stocke && stocke.dateMatch >= auj) return stocke;
+  const prochain = pbMatchsTickie_().filter(function (x) { return x.dateMatch >= auj; })[0];
+  if (!prochain) return stocke;
+  const a = pbEnregistrerActif_(prochain);
+  try { pbSyncCalendrier_(a.eventId); } catch (e) { /* calendrier facultatif */ }
+  return a;
+}
 function pbDefinirActif_(eventId) {
   const ev = pbEvent_(eventId);
   if (!ev) throw new Error('Match introuvable dans Tickie');
-  const a = { eventId: ev.id, nom: ev.nom, date: ev.date, dateMatch: ev.dateMatch, saved: new Date().toISOString() };
-  PropertiesService.getScriptProperties().setProperty('PB_MATCH_ACTIF', JSON.stringify(a));
+  const a = pbEnregistrerActif_(ev);
+  try { pbSyncCalendrier_(a.eventId); } catch (e) { /* calendrier facultatif */ }
   return { actif: a, tablettes: pbLireJournal_() };
+}
+
+// ── Calendrier des matchs dans le CRM (onglet 04b_CALENDRIER, depuis Tickie) ──
+// Colonne « Tablettes » : ✅ sur le match envoyé aux tablettes. Elle peut être changée depuis le tableau de bord
+// ou depuis le classeur Inventaire (Saisie_Inventaire.gs) ; les autres colonnes sont réécrites à chaque passage.
+const PB_CAL = '04b_CALENDRIER';
+const PB_CAL_COLS = ['ID événement Tickie', 'Date', 'Heure', 'Match', 'Adversaire Spacer\'s', 'Statut', 'Tablettes', 'Jauge'];
+function pbCalendrierChoix_() {
+  const sh = pbSheet_(PB_CAL);
+  if (!sh || sh.getLastRow() < 2) return null;
+  const v = sh.getRange(2, 1, sh.getLastRow() - 1, PB_CAL_COLS.length).getValues();
+  const r = v.filter(function (x) { return String(x[6]).indexOf('✅') === 0; })[0];
+  if (!r) return null;
+  return { eventId: String(r[0]), dateMatch: r[1] instanceof Date ? pbDate_(r[1]) : String(r[1]) };
+}
+function pbAdversaire_(nom) {
+  const m = String(nom || '').match(/spacer'?s?\s+vs\.?\s+([^&\-]+)/i);
+  return m ? m[1].trim() : '';
+}
+function pbSyncCalendrier_(actifId) {
+  const ss = pbSS_();
+  let sh = ss.getSheetByName(PB_CAL);
+  if (!sh) {
+    sh = ss.insertSheet(PB_CAL);
+    sh.getRange(1, 1, 1, PB_CAL_COLS.length).setValues([PB_CAL_COLS]).setBackground(PB.NAVY).setFontColor('#FFFFFF').setFontWeight('bold');
+    sh.setFrozenRows(1);
+    sh.setColumnWidth(4, 360);
+  }
+  const auj = pbAujourdhui_();
+  const actif = actifId || ((pbActifStocke_() || {}).eventId) || '';
+  const lignes = pbMatchsTickie_().map(function (ev) {
+    const d = new Date(ev.date);
+    return [ev.id, d, Utilities.formatDate(d, pbTz_(), 'HH:mm'), ev.nom, pbAdversaire_(ev.nom),
+      ev.dateMatch < auj ? 'passé' : (ev.dateMatch === auj ? 'aujourd\'hui' : 'à venir'),
+      ev.id === actif ? '✅ tablettes' : '', ev.jauge || ''];
+  });
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, PB_CAL_COLS.length).clearContent();
+  if (lignes.length) {
+    sh.getRange(2, 1, lignes.length, PB_CAL_COLS.length).setValues(lignes);
+    sh.getRange(2, 2, lignes.length, 1).setNumberFormat('dd/MM/yyyy');
+  }
+  return lignes.length;
+}
+function synchroniserCalendrier() {   // ▶ à la main depuis l'éditeur si besoin
+  const a = pbActif_();
+  Logger.log(pbSyncCalendrier_(a && a.eventId) + ' match(s) écrits dans ' + PB_CAL + ' · tablettes : ' + (a ? a.nom : 'aucun'));
 }
 
 // Ce que la tablette emporte en boutique pour scanner hors ligne
@@ -353,6 +430,7 @@ function pbDashboard_(eventId) {
 
 // ── Billets scannés → acheteur Tickie (déclencheur 10 min) ───────────────
 function relierAcheteurs() {
+  try { const a = pbActif_(); pbSyncCalendrier_(a && a.eventId); } catch (e) { console.warn('Calendrier : ' + e.message); }
   const sh = pbSheet_(PB.SH_LIVE);
   if (!sh || sh.getLastRow() < 2) return;
   const rg = sh.getRange(2, 1, sh.getLastRow() - 1, PB_NB);

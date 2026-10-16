@@ -558,7 +558,7 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
     <div class="col">
       <div class="card">
         <div class="card-t">Procédure match</div>
-        <div class="step"><i>1</i><div><b>Avant le match — avec le wifi</b><span>Synchronisation → « Mettre à jour le catalogue » (charge aussi les retraits web) puis « Charger le match ». Vérifier le stock.</span></div></div>
+        <div class="step"><i>1</i><div><b>Avant le match — avec le wifi</b><span>Synchronisation → « 🎫 Charger le match + le stock » (match, billets, stock préparé et retraits web). Vérifier le stock.</span></div></div>
         <div class="step"><i>2</i><div><b>Pendant le match — hors ligne possible</b><span>Scanner le billet du client, vendre. Erreur → bouton rouge ↩ (30 s). CB : attendre le terminal.</span></div></div>
         <div class="step"><i>3</i><div><b>Après le match</b><span>🏁 FIN → noter les espèces → note au suivant → Clôturer. Avec le wifi → « Synchroniser tout ».</span></div></div>
       </div>
@@ -710,7 +710,7 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
       <div class="card">
         <div class="card-t">📡 Pilotage live &amp; billets</div>
         <div class="state-line" id="pilMatchState">Aucun match chargé.</div>
-        <button class="btn btn-g w100" style="margin-top:10px" onclick="chargerMatch()">🎫 Charger le match (wifi)</button>
+        <button class="btn btn-g w100" style="margin-top:10px" onclick="chargerMatch()">🎫 Charger le match + le stock (wifi)</button>
         <div class="hint">Récupère le match choisi au tableau de bord et la liste des billets : le scan fonctionne ensuite hors ligne.</div>
         <div class="g2" style="margin-top:12px">
           <div><label class="lbl" for="pilUrl">URL pilotage</label><input class="inp" id="pilUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec"></div>
@@ -1039,9 +1039,20 @@ async function startup(){
   if(parLien){
     toast('✅ Tablette configurée : '+CFG.boutique_id+' · '+CFG.boutique_nom,4000);
     // Premier passage en wifi : catalogue + match + billets, sans rien toucher
-    if(navigator.onLine!==false){(async()=>{if(CFG.apps_script_url)await syncCat();if(PIL.url&&PIL.token)await chargerMatch();await rHome();})();}
-  }
+    if(navigator.onLine!==false){(async()=>{if(CFG.apps_script_url)await syncCat();if(PIL.url&&PIL.token)await chargerMatch(false);await rHome();})();}
+  }else majMatchAuto();
   pilEnvoyer();
+}
+// Match passé et pas de caisse ouverte : au démarrage avec réseau, la tablette charge seule le match suivant + le stock
+async function majMatchAuto(){
+  try{
+    if(navigator.onLine===false||!PIL.url||!PIL.token||!CFG.boutique_id)return;
+    const auj=new Date().toLocaleDateString('sv-SE');
+    if(PIL.match&&PIL.match.dateMatch>=auj)return;
+    if((await dAll('sessions')).some(s=>s.statut==='ouvert'))return;
+    toast('Nouveau match : chargement du match et du stock…',3500);
+    await chargerMatch(true);
+  }catch(e){}
 }
 // Lien envoyé depuis le tableau de bord : ?cfg=base64({url, token, boutique})
 // Lien / QR code du tableau de bord : ?cfg=base64({url, token, boutique, nom, crm, contact})
@@ -1769,7 +1780,7 @@ async function savePil(){
   PIL.url=$('pilUrl').value.trim();PIL.token=$('pilTok').value.trim();
   await dPut('config',PIL);rPilState();rPilChip();toast('Pilotage enregistré');pilEnvoyer();
 }
-async function chargerMatch(){
+async function chargerMatch(avecCatalogue=true){
   if($('pilUrl').value.trim()&&$('pilUrl').value.trim()!==PIL.url){PIL.url=$('pilUrl').value.trim();PIL.token=$('pilTok').value.trim();}
   if(!PIL.url||!PIL.token){toast('Renseigne l\'URL et le jeton du pilotage');return;}
   if(!CFG.boutique_id){toast('Configure d\'abord la boutique');return;}
@@ -1786,6 +1797,9 @@ async function chargerMatch(){
     for(const s of ss_)if(s.statut==='ouvert'&&s.date===d.match.dateMatch&&!s.tickie_event_id){s.tickie_event_id=d.match.eventId;await dPut('sessions',s);if(sess&&sess.id===s.id)sess.tickie_event_id=s.tickie_event_id;}
     rPilState();rPilChip();
     toast(d.billetsOk?'✅ Match chargé · '+(d.billets||[]).length+' billets':'✅ Match chargé · billets vérifiés plus tard');
+    // Le stock préparé pour ce match (classeur Inventaire → CRM) arrive avec le catalogue : un seul bouton pour tout
+    if(avecCatalogue&&CFG.apps_script_url)await syncCat();
+    await rHome();
     pilEnvoyer();
   }catch(e){el.className='state-line err';el.textContent='❌ Chargement impossible : '+e.message+'. Vérifie le wifi, puis recommence.';}
 }

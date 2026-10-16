@@ -94,7 +94,10 @@ function si_surModification(e) {
   const nom = sh.getName();
   const a1 = e.range.getA1Notation();
   const coche = e.range.getValue() === true;
-  if (nom === SI.PREP && a1 === 'H4' && coche) {
+  if (nom === SI.PREP && a1 === 'J4') {
+    sh.getRange('A5').setValue('⏳ Changement de match reçu : les tablettes le prendront dans 1 à 2 minutes.');
+    si_programmer_();
+  } else if (nom === SI.PREP && a1 === 'H4' && coche) {
     sh.getRange('A5').setValue('⏳ Validation reçue : prise en compte dans 1 à 2 minutes. Ne pas modifier les cases jaunes en attendant.');
     si_programmer_();
   } else if (nom === SI.APRES && a1 === 'B4') {
@@ -123,6 +126,7 @@ function si_programmer_() {
 
 function si_traiterDemandes_(inv) {
   const shP = inv.getSheetByName(SI.PREP);
+  if (shP) { try { si_synchroMatch_(shP); } catch (e) { console.warn('Match préparé : ' + e.message); } }
   if (shP && shP.getRange('H4').getValue() === true) {
     let msg;
     try { msg = si_validerPreparation_(inv, shP); }
@@ -144,7 +148,7 @@ function si_traiterDemandes_(inv) {
 
 /* ============================== 📖 MODE D'EMPLOI ============================== */
 
-const SI_NOTICE_VERSION = 'notice-v1';
+const SI_NOTICE_VERSION = 'notice-v2';
 
 /** Onglet de notice pas à pas, en tête du classeur. Recréé seulement si absent ou si la version change. */
 function si_construireNotice_(inv) {
@@ -165,7 +169,9 @@ function si_construireNotice_(inv) {
     ['', 'V'],
     ['① AVANT LE MATCH — onglet « 📦 PRÉPARATION STOCK »', 'S'],
     ['Chaque ligne = un article (une taille). Les colonnes grises montrent le stock actuel : Dépôt · Boutique GP · Boutique VIP · Total.', 'I'],
-    ['1. Écris ton prénom en B4.', 'E'],
+    ['1. Vérifie le match en J4 « Match préparé » : le prochain match est choisi tout seul. Pour préparer un autre match, choisis-le dans la liste.', 'E'],
+    ['   C\'est ce match que les tablettes chargeront, avec le stock que tu prépares ici.', 'I'],
+    ['1 bis. Écris ton prénom en B4.', 'E'],
     ['2. Une livraison est arrivée ? Écris le fournisseur et le n° de facture en E4, puis la quantité reçue dans la colonne « ➕ Reçu au dépôt ».', 'E'],
     ['3. Ce que tu installes en boutique : colonnes « Dépôt → GP » et « Dépôt → VIP ».', 'E'],
     ['4. Si besoin : « GP → VIP » / « VIP → GP » (déplacer entre boutiques), « GP → Dépôt » / « VIP → Dépôt » (rapporter au dépôt).', 'E'],
@@ -176,7 +182,8 @@ function si_construireNotice_(inv) {
     ['→ Résultat : « ✅ +25 reçu, 15 → GP, 10 → VIP · maintenant dépôt 0 / GP 15 / VIP 10 ».', 'X'],
     ['', 'V'],
     ['② LE JOUR DU MATCH — la tablette', 'S'],
-    ['1. Avant l\'ouverture, en wifi : Synchronisation → « Mettre à jour le catalogue », puis « 🎫 Charger le match ». Le stock que tu as préparé apparaît sur la tablette.', 'E'],
+    ['1. Avant l\'ouverture, en wifi : Synchronisation → « 🎫 Charger le match ». Un seul bouton : le match, les billets ET le stock que tu as préparé arrivent sur la tablette.', 'E'],
+    ['   Si la tablette est allumée en wifi sans caisse ouverte, elle passe toute seule au match suivant une fois le précédent joué.', 'I'],
     ['2. Pendant le match : la caisse marche sans internet.', 'E'],
     ['3. À la fermeture : clôturer la caisse, puis « Synchroniser tout » dès qu\'il y a du réseau. C\'est ça qui envoie les ventes au CRM.', 'E'],
     ['4. Remise à zéro de la tablette : seulement APRÈS la synchronisation (la tablette refuse tant que des ventes ne sont pas parties).', 'E'],
@@ -244,6 +251,8 @@ function si_construirePreparation_(inv) {
     sh.getRange('A6').setValue('Rappel : réception = entrée au dépôt au coût d\'achat connu du CRM. Un article absent de la liste : prévenir Clément.')
       .setFontColor('#888888').setFontSize(9);
   }
+
+  si_entetePrepMatch_(sh);
 
   // Saisies en cours (conservées par référence)
   const enCours = {}, ordre = [];
@@ -337,6 +346,8 @@ function si_validerPreparation_(inv, sh) {
 
   const ref = fournisseur ? fournisseur : 'Inventaire ' + sb_fmt_(new Date(), 'dd/MM/yyyy');
   const trace = 'Inventaire · ' + auteur;
+  const mt = si_matchTablettes_();
+  SI_MATCH_COURANT = mt ? mt.nom : '';
   const heure = sb_fmt_(new Date(), 'dd/MM HH:mm');
   // Étapes dans l'ordre : chaque case jaune est vidée dès que son opération est enregistrée dans le CRM.
   // En cas d'erreur au milieu d'une ligne, ce qui est fait est vidé et ce qui reste est laissé en place :
@@ -379,6 +390,69 @@ function si_validerPreparation_(inv, sh) {
 
 function si_ecrireResultats_(sh, resultats) {
   resultats.forEach((r, i) => { if (r !== null) sh.getRange(SI.P_HDR + 1 + i, 15).setValue(r); });
+}
+
+/* ======================= 📅 MATCH PRÉPARÉ (calendrier) ======================= */
+
+let SI_MATCH_COURANT = '';
+const SI_CAL = '04b_CALENDRIER';   // écrit par le pilotage (Pilotage_Boutique.gs) depuis Tickie
+
+/** Matchs du calendrier (CRM) : passés et à venir, avec le match envoyé aux tablettes. */
+function si_calendrier_() {
+  const sh = SpreadsheetApp.getActive().getSheetByName(SI_CAL);
+  if (!sh || sh.getLastRow() < 2) return [];
+  const c = sb_cols_(sh);
+  const auj = Utilities.formatDate(new Date(), 'Europe/Paris', 'yyyy-MM-dd');
+  return sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getValues()
+    .filter(r => r[c['ID événement Tickie'] - 1])
+    .map((r, i) => {
+      const d = r[c['Date'] - 1] instanceof Date ? r[c['Date'] - 1] : new Date(r[c['Date'] - 1]);
+      const jour = Utilities.formatDate(d, 'Europe/Paris', 'yyyy-MM-dd');
+      const nom = String(r[c['Match'] - 1]).trim();
+      const j = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'][Number(Utilities.formatDate(d, 'Europe/Paris', 'u')) % 7];
+      return { ligne: i + 2, id: String(r[c['ID événement Tickie'] - 1]), nom: nom, jour: jour, passe: jour < auj,
+               tablettes: String(r[c['Tablettes'] - 1]).indexOf('✅') === 0,
+               libelle: j + ' ' + Utilities.formatDate(d, 'Europe/Paris', 'dd/MM') + ' ' + String(r[c['Heure'] - 1] || '') + ' — ' + nom };
+    });
+}
+
+function si_matchTablettes_() {
+  const cal = si_calendrier_();
+  return cal.find(m => m.tablettes && !m.passe) || cal.find(m => !m.passe) || null;
+}
+
+/** Sélecteur « Match préparé » (J4) : la liste des matchs à venir ; installé une fois sur l'onglet existant. */
+function si_entetePrepMatch_(sh) {
+  if (String(sh.getRange('I4').getValue()) !== 'Match préparé :') {
+    sh.getRange('I4').setValue('Match préparé :').setFontWeight('bold').setHorizontalAlignment('right');
+    sh.getRange('J4:N4').merge().setBackground(SI.JAUNE).setFontWeight('bold');
+  }
+  const avenir = si_calendrier_().filter(m => !m.passe).map(m => m.libelle);
+  if (avenir.length) sh.getRange('J4').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(avenir, true).setAllowInvalid(false).build());
+}
+
+/**
+ * J4 changé par elle → le match choisi est coché « ✅ tablettes » dans 04b_CALENDRIER (le pilotage l'envoie aux tablettes).
+ * Sinon → J4 suit le match des tablettes (qui passe tout seul au match suivant une fois le précédent joué).
+ */
+function si_synchroMatch_(sh) {
+  const cal = si_calendrier_();
+  if (!cal.length) { sh.getRange('J4').setValue('(calendrier pas encore reçu du pilotage)'); return; }
+  const choisi = String(sh.getRange('J4').getValue()).trim();
+  const dernier = String(sh.getRange('J4').getNote() || '');
+  const actuel = si_matchTablettes_();
+  if (choisi && choisi !== dernier) {
+    const m = cal.find(x => x.libelle === choisi && !x.passe);
+    if (m) {
+      const shC = SpreadsheetApp.getActive().getSheetByName(SI_CAL);
+      const col = sb_cols_(shC)['Tablettes'];
+      cal.forEach(x => shC.getRange(x.ligne, col).setValue(x.id === m.id ? '✅ tablettes' : ''));
+      sh.getRange('J4').setNote(m.libelle);
+      sh.getRange('A5').setValue('✅ Match préparé : ' + m.nom + '. Sur chaque tablette, en wifi : Synchronisation → « 🎫 Charger le match ».');
+      return;
+    }
+  }
+  if (actuel) { sh.getRange('J4').setValue(actuel.libelle).setNote(actuel.libelle); }
 }
 
 /* ============================== 🏁 APRÈS MATCH =============================== */
@@ -688,6 +762,10 @@ function si_appel_(fn, p, auteur) {
   if (sh && sh.getLastRow() > avant) {
     const c = sb_cols_(sh);
     if (c.auteur) sh.getRange(avant + 1, c.auteur, sh.getLastRow() - avant, 1).setValue(auteur);
+    if (c.match && SI_MATCH_COURANT) {
+      const rg = sh.getRange(avant + 1, c.match, sh.getLastRow() - avant, 1);
+      rg.setValues(rg.getValues().map(v => [v[0] || SI_MATCH_COURANT]));
+    }
   }
   return msg;
 }
