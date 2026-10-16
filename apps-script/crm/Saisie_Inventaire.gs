@@ -50,7 +50,8 @@ const SI = {
   A_ART: 14,       // en-têtes du bloc articles
   A_COLS_ART: ['Réf.', 'Article', 'Taille', 'Vendus GP', 'Vendus VIP', 'Offerts', 'CA TTC',
                'Stock GP (CRM)', 'Compté GP', 'Écart GP', 'Stock VIP (CRM)', 'Compté VIP', 'Écart VIP',
-               'Dépôt (CRM)', 'Compté dépôt', 'Écart dépôt'],
+               'Dépôt (CRM)', 'Compté dépôt', 'Écart dépôt',
+               'Départ GP (ce match)', 'Départ VIP (ce match)', '➕ À rajouter GP', '➕ À rajouter VIP', 'Remarque'],
   JAUNE: '#fff2cc', GRIS: '#eef1f5', NUIT: '#0b1f3a',
 };
 
@@ -103,6 +104,12 @@ function si_surModification(e) {
   } else if (nom === SI.APRES && a1 === 'B4') {
     sh.getRange('A6').setValue('⏳ Chargement du rapport du match… (1 à 2 minutes)');
     si_programmer_();
+  } else if (nom === SI.APRES && a1 === 'N4' && coche) {
+    sh.getRange('A6').setValue('⏳ « À rajouter » envoyé vers la préparation du match suivant (1 à 2 minutes)…');
+    si_programmer_();
+  } else if (nom === SI.PREP && a1 === 'N6' && coche) {
+    sh.getRange('A5').setValue('⏳ Pré-remplissage « tout rapporter au dépôt » (1 à 2 minutes)…');
+    si_programmer_();
   } else if (nom === SI.APRES && a1 === 'H4' && coche) {
     sh.getRange('A6').setValue('⏳ Contrôle reçu : enregistrement dans 1 à 2 minutes.');
     si_programmer_();
@@ -135,7 +142,19 @@ function si_traiterDemandes_(inv) {
     shP.getRange('A5').setValue(msg);
     si_construirePreparation_(inv);
   }
+  if (shP && shP.getRange('N6').getValue() === true) {
+    let msg;
+    try { msg = si_resetBoutiques_(shP); } catch (err) { msg = '❌ ' + err.message; }
+    shP.getRange('N6').setValue(false);
+    shP.getRange('A5').setValue(msg);
+  }
   const shA = inv.getSheetByName(SI.APRES);
+  if (shA && shA.getRange('N4').getValue() === true) {
+    let msg;
+    try { msg = si_versPreparation_(inv, shA); } catch (err) { msg = '❌ ' + err.message; }
+    shA.getRange('N4').setValue(false);
+    shA.getRange('A6').setValue(msg);
+  }
   if (shA && shA.getRange('H4').getValue() === true) {
     let msg;
     try { msg = si_validerControle_(inv, shA); }
@@ -148,7 +167,7 @@ function si_traiterDemandes_(inv) {
 
 /* ============================== 📖 MODE D'EMPLOI ============================== */
 
-const SI_NOTICE_VERSION = 'notice-v2';
+const SI_NOTICE_VERSION = 'notice-v3';
 
 /** Onglet de notice pas à pas, en tête du classeur. Recréé seulement si absent ou si la version change. */
 function si_construireNotice_(inv) {
@@ -198,6 +217,15 @@ function si_construireNotice_(inv) {
     ['5. Ton prénom en E4, une adresse en J4 si tu veux une copie du mail, un commentaire en B5 si besoin (ex. « TPE en panne 10 minutes »).', 'E'],
     ['6. Coche « ✅ Valider le contrôle » (H4). En 1 à 2 minutes : le stock du CRM est corrigé, le contrôle de caisse est enregistré et le rapport part par mail à Clément.', 'E'],
     ['EXEMPLE : le CRM dit 33 écharpes en GP, tu en comptes 31 → écart −2 en rouge. Après validation, le CRM passe à 31 et Clément le voit dans le mail.', 'X'],
+    ['', 'V'],
+    ['④ PRÉPARER LE MATCH SUIVANT — fiche match (même onglet, colonnes Q à U)', 'S'],
+    ['Pour chaque article : « Départ » (ce qu\'il y avait en boutique au début du match) → « Vendus » → reste (Stock GP / VIP) → « ➕ À rajouter ».', 'I'],
+    ['Les restes restent en boutique. « À rajouter » propose de remettre ce qui est sorti pendant le match, dans la limite du dépôt (⚠ si le dépôt n\'en a pas assez).', 'I'],
+    ['1. Corrige si besoin les chiffres jaunes « ➕ À rajouter GP / VIP » (0 ou vide = rien à rajouter).', 'E'],
+    ['2. Coche « ➡ Préparer le match suivant » (N4) : les quantités arrivent dans 📦 PRÉPARATION STOCK, colonnes « Dépôt → GP / VIP ».', 'E'],
+    ['3. Va dans 📦 PRÉPARATION STOCK, vérifie, puis coche « ✅ Valider ». Rien n\'est enregistré avant cette validation.', 'E'],
+    ['EXEMPLE : 12 écharpes vendues en GP, 119 au dépôt → « À rajouter GP » = 12. Après validation, la boutique GP retrouve son niveau de départ.', 'X'],
+    ['Occasionnel — vider les boutiques (fin de saison, rangement) : dans 📦 PRÉPARATION STOCK, coche « 🔁 Tout rapporter au dépôt » (N6), vérifie, puis Valider.', 'I'],
     ['', 'V'],
     ['EN CAS DE SOUCI', 'S'],
     ['❌ « Indiquez votre nom » → remplir B4 (ou E4 après match), puis recocher.', 'E'],
@@ -253,6 +281,7 @@ function si_construirePreparation_(inv) {
   }
 
   si_entetePrepMatch_(sh);
+  si_entetePrepReset_(sh);
 
   // Saisies en cours (conservées par référence)
   const enCours = {}, ordre = [];
@@ -483,6 +512,8 @@ function si_construireApres_(inv, match, leger) {
     [110, 190, 60, 80, 80, 70, 85, 90, 85, 70, 95, 85, 70, 85, 90, 75].forEach((w, i) => sh.setColumnWidth(i + 1, w));
   }
 
+  si_enteteApres_(sh);
+
   // Liste des matchs (01_VENTES, ventes tablette), le plus récent d'abord
   const ventes = si_ventesTablette_();
   const matchs = [];
@@ -524,7 +555,7 @@ function si_construireApres_(inv, match, leger) {
     c.forEach(r => { const k = r[0] === 'Boutique GP' ? 'B1' : r[0] === 'Boutique VIP' ? 'B2' : ''; if (k) caisseSaisie[k] = [r[7], r[8]]; });
     const n = sh.getLastRow() - SI.A_ART;
     if (n > 0) sh.getRange(SI.A_ART + 1, 1, n, SI.A_COLS_ART.length).getValues().forEach(r => {
-      const ref = String(r[0]).trim(); if (ref) compte[ref] = [r[8], r[11], r[14]];
+      const ref = String(r[0]).trim(); if (ref) compte[ref] = [r[8], r[11], r[14], r[18], r[19]];
     });
   }
 
@@ -574,21 +605,28 @@ function si_construireApres_(inv, match, leger) {
   const parProduit = {};
   vm.forEach(v => {
     const k = sb_norm_(v.produit);
-    const o = parProduit[k] = parProduit[k] || { nom: v.produit, B1: 0, B2: 0, off: 0, ca: 0 };
-    if (v.offert) o.off += v.q; else { o[v.boutique === 'B2' ? 'B2' : 'B1'] += v.q; o.ca += v.ca; }
+    const o = parProduit[k] = parProduit[k] || { nom: v.produit, B1: 0, B2: 0, off: 0, offB1: 0, offB2: 0, ca: 0 };
+    if (v.offert) { o.off += v.q; o[v.boutique === 'B2' ? 'offB2' : 'offB1'] += v.q; } else { o[v.boutique === 'B2' ? 'B2' : 'B1'] += v.q; o.ca += v.ca; }
   });
   const lignesA = [];
   const vus = {};
   P.rows.filter(x => x.ref && (x.actif || parProduit[sb_norm_(x.produit)])).forEach(x => {
-    const s = parProduit[sb_norm_(x.produit)] || { B1: 0, B2: 0, off: 0, ca: 0 };
+    const s = parProduit[sb_norm_(x.produit)] || { B1: 0, B2: 0, off: 0, offB1: 0, offB2: 0, ca: 0 };
     vus[sb_norm_(x.produit)] = true;
-    const c = compte[x.ref] || ['', '', ''];
+    const c = compte[x.ref] || ['', '', '', '', ''];
+    // Fiche match (organisation d'Élise) : départ = reste + sorties du match ; « à rajouter » = ce qui est sorti,
+    // pour revenir au niveau de départ, dans la limite du dépôt (GP servi d'abord).
+    const sortGP = s.B1 + s.offB1, sortVIP = s.B2 + s.offB2;
+    const propGP = Math.min(sortGP, Math.max(0, x.R)), propVIP = Math.min(sortVIP, Math.max(0, x.R - propGP));
+    const manque = (sortGP - propGP) + (sortVIP - propVIP);
+    const aGP = c[3] !== '' && c[3] !== undefined ? c[3] : (propGP || ''), aVIP = c[4] !== '' && c[4] !== undefined ? c[4] : (propVIP || '');
     lignesA.push({ vendu: s.B1 + s.B2 + s.off, row: [x.ref, x.modele || x.produit, x.taille || 'TU', s.B1, s.B2, s.off, si_r2_(s.ca),
-      x.B1, c[0], '', x.B2, c[1], '', x.R, c[2], ''] });
+      x.B1, c[0], '', x.B2, c[1], '', x.R, c[2], '',
+      x.B1 + sortGP, x.B2 + sortVIP, aGP, aVIP, manque > 0 ? '⚠ dépôt insuffisant : il manque ' + manque : ''] });
   });
   Object.keys(parProduit).filter(k => !vus[k]).forEach(k => {
     const s = parProduit[k];
-    lignesA.push({ vendu: s.B1 + s.B2 + s.off, row: ['—', s.nom + ' (hors catalogue CRM)', '', s.B1, s.B2, s.off, si_r2_(s.ca), '', '', '', '', '', '', '', '', ''] });
+    lignesA.push({ vendu: s.B1 + s.B2 + s.off, row: ['—', s.nom + ' (hors catalogue CRM)', '', s.B1, s.B2, s.off, si_r2_(s.ca), '', '', '', '', '', '', '', '', '', '', '', '', '', 'article absent du CRM'] });
   });
   lignesA.sort((a, b) => (b.vendu > 0) - (a.vendu > 0));
   if (lignesA.length) {
@@ -604,7 +642,10 @@ function si_construireApres_(inv, match, leger) {
     sh.getRange(r0, 16, n, 1).setFormulas(f.map((_, i) => [si_f_(inv, '=IF(O' + (r0 + i) + '="","",O' + (r0 + i) + '-N' + (r0 + i) + ')')]));
     [9, 12, 15].forEach(c => sh.getRange(r0, c, n, 1).setBackground(SI.JAUNE).setHorizontalAlignment('center')
       .setDataValidation(SpreadsheetApp.newDataValidation().requireNumberGreaterThanOrEqualTo(0).setAllowInvalid(false).build()));
-    [8, 11, 14].forEach(c => sh.getRange(r0, c, n, 1).setBackground(SI.GRIS));
+    [8, 11, 14, 17, 18].forEach(c => sh.getRange(r0, c, n, 1).setBackground(SI.GRIS));
+    sh.getRange(r0, 19, n, 2).setBackground(SI.JAUNE).setHorizontalAlignment('center')
+      .setDataValidation(SpreadsheetApp.newDataValidation().requireNumberGreaterThanOrEqualTo(0).setAllowInvalid(false).build());
+    sh.getRange(r0, 21, n, 1).setFontColor('#b45309').setFontSize(9);
     sh.getRange(r0, 7, n, 1).setNumberFormat('#,##0.00 "€"');
     const tot = r0 + n;
     sh.getRange(tot, 2).setValue('TOTAL').setFontWeight('bold');
@@ -633,6 +674,67 @@ function si_formulesApres_(inv, sh, r0, n) {
   sh.getRange(r0, 10, n, 1).setFormulas(lignes.map(r => [f('I', 'H', r)]));
   sh.getRange(r0, 13, n, 1).setFormulas(lignes.map(r => [f('L', 'K', r)]));
   sh.getRange(r0, 16, n, 1).setFormulas(lignes.map(r => [f('O', 'N', r)]));
+}
+
+/** En-tête de la fiche match (bouton « préparer le match suivant »), posé une fois sur l'onglet existant. */
+function si_enteteApres_(sh) {
+  if (String(sh.getRange('M4').getValue()) === '➡ Préparer le match suivant :') return;
+  sh.getRange('M4').setValue('➡ Préparer le match suivant :').setFontWeight('bold').setHorizontalAlignment('right');
+  sh.getRange('N4').insertCheckboxes().setBackground(SI.JAUNE);
+  [100, 100, 95, 95, 230].forEach((w, i) => sh.setColumnWidth(17 + i, w));
+}
+
+/** Bouton « vider les boutiques » (reset occasionnel), posé une fois sur la préparation. */
+function si_entetePrepReset_(sh) {
+  if (String(sh.getRange('M6').getValue()) === '🔁 Tout rapporter au dépôt :') return;
+  sh.getRange('M6').setValue('🔁 Tout rapporter au dépôt :').setFontWeight('bold').setHorizontalAlignment('right').setFontSize(9);
+  sh.getRange('N6').insertCheckboxes();
+}
+
+/**
+ * « ➕ À rajouter » de la fiche match → colonnes « Dépôt → GP / VIP » de la préparation.
+ * Rien n'est enregistré dans le CRM ici : elle vérifie puis coche « Valider » dans la préparation.
+ */
+function si_versPreparation_(inv, shA) {
+  const match = String(shA.getRange('B4').getValue()).trim();
+  const n = shA.getLastRow() - SI.A_ART;
+  if (n < 1) throw new Error('Aucun article dans la fiche.');
+  const art = shA.getRange(SI.A_ART + 1, 1, n, SI.A_COLS_ART.length).getValues();
+  const ajout = {};
+  art.forEach(r => {
+    const ref = String(r[0]).trim(), g = Math.round(Number(r[18]) || 0), v = Math.round(Number(r[19]) || 0);
+    if (ref && ref !== '—' && (g > 0 || v > 0)) ajout[ref] = [Math.max(0, g), Math.max(0, v)];
+  });
+  const refs = Object.keys(ajout);
+  if (!refs.length) return 'Rien à rajouter (colonnes « ➕ À rajouter » vides).';
+  const shP = inv.getSheetByName(SI.PREP);
+  const m = shP.getLastRow() - SI.P_HDR;
+  const prep = shP.getRange(SI.P_HDR + 1, 1, m, 1).getValues();
+  let nb = 0, pieces = 0;
+  prep.forEach((r, i) => {
+    const a = ajout[String(r[0]).trim()];
+    if (!a) return;
+    if (a[0]) shP.getRange(SI.P_HDR + 1 + i, 9).setValue(a[0]);
+    if (a[1]) shP.getRange(SI.P_HDR + 1 + i, 10).setValue(a[1]);
+    nb++; pieces += a[0] + a[1];
+  });
+  shP.getRange('A5').setValue('📝 Pré-rempli depuis « ' + match + ' » : ' + pieces + ' pièce(s) à mettre en boutique (' + nb +
+    ' article(s), colonnes Dépôt → GP / VIP). Vérifie, puis coche « ✅ Valider ».');
+  return '✅ ' + pieces + ' pièce(s) envoyée(s) vers 📦 PRÉPARATION STOCK. Rien n\'est encore enregistré : à valider là-bas.';
+}
+
+/** Reset occasionnel : pré-remplit « GP → Dépôt » et « VIP → Dépôt » avec tout le stock des boutiques (à valider). */
+function si_resetBoutiques_(shP) {
+  const n = shP.getLastRow() - SI.P_HDR;
+  const data = shP.getRange(SI.P_HDR + 1, 1, n, 7).getValues();
+  let pieces = 0;
+  data.forEach((r, i) => {
+    const gp = Math.round(Number(r[4]) || 0), vip = Math.round(Number(r[5]) || 0);
+    if (gp > 0) { shP.getRange(SI.P_HDR + 1 + i, 13).setValue(gp); pieces += gp; }
+    if (vip > 0) { shP.getRange(SI.P_HDR + 1 + i, 14).setValue(vip); pieces += vip; }
+  });
+  return pieces ? '📝 ' + pieces + ' pièce(s) pré-remplies en « GP → Dépôt » / « VIP → Dépôt ». Vérifie, puis coche « ✅ Valider » pour vider les boutiques.'
+                : 'Les boutiques sont déjà vides.';
 }
 
 /** Enregistre le contrôle : écarts de stock → CRM, caisse → 25_CONTROLES_CAISSE, rapport par mail. */
