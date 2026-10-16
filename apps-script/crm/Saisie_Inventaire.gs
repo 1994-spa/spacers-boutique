@@ -430,7 +430,7 @@ function si_entetePrepMatch_(sh) {
     sh.getRange('J4:N4').merge().setBackground(SI.JAUNE).setFontWeight('bold');
   }
   const avenir = si_calendrier_().filter(m => !m.passe).map(m => m.libelle);
-  if (avenir.length) sh.getRange('J4').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(avenir, true).setAllowInvalid(false).build());
+  if (avenir.length) sh.getRange('J4').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(avenir, true).setAllowInvalid(true).build());
 }
 
 /**
@@ -438,6 +438,7 @@ function si_entetePrepMatch_(sh) {
  * Sinon → J4 suit le match des tablettes (qui passe tout seul au match suivant une fois le précédent joué).
  */
 function si_synchroMatch_(sh) {
+  si_entetePrepMatch_(sh);   // liste déroulante à jour AVANT toute écriture en J4 (sinon Google refuse la valeur)
   const cal = si_calendrier_();
   if (!cal.length) { sh.getRange('J4').setValue('(calendrier pas encore reçu du pilotage)'); return; }
   const choisi = String(sh.getRange('J4').getValue()).trim();
