@@ -531,7 +531,7 @@ function si_construireApres_(inv, match, leger) {
   // Rafraîchissement léger : même match, mêmes ventes, mêmes articles → seules les colonnes de stock CRM bougent
   const vmSig = ventes.filter(v => v.match === match);
   const Psig = sb_lireProduits_();
-  const sig = [match, vmSig.length, vmSig.reduce((s, v) => s + v.q, 0), si_r2_(vmSig.reduce((s, v) => s + v.ca, 0)),
+  const sig = ['fiche-v1', match, vmSig.length, vmSig.reduce((s, v) => s + v.q, 0), si_r2_(vmSig.reduce((s, v) => s + v.ca, 0)),
                Psig.rows.filter(x => x.ref && x.actif).length].join('|');
   if (leger && memeMatch && String(sh.getRange('A4').getNote() || '') === sig) {
     const n = sh.getLastRow() - SI.A_ART;
