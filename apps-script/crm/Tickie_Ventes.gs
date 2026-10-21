@@ -12,6 +12,12 @@
  *   3. Annulation / remboursement Tickie avant remise → ligne négative dans 01_VENTES.
  *  Plus aucun import CSV à faire (Tickie_Addons.gs ne touche plus au stock).
  *
+ *  Prix : celui réellement payé sur Tickie (lu dans la transaction), sinon prix_vente du CRM.
+ *  Comptabilité : rien n'est envoyé à Pennylane. Ces ventes y sont déjà via la reddition
+ *  des comptes Tickie (TVA collectée par Tickie) ; 01_VENTES sert au suivi boutique.
+ *  ⚠ Ne pas réimporter dans 01_VENTES les écritures Pennylane de la reddition
+ *  (importPennylaneVentes) : le CA boutique en ligne serait compté deux fois.
+ *
  *  Source : l'onglet 17_RETRAITS, tenu à jour depuis l'API Tickie par
  *  preparerRetraitsBillets() (Retraits_Billets.gs). Rapprochement article :
  *  tickie_variante_id de 03_PRODUITS (= variant_id Tickie), sinon le nom.
@@ -76,6 +82,22 @@ function synchroVentesTickie() {
     const deja = new Set(shV.getLastRow() > 1 ? shV.getRange(2, COL_VENTE.COMMANDE + 1, shV.getLastRow() - 1, 1).getValues().map(r => String(r[0]).trim()) : []);
     const IX = tv_indexProduits_();
     const lignes = [], inconnus = [];
+    const txCache = {};
+    const prixPaye = (txId, variante, nom) => {
+      if (!(txId in txCache)) {
+        try { txCache[txId] = vivenuGet_('/transactions/' + txId); } catch (e) { txCache[txId] = null; }
+      }
+      const t = txCache[txId];
+      if (!t || !Array.isArray(t.products)) return null;
+      const p = t.products.find(x => String(x.productVariantId || '') === String(variante || '')) ||
+                t.products.find(x => sb_norm_(x.name) === sb_norm_(nom));
+      if (!p) return null;
+      const q = Number(p.amount) || 1;
+      const u = [p.price, p.unitPrice, p.regularPrice].map(Number).find(v => v > 0);
+      if (u) return u;
+      const tot = [p.total, p.totalPrice].map(Number).find(v => v > 0);
+      return tot ? Math.round(tot / q * 100) / 100 : null;
+    };
 
     R.forEach(r => {
       const cle = String(r[I.cle] || '').trim();
@@ -87,7 +109,9 @@ function synchroVentesTickie() {
       if (deja.has(k) && (!annule || deja.has(kAnnul))) return;
       const x = IX.trouver(r[I.variant_id], r[I.produit]);
       if (!x) { inconnus.push(String(r[I.produit])); }
-      const pu = x ? x.prix_vente : 0;
+      const lu = prixPaye(String(r[I.transaction_id]), r[I.variant_id], r[I.produit]);
+      const pu = lu !== null ? lu : (x ? x.prix_vente : 0);
+      const notePrix = lu !== null ? '' : 'prix CRM (prix Tickie non lu)';
       const d = r[I.date_achat] instanceof Date ? r[I.date_achat] : new Date();
       const base = (cleV, qte, note) => {
         const l = new Array(Math.max(shV.getLastColumn(), COL_VENTE.MODE_PAIEMENT + 1)).fill('');
@@ -99,7 +123,7 @@ function synchroVentesTickie() {
         l[COL_VENTE.SAISON] = saisonDepuisDate_(d); l[COL_VENTE.MODE_PAIEMENT] = TV.MODE + (note ? ' · ' + note : '');
         return l;
       };
-      if (!deja.has(k)) { lignes.push(base(k, q, '')); deja.add(k); }
+      if (!deja.has(k)) { lignes.push(base(k, q, notePrix)); deja.add(k); }
       if (annule && !deja.has(kAnnul)) { lignes.push(base(kAnnul, -q, 'annulée / remboursée')); deja.add(kAnnul); }
     });
 
