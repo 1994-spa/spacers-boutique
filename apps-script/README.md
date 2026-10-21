@@ -106,3 +106,7 @@ Pour la personne qui gère le stock, sans passer par les onglets. Les bénévole
 
 Écrans : Accueil (état dépôt / GP / VIP, alertes, badges) · Réception au dépôt · Remplir les boutiques (réassort proposé d'après le dernier match et les seuils) · Bilan du match (CA par boutique et par paiement, ventes rapprochées des sorties de stock, « à rajouter ») · Inventaire (par lieu, écarts tracés) · Sortie / don (bons DOT numérotés, contrôle 73 €) · Historique.
 Chaque action passe par les fonctions existantes de `Stock_Boutique.gs` (03_PRODUITS, 11_MOUVEMENTS_STOCK, 02_ACHATS) ; le classeur « Inventaire 2026 2027 » continue d'être mis à jour par `Inventaire_Boutique.gs`. Les onglets de comptage du matériel club (chasubles, gobelets, gilets…) ne sont pas touchés.
+
+### Un seul outil (21/10/2026)
+La page Gestion fait tout : match préparé pour les tablettes, réception, remplissage des boutiques, bilan + contrôle de caisse (25_CONTROLES_CAISSE + mail), inventaire, vente hors match, sorties/dons.
+Une fois adoptée : ▶ `retirerSaisieClasseur` (Gestion_API) masque « 📦 PRÉPARATION STOCK » / « 🏁 APRÈS MATCH », arrête leurs déclencheurs et réécrit le mode d'emploi. Le classeur Inventaire devient une copie en lecture (🔄 LIVE, via Lien_Inventaire.gs) ; le matériel club y reste tenu à la main.

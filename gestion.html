@@ -302,6 +302,7 @@ function vAccueil() {
        ['inventaire', '4', 'Inventaire', 'De temps en temps : on compte et on corrige.']]
         .map(s => '<button type="button" class="step" data-tab="' + s[0] + '"><span class="num">' + s[1] + '</span><span><b>' + s[2] + '</b><span>' + s[3] + '</span></span></button>').join('') +
     '</div></div>' +
+    vMatchTablettes() +
     '<div class="grid3" style="margin-bottom:16px">' + lieu('R') + lieu('B1') + lieu('B2') + '</div>' +
     (negatifs.length ? '<div class="card" style="border-color:var(--bad)"><h2 class="ko">Stock négatif à vérifier</h2><p class="lead">Un stock ne peut pas être sous zéro : un comptage ou une vente a été mal saisi. Fais un inventaire sur ces articles.</p><div class="chips">' +
       negatifs.map(p => '<span class="chip bad">' + esc(p.produit) + '</span>').join('') + '</div></div>' : '') +
@@ -314,6 +315,17 @@ function vAccueil() {
         bdg(b && b.ca.total >= 500, '💶', 'Match à 500 €', 'chiffre d\'affaires d\'un match') +
         bdg(S.etat.retraits === 0, '📦', 'Retraits web à jour', 'aucune commande en ligne en attente') +
       '</div></div>';
+}
+
+function vMatchTablettes() {
+  const C = S.etat.calendrier || [];
+  if (!C.length) return '<div class="card"><h2>🎫 Match préparé pour les tablettes</h2><p class="lead" style="margin:0">Aucun match à venir reçu de la billetterie pour l\'instant.</p></div>';
+  const actuel = C.find(m => m.tablettes);
+  return '<div class="card"><h2>🎫 Match préparé pour les tablettes</h2><p class="lead">C\'est ce match que les tablettes chargeront avec « 🎫 Charger le match » (en wifi, avant d\'ouvrir la caisse).</p>' +
+    '<div class="row"><div class="field" style="flex:2"><label for="mtSel">Match</label><select class="inp" id="mtSel">' +
+    C.map(m => '<option value="' + esc(m.id) + '"' + (m.tablettes ? ' selected' : '') + '>' + esc(m.date + ' ' + m.heure + ' — ' + m.nom) + (m.tablettes ? ' ✅' : '') + '</option>').join('') + '</select></div>' +
+    '<button class="btn" type="button" id="mtGo">' + (actuel ? 'Changer de match' : 'Préparer ce match') + '</button></div>' +
+    (actuel ? '<p style="margin-top:10px"><span class="chip good">✅ Tablettes : ' + esc(actuel.date + ' — ' + actuel.nom) + '</span></p>' : '<p style="margin-top:10px"><span class="chip warn">Aucun match choisi pour les tablettes</span></p>') + '</div>';
 }
 
 /* ---------- Réception ---------- */
@@ -400,7 +412,37 @@ function vBilan() {
     (pay ? '<div class="chips" style="margin-bottom:6px">' + pay + '</div>' : '') + '</div>' +
     '<div class="card"><h2>🛍️ Boutique Grand Public</h2>' + parStand('B1') + '</div>' +
     '<div class="card"><h2>⭐ Boutique VIP</h2>' + parStand('B2') + '</div>' +
+    vCaisse(b) +
     '<div class="card"><div class="row" style="justify-content:space-between"><p class="lead" style="margin:0">Prochaine étape : remettre en boutique ce qui a été vendu, en le prenant au dépôt.</p><button class="btn big" type="button" id="bmRea">🔀 Préparer le réassort</button></div></div>';
+}
+
+function vCaisse(b) {
+  const k = b.caisse || { B1: {}, B2: {} }, ctl = S.etat.controle, cs = S.caisse || {};
+  const ligne = pt => {
+    const c = k[pt] || {};
+    return '<tr><td><b>' + LIEUX[pt].ic + ' ' + LIEUX[pt].court + '</b></td><td class="n">' + eur(b.ca[pt]) + '</td>' +
+      '<td class="n">' + eur(c.CB) + '</td><td><input class="inp" style="width:110px;text-align:right" inputmode="decimal" id="cb' + pt + '" value="' + esc(cs['cb' + pt] || '') + '" placeholder="ticket TPE"></td><td class="n" id="ecb' + pt + '"></td>' +
+      '<td class="n">' + eur(c.ESPECES) + '</td><td><input class="inp" style="width:110px;text-align:right" inputmode="decimal" id="es' + pt + '" value="' + esc(cs['es' + pt] || '') + '" placeholder="sans le fond"></td><td class="n" id="ees' + pt + '"></td></tr>';
+  };
+  return '<div class="card"><h2>🧾 Contrôle de caisse</h2><p class="lead">Compare ce que la tablette a encaissé avec le ticket de fin de journée du terminal CB et les espèces comptées <b>sans le fond de caisse (30 €)</b>. Un écart s\'affiche tout de suite ; à la validation, le contrôle est enregistré et le rapport part par mail.</p>' +
+    (ctl ? '<p style="margin-bottom:10px"><span class="chip good">Déjà contrôlé le ' + esc(ctl.date) + ' par ' + esc(ctl.par) + '</span></p>' : '') +
+    '<div style="overflow-x:auto"><table><thead><tr><th>Boutique</th><th class="n">CA tablette</th><th class="n">CB tablette</th><th>CB relevé TPE</th><th class="n">Écart</th><th class="n">Espèces tablette</th><th>Espèces comptées</th><th class="n">Écart</th></tr></thead><tbody>' +
+    ligne('B1') + ligne('B2') + '</tbody></table></div>' +
+    '<div class="row" style="margin-top:10px"><div class="field" style="flex:2"><label for="ccCom">Commentaire</label><input class="inp" id="ccCom" value="' + esc(cs.com || '') + '" placeholder="ex. TPE en panne 10 minutes"></div>' +
+    '<div class="field"><label for="ccCopie">Copie du rapport à (facultatif)</label><input class="inp" id="ccCopie" type="email" value="' + esc(cs.copie || '') + '"></div>' +
+    '<button class="btn" type="button" id="ccGo">✅ Valider le contrôle</button></div></div>';
+}
+function majCaisse() {
+  const b = S.etat && S.etat.bilan; if (!b || !$('cbB1')) return;
+  ['B1', 'B2'].forEach(pt => {
+    const c = (b.caisse || {})[pt] || {};
+    [['cb', 'CB'], ['es', 'ESPECES']].forEach(([id, k]) => {
+      const v = $(id + pt).value.trim(), cell = $('e' + id + pt);
+      if (v === '') { cell.innerHTML = ''; return; }
+      const e = Math.round((Number(v.replace(',', '.')) - (c[k] || 0)) * 100) / 100;
+      cell.innerHTML = isNaN(e) ? '' : (e === 0 ? '<span class="chip good">✓ juste</span>' : '<span class="chip ' + (e < 0 ? 'bad' : 'warn') + '">' + (e > 0 ? '+' : '') + eur(e) + '</span>');
+    });
+  });
 }
 
 /* ---------- Inventaire ---------- */
@@ -474,6 +516,7 @@ function valeurChamp(id, v) {
   if (p[0] === 'iv') S.inv.q[p[1]] = n;
 }
 function majCompteurs() {
+  if (S.onglet === 'bilan') majCaisse();
   if (S.onglet === 'reception') {
     const m = modeles().find(x => x.modele === S.recep.modele);
     const t = m ? m.lignes.reduce((s, p) => s + (Number(S.recep.q[p.ref]) || 0), 0) : 0;
@@ -553,6 +596,16 @@ document.addEventListener('click', e => {
       executer('dotation', { enveloppe: S.sortie.env, ref: S.sortie.ref, point: S.sortie.pt, quantite: Number(S.sortie.q) || 0,
         beneficiaire: S.sortie.ben, match: S.sortie.occ, commentaire: S.sortie.com, justificatif: S.sortie.com }, () => { S.sortie = {}; });
     },
+    mtGo: () => executer('match_tablettes', { id: $('mtSel').value }),
+    ccGo: () => {
+      const g = id => $(id).value.trim();
+      S.caisse = { cbB1: g('cbB1'), esB1: g('esB1'), cbB2: g('cbB2'), esB2: g('esB2'), com: g('ccCom'), copie: g('ccCopie') };
+      const n = v => v === '' ? '' : Number(v.replace(',', '.'));
+      if ([S.caisse.cbB1, S.caisse.esB1, S.caisse.cbB2, S.caisse.esB2].every(v => v === '')) { toast('Saisis au moins le relevé TPE ou les espèces d\'une boutique.', true); return; }
+      if ([S.caisse.cbB1, S.caisse.esB1, S.caisse.cbB2, S.caisse.esB2].some(v => v !== '' && isNaN(n(v)))) { toast('Un montant n\'est pas un nombre.', true); return; }
+      executer('controle_caisse', { match: S.match, B1: { cb: n(S.caisse.cbB1), especes: n(S.caisse.esB1) }, B2: { cb: n(S.caisse.cbB2), especes: n(S.caisse.esB2) },
+        commentaire: S.caisse.com, copie: S.caisse.copie }, () => { S.caisse = {}; });
+    },
     hmGo: () => {
       const g = id => $(id).value;
       S.hm = { ref: g('hmRef'), pt: g('hmPt'), q: g('hmQ'), prix: g('hmPrix'), mode: g('hmMode'), occ: g('hmOcc'), cli: g('hmCli') };
@@ -573,7 +626,7 @@ document.addEventListener('change', e => {
   if (t.id === 'hmRef' || t.id === 'hmPt') { const g = id => $(id).value; S.hm = { ref: g('hmRef'), pt: g('hmPt'), q: g('hmQ'), prix: t.id === 'hmRef' ? '' : g('hmPrix'), mode: g('hmMode'), occ: g('hmOcc'), cli: g('hmCli') }; render(); return; }
   if (t.id === 'soEnv') { S.sortie.env = t.value; S.sortie.ref = $('soRef').value; S.sortie.pt = $('soPt').value; S.sortie.q = $('soQ').value; render(); }
 });
-document.addEventListener('input', e => { const t = e.target; if (t.dataset && t.dataset.in) { valeurChamp(t.dataset.in, t.value); majCompteurs(); } });
+document.addEventListener('input', e => { const t = e.target; if (t.dataset && t.dataset.in) { valeurChamp(t.dataset.in, t.value); majCompteurs(); } if (/^(cb|es)B[12]$/.test(t.id)) majCaisse(); });
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.target.id === 'lgPin' || e.target.id === 'lgName')) login(); });
 
 /* ============================== CONNEXION ============================== */
@@ -599,7 +652,7 @@ function init() {
 }
 
 /* ============================== DÉMO ============================== */
-let DEMO_DB = null;
+let DEMO_DB = null, DEMO_MT = 'e1';
 function demoDb() {
   if (DEMO_DB) return DEMO_DB;
   const P = [];
@@ -624,10 +677,13 @@ function demoEtat(match) {
     { point: 'B2', produit: 'Écharpe', ref: 'ECH', vendu: 3, offert: 0, sorti: 3, ca: 54 }
   ].map(l => { const p = db.produits.find(x => x.ref === l.ref); return Object.assign(l, { stock: p ? p[l.point] : null, reserve: p ? p.R : 0, ecart: l.sorti - l.vendu - l.offert }); });
   const bilan = { match: "Spacer's vs Sète", lignes: lignes, ca: { B1: 396, B2: 204, total: 600 }, ventes: { B1: 13, B2: 5 }, paiements: { CB: 470, 'Espèces': 130 },
+    caisse: { B1: { CB: 306, ESPECES: 90, AUTRE: 0, offerts: 1 }, B2: { CB: 164, ESPECES: 40, AUTRE: 0, offerts: 0 } },
     articles: lignes.reduce((s, l) => s + l.vendu, 0), offerts: 1, ecarts: lignes.filter(l => l.ecart).length };
   return { status: 'ok', maj: new Date().toLocaleString('fr-FR'), points: { R: 'Réserve', B1: 'Grand Public', B2: 'VIP' }, produits: JSON.parse(JSON.stringify(db.produits)),
     matchs: [{ label: "Spacer's vs Sète", date: '17/10/2026', ca: 600 }, { label: "Spacer's vs Narbonne", date: '10/10/2026', ca: 457.15 }],
     match: "Spacer's vs Sète", bilan: bilan, historique: db.hist.slice(0, 40),
+    calendrier: [{ id: 'e1', nom: "Spacer's vs Tourcoing", date: '24/10', heure: '20:00', tablettes: DEMO_MT === 'e1' }, { id: 'e2', nom: "Spacer's vs Cannes", date: '07/11', heure: '20:00', tablettes: DEMO_MT === 'e2' }],
+    controle: null,
     enveloppes: [{ nom: 'Cadeau partenaire / prospect', demarque: false }, { nom: 'Jeu concours / réseaux sociaux', demarque: false }, { nom: 'Démarque — casse / défaut', demarque: true }], retraits: 0 };
 }
 function demoOp(op, d) {
@@ -639,6 +695,8 @@ function demoOp(op, d) {
   if (op === 'transfert') { const p = f(d.ref); p[d.de] -= d.quantite; p[d.vers] += d.quantite; h(p, d.vers, d.quantite, 'TRANSFERT', 'depuis ' + d.de); msg = d.quantite + ' × ' + p.produit + ' déplacé(s).'; }
   if (op === 'inventaire') { let n = 0; d.lignes.forEach(l => ['R', 'B1', 'B2'].forEach(k => { if (l[k] !== '') { const p = f(l.ref), e = l[k] - p[k]; if (e) { n++; p[k] = l[k]; h(p, k, e, 'AJUSTEMENT_INVENTAIRE', 'Inventaire'); } } })); msg = n ? n + ' écart(s) corrigé(s).' : 'Inventaire conforme, aucun écart.'; }
   if (op === 'vente_hors_match') { const p = f(d.ref); p[d.point] -= d.quantite; h(p, d.point, -d.quantite, 'VENTE_HORS_MATCH', d.mode); msg = d.quantite + ' × ' + p.produit + ' vendu(s) hors match.'; }
+  if (op === 'match_tablettes') { DEMO_MT = d.id; msg = 'Match préparé.'; }
+  if (op === 'controle_caisse') { msg = 'Contrôle enregistré · rapport envoyé par mail.'; }
   if (op === 'dotation') { const p = f(d.ref); p[d.point] -= d.quantite; h(p, d.point, -d.quantite, 'DOTATION', d.enveloppe); msg = 'DOT-2627-0001 · ' + d.quantite + ' × ' + p.produit + '.'; }
   return new Promise(res => setTimeout(() => res({ status: 'ok', message: msg, etat: demoEtat('') }), 300));
 }
