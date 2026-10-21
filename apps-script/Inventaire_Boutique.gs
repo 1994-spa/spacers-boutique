@@ -101,6 +101,9 @@ function majInventaire() {
 }
 
 function majInventaire_() {
+  if (PropertiesService.getScriptProperties().getProperty('INVENTAIRE_ARCHIVE')) {
+    return 'Inventaire : anciens tableaux archivés, plus de décompte (le stock se lit dans 🔄 STOCK LIVE).';
+  }
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) return 'Mise à jour déjà en cours.';
   try {
@@ -465,4 +468,45 @@ function invDate_(v) {
   if (m) return new Date(m[3].length === 2 ? 2000 + +m[3] : +m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0));
   const d = new Date(v);
   return isNaN(d) ? null : d;
+}
+
+// ── Archivage des anciens tableaux (▶ archiverAnciensTableaux, une fois) ──
+// Règle : tout article et tout stock passent par le CRM ; le classeur Inventaire n'en est qu'une copie.
+// Les tableaux faits main (« En boutique », « Stock Total », « Dépot », « Journal ventes ») tenaient un
+// second stock, décompté à part : il se décalait du CRM (réceptions et répartitions jamais reportées).
+// Cette fonction : arrête leur décompte, supprime le déclencheur 10 min, les masque (rien n'est effacé :
+// clic droit sur la barre des onglets › « Afficher la feuille » pour les revoir).
+// Le stock se lit dans « 🔄 STOCK LIVE » ; la préparation et le contrôle se font dans
+// « 📦 PRÉPARATION STOCK » / « 🏁 APRÈS MATCH » ou sur la page Gestion ; les ventes hors match sur la page Gestion.
+// Les onglets de comptage du matériel club (Panneautique, Gilets, chasubles, gobelets…) ne sont pas touchés.
+const INV_ARCHIVES = ['En boutique', 'Stock Total', 'Dépot', 'Journal ventes'];
+
+function archiverAnciensTableaux() {
+  PropertiesService.getScriptProperties().setProperty('INVENTAIRE_ARCHIVE', new Date().toISOString());
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'majInventaire') ScriptApp.deleteTrigger(t);
+  });
+  const ss = invSS_();
+  const faits = [];
+  INV_ARCHIVES.forEach(function (nom) {
+    const sh = ss.getSheetByName(nom);
+    if (!sh) return;
+    sh.setTabColor('#9aa4b2');
+    if (!sh.isSheetHidden()) sh.hideSheet();
+    faits.push(nom);
+  });
+  const live = ss.getSheetByName('🔄 STOCK LIVE');
+  if (live) { ss.setActiveSheet(live); }
+  const msg = 'Archivés et masqués : ' + (faits.join(', ') || 'aucun') + '. Décompte automatique arrêté.';
+  Logger.log(msg);
+  return msg;
+}
+
+// Pour revenir en arrière (▶ annulerArchivage) : réaffiche les onglets et relance le décompte.
+function annulerArchivage() {
+  PropertiesService.getScriptProperties().deleteProperty('INVENTAIRE_ARCHIVE');
+  const ss = invSS_();
+  INV_ARCHIVES.forEach(function (nom) { const sh = ss.getSheetByName(nom); if (sh && sh.isSheetHidden()) sh.showSheet(); });
+  ScriptApp.newTrigger('majInventaire').timeBased().everyMinutes(10).create();
+  Logger.log('Onglets réaffichés, décompte relancé.');
 }

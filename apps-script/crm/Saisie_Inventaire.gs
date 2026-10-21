@@ -167,7 +167,7 @@ function si_traiterDemandes_(inv) {
 
 /* ============================== 📖 MODE D'EMPLOI ============================== */
 
-const SI_NOTICE_VERSION = 'notice-v3';
+const SI_NOTICE_VERSION = 'notice-v4';
 
 /** Onglet de notice pas à pas, en tête du classeur. Recréé seulement si absent ou si la version change. */
 function si_construireNotice_(inv) {
@@ -232,9 +232,10 @@ function si_construireNotice_(inv) {
     ['❌ « pas assez au dépôt / en GP / en VIP » → la quantité demandée dépasse le stock : recompter ou corriger, puis revalider. Rien n\'a été changé.', 'E'],
     ['❌ « coût d\'achat inconnu » ou article absent de la liste → prévenir Clément.', 'E'],
     ['Rien ne bouge après 5 minutes → recocher la case Valider ; si ça continue, prévenir Clément.', 'E'],
-    ['Dons, cadeaux partenaires, casse : ne passent pas par ce tableau, ils sont saisis par Clément.', 'I'],
+    ['Vente en dehors d\'un match, dons, cadeaux partenaires, casse : page Gestion (spacers-boutique.spacersytb.workers.dev/gestion.html), jamais à la main dans ce classeur.', 'I'],
     ['', 'V'],
-    ['Les onglets « 🔄 … LIVE » sont en lecture seule (mis à jour automatiquement). Les anciens onglets (Stock Total, En boutique, Dépot) restent pour l\'historique.', 'I'],
+    ['RÈGLE : tout article et tout stock passent par le CRM. Ce classeur n\'en est qu\'une copie : le stock à jour se lit dans « 🔄 STOCK LIVE ».', 'A'],
+    ['Les onglets « 🔄 … LIVE » sont en lecture seule (mis à jour automatiquement). Les anciens tableaux (Stock Total, En boutique, Dépot, Journal ventes) sont archivés et masqués.', 'I'],
   ];
   sh.getRange(1, 1, L.length, 1).setValues(L.map(l => [l[0]]));
   sh.setColumnWidth(1, 980);

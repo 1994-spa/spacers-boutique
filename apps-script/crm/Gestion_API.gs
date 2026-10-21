@@ -9,7 +9,9 @@
  *  par un code PIN :
  *    GET  ?action=gestion_etat&pin=XXXX[&match=…]   → stock, matchs, bilan, historique
  *    POST { action:'gestion', pin, op, par, data }    → reception | repartition |
- *         transfert | inventaire | dotation
+ *         transfert | inventaire | dotation | vente_hors_match
+ *  Règle : tout article et tout stock passent par le CRM ; le classeur
+ *  « Inventaire 2026 2027 » n'en est qu'une copie (aucune saisie de stock dedans).
  *  Chaque écriture passe par les fonctions existantes (verrou, 03_PRODUITS,
  *  11_MOUVEMENTS_STOCK, 02_ACHATS, synthèse) : le Sheet « Inventaire 2026 2027 »
  *  est mis à jour par Inventaire_Boutique.gs comme aujourd'hui.
@@ -32,7 +34,8 @@ const GA = {
     repartition: p => enregistrerRepartition(p),
     transfert:   p => enregistrerTransfert(p),
     inventaire:  p => enregistrerInventaire(p),
-    dotation:    p => enregistrerDotation(p)
+    dotation:    p => enregistrerDotation(p),
+    vente_hors_match: p => ga_venteHorsMatch_(p)
   },
   TYPES_SORTIE_MATCH: ['VENTE_COMPTOIR', 'OFFERT_CAISSE']
 };
@@ -187,4 +190,104 @@ function ga_historique_(n) {
       point: String(g(r, 'point')), qte: sb_num_(g(r, 'quantite')), match: String(g(r, 'match') || ''),
       commentaire: String(g(r, 'commentaire') || g(r, 'type_dotation') || ''), auteur: String(g(r, 'auteur') || '')
     }));
+}
+
+/* ========================= VENTE HORS MATCH ================================ */
+
+/**
+ * Vente en dehors d'un match (bureau, événement, commande d'un partenaire) :
+ * ligne dans 01_VENTES (source « hors_match »), sortie du stock du lieu choisi, mouvement tracé.
+ * Remplace la saisie manuelle dans « Journal ventes » du classeur Inventaire.
+ */
+function ga_venteHorsMatch_(p) {
+  return sb_avecVerrou_(() => {
+    const q = Math.round(sb_num_(p.quantite));
+    if (!(q > 0)) throw new Error('Quantité invalide.');
+    if (!SB.POINTS[p.point]) throw new Error('Choisissez le lieu d\'où sort l\'article.');
+    const mode = String(p.mode || '').trim();
+    if (!mode) throw new Error('Indiquez le moyen de paiement.');
+    const P = sb_lireProduits_();
+    const x = sb_trouverRef_(P, p.ref);
+    if (x[p.point] < q) throw new Error('Stock insuffisant (' + SB.POINTS[p.point] + ' : ' + x[p.point] + ' disponible).');
+    const pu = p.prix === '' || p.prix === null || p.prix === undefined ? x.prix_vente : sb_num_(p.prix);
+    if (!(pu >= 0)) throw new Error('Prix invalide.');
+    const occasion = String(p.occasion || '').trim() || 'Hors match';
+    const now = new Date();
+    const cle = 'HM-' + Utilities.formatDate(now, 'Europe/Paris', 'yyyyMMdd-HHmmss') + '-' + x.ref;
+
+    const shV = getSheet(SHEET.VENTES);
+    const ligne = new Array(Math.max(shV.getLastColumn(), COL_VENTE.MODE_PAIEMENT + 1)).fill('');
+    ligne[COL_VENTE.DATE] = now; ligne[COL_VENTE.SOURCE] = 'hors_match'; ligne[COL_VENTE.COMMANDE] = cle;
+    ligne[COL_VENTE.EMAIL] = String(p.email || ''); ligne[COL_VENTE.PRODUIT] = x.produit;
+    ligne[COL_VENTE.CATEGORIE] = String(x.categorie || ''); ligne[COL_VENTE.QUANTITE] = q;
+    ligne[COL_VENTE.PRIX_UNITAIRE] = pu; ligne[COL_VENTE.CA] = /offert/i.test(mode) ? 0 : Math.round(pu * q * 100) / 100;
+    ligne[COL_VENTE.MATCH_ASSOCIE] = occasion; ligne[COL_VENTE.BOUTIQUE_ID] = p.point;
+    ligne[COL_VENTE.SAISON] = saisonDepuisDate_(now); ligne[COL_VENTE.MODE_PAIEMENT] = mode;
+    shV.appendRow(ligne);
+
+    sb_set_(P, x, 'stock_' + p.point, x[p.point] - q);
+    sb_mouvement_({ type: 'VENTE_HORS_MATCH', ref_boutique: x.ref, produit: x.produit, point: p.point, quantite: -q,
+      cout_unitaire: x.cout, valeur: -q * x.cout, match: occasion, reference: cle,
+      beneficiaire: String(p.client || ''), commentaire: mode + (p.client ? ' · ' + p.client : '') });
+    try { reconstruireSaisons(); } catch (e) { logDiag('gestion', 'WARN', 'saisons: ' + e.message); }
+    rafraichirSynthese_();
+    return q + ' × ' + x.produit + ' vendu(s) hors match (' + mode + ', ' + (pu * q).toFixed(2) + ' €) · sorti(s) de ' + SB.POINTS[p.point] + '.';
+  });
+}
+
+/* ================== MAILLOTS PARTENAIRES (une seule fois) =================== */
+
+/**
+ * ▶ migrerMaillotsPartenaires — à lancer UNE fois depuis l'éditeur Apps Script.
+ * Les maillots vendus uniquement aux partenaires sont un article à part. Jusqu'ici le CRM n'en avait
+ * pas : le comptage du 17/10 les a rangés dans le stock VIP des maillots grand public.
+ * Ce script crée les références « Maillot partenaire … » (MAP-…) et y déplace ces quantités
+ * (stock VIP compté le 17/10 : Bleu foncé M 11 · L 1 · XL 1 ; Bleu clair L 1 ; Blanc M 1).
+ * Relançable sans risque : une référence déjà créée n'est ni recréée ni re-déplacée.
+ */
+const GA_PARTENAIRES = [
+  // [code couleur, libellé, taille, quantité en boutique VIP à reclasser]
+  ['BNU', 'Bleu Nuit', 'M', 11], ['BNU', 'Bleu Nuit', 'L', 1], ['BNU', 'Bleu Nuit', 'XL', 1],
+  ['BCI', 'Bleu Ciel', 'L', 1],
+  ['BLC', 'Blanc', 'M', 1], ['BLC', 'Blanc', 'L', 0]
+];
+const GA_PRIX_PARTENAIRE = 55;
+
+function migrerMaillotsPartenaires() {
+  const rapport = sb_avecVerrou_(() => {
+    GESTION_AUTEUR_ = 'migration maillots partenaires';
+    const P = sb_lireProduits_();
+    const sh = P.sh;
+    sb_assurerColonnes_(sh, ['ref_boutique', 'modele', 'taille', 'seuil_alerte', 'stock_R', 'prix_partenaire']);
+    const c = sb_cols_(sh);
+    const lignes = [];
+    GA_PARTENAIRES.forEach(t => {
+      const ref = 'MAP-' + t[0] + '-' + t[2];
+      if (P.rows.some(r => r.ref === ref)) { lignes.push(ref + ' existe déjà : inchangé'); return; }
+      const grandPublic = P.rows.find(r => r.ref === 'MAI-' + t[0] + '-' + t[2]);
+      const aDeplacer = grandPublic ? Math.min(t[3], Math.max(0, grandPublic.B2)) : 0;
+      const nom = 'Maillot partenaire ' + t[1] + ' - ' + t[2];
+      const row = new Array(sh.getLastColumn()).fill('');
+      const set = (k, v) => { if (c[k]) row[c[k] - 1] = v; };
+      set('produit', nom); set('categorie', 'Maillots'); set('prix_vente', GA_PRIX_PARTENAIRE);
+      set('prix_partenaire', GA_PRIX_PARTENAIRE); set('cout', grandPublic ? grandPublic.cout : 0);
+      set('stock_B1', 0); set('stock_B2', aDeplacer); set('stock_R', 0); set('actif', true);
+      set('ref_boutique', ref); set('modele', 'Maillot partenaire ' + t[1]); set('taille', t[2]); set('seuil_alerte', 0);
+      sh.appendRow(row);
+      if (aDeplacer) {
+        sb_set_(P, grandPublic, 'stock_B2', grandPublic.B2 - aDeplacer);
+        const cout = grandPublic.cout || 0;
+        sb_mouvement_({ type: 'AJUSTEMENT_INVENTAIRE', ref_boutique: grandPublic.ref, produit: grandPublic.produit, point: 'B2',
+          quantite: -aDeplacer, cout_unitaire: cout, valeur: -aDeplacer * cout, commentaire: 'reclassé en ' + nom + ' (comptage 17/10)' });
+        sb_mouvement_({ type: 'AJUSTEMENT_INVENTAIRE', ref_boutique: ref, produit: nom, point: 'B2',
+          quantite: aDeplacer, cout_unitaire: cout, valeur: aDeplacer * cout, commentaire: 'reclassé depuis ' + grandPublic.produit + ' (comptage 17/10)' });
+      }
+      lignes.push(ref + ' créé · ' + aDeplacer + ' en boutique VIP' + (grandPublic && t[3] > aDeplacer ? ' (⚠ ' + t[3] + ' attendus, ' + grandPublic.B2 + ' trouvés)' : ''));
+    });
+    rafraichirSynthese_();
+    return lignes.join('\n');
+  });
+  Logger.log(rapport);
+  try { SpreadsheetApp.getUi().alert('Maillots partenaires', rapport + '\n\nPense à recharger le catalogue de la tablette VIP.', SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) {}
+  return rapport;
 }

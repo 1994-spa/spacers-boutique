@@ -177,6 +177,7 @@ const ONGLETS = [
   { id: 'repartir', ic: '🔀', nom: 'Remplir les boutiques' },
   { id: 'bilan', ic: '🏁', nom: 'Bilan du match' },
   { id: 'inventaire', ic: '🔢', nom: 'Inventaire' },
+  { id: 'horsmatch', ic: '💶', nom: 'Vente hors match' },
   { id: 'sortie', ic: '🎁', nom: 'Sortie / don' },
   { id: 'historique', ic: '🕓', nom: 'Historique' }
 ];
@@ -184,7 +185,7 @@ const ENCOURAGE = ['Bien joué ! 💪', 'Top, c\'est enregistré ✨', 'Nickel, 
 
 let cfg = { url: CRM_URL_DEFAUT, pin: '', nom: '' };
 try { const s = JSON.parse(localStorage.getItem(STORE) || 'null'); if (s) cfg = Object.assign(cfg, s); } catch (e) {}
-const S = { etat: null, onglet: 'accueil', match: '', recep: { modele: '', q: {}, prix: '', fourn: '', fact: '' }, rep: {}, inv: { lieu: 'B1', q: {} }, trf: {}, sortie: {} };
+const S = { etat: null, onglet: 'accueil', match: '', recep: { modele: '', q: {}, prix: '', fourn: '', fact: '' }, rep: {}, inv: { lieu: 'B1', q: {} }, trf: {}, sortie: {}, hm: {} };
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -273,7 +274,7 @@ function render() {
     if (o.id === 'bilan' && S.etat && S.etat.bilan && S.etat.bilan.ecarts) pill = '<span class="pill">' + S.etat.bilan.ecarts + '</span>';
     return '<button type="button" data-tab="' + o.id + '" aria-current="' + (S.onglet === o.id) + '"><span>' + o.ic + '</span><span class="' + (o.id === 'accueil' ? '' : 'hide-sm') + '">' + o.nom + '</span>' + pill + '</button>';
   }).join('');
-  const f = { accueil: vAccueil, reception: vReception, repartir: vRepartir, bilan: vBilan, inventaire: vInventaire, sortie: vSortie, historique: vHistorique }[S.onglet];
+  const f = { accueil: vAccueil, reception: vReception, repartir: vRepartir, bilan: vBilan, inventaire: vInventaire, horsmatch: vHorsMatch, sortie: vSortie, historique: vHistorique }[S.onglet];
   $('app').innerHTML = S.etat ? f() : '<p class="empty">Chargement…</p>';
   majCompteurs();
 }
@@ -436,9 +437,27 @@ function vSortie() {
     '<div class="row" style="margin-top:10px"><div class="field"><label for="soCom">Commentaire / justificatif</label><input class="inp" id="soCom" value="' + esc(s.com || '') + '"></div><button class="btn" type="button" id="soGo">🧾 Enregistrer le bon</button></div></div>';
 }
 
+/* ---------- Vente hors match ---------- */
+function vHorsMatch() {
+  const P = S.etat.produits, h = S.hm;
+  const p = P.find(x => x.ref === h.ref);
+  const pt = h.pt || 'R';
+  const opt = (v, l, sel) => '<option value="' + esc(v) + '"' + (sel ? ' selected' : '') + '>' + esc(l) + '</option>';
+  return '<div class="card"><h2>💶 Vente hors match</h2><p class="lead">Une vente au bureau, lors d\'un événement ou pour un partenaire, en dehors des tablettes. Elle entre dans le CRM avec les autres ventes et sort du stock tout de suite. On ne l\'écrit plus à la main dans le classeur.</p>' +
+    '<div class="row"><div class="field" style="flex:2"><label for="hmRef">Article</label><select class="inp" id="hmRef"><option value="">— choisir —</option>' +
+      P.map(x => opt(x.ref, x.produit + ' · ' + eur(x.prix) + ' (dépôt ' + x.R + ' · GP ' + x.B1 + ' · VIP ' + x.B2 + ')', x.ref === h.ref)).join('') + '</select></div>' +
+    '<div class="field"><label for="hmPt">Sort de</label><select class="inp" id="hmPt">' + ['R', 'B1', 'B2'].map(k => opt(k, LIEUX[k].nom + (p ? ' (' + p[k] + ')' : ''), pt === k)).join('') + '</select></div>' +
+    '<div class="field" style="max-width:110px"><label for="hmQ">Quantité</label><input class="inp" id="hmQ" inputmode="numeric" value="' + esc(h.q || 1) + '"></div>' +
+    '<div class="field" style="max-width:150px"><label for="hmPrix">Prix unitaire TTC</label><input class="inp" id="hmPrix" inputmode="decimal" value="' + esc(h.prix != null && h.prix !== '' ? h.prix : (p ? p.prix : '')) + '"></div></div>' +
+    '<div class="row" style="margin-top:10px"><div class="field"><label for="hmMode">Paiement</label><select class="inp" id="hmMode">' + ['CB', 'Espèces', 'Virement', 'Chèque', 'Facture partenaire'].map(m => opt(m, m, (h.mode || 'CB') === m)).join('') + '</select></div>' +
+    '<div class="field"><label for="hmOcc">Occasion</label><input class="inp" id="hmOcc" value="' + esc(h.occ || '') + '" placeholder="Bureau, soirée partenaires, tournoi…"></div>' +
+    '<div class="field"><label for="hmCli">Client (facultatif)</label><input class="inp" id="hmCli" value="' + esc(h.cli || '') + '" placeholder="Nom ou société"></div>' +
+    '<button class="btn" type="button" id="hmGo">💶 Enregistrer la vente</button></div></div>';
+}
+
 /* ---------- Historique ---------- */
 function vHistorique() {
-  const ic = { ENTREE_ACHAT: '📥', TRANSFERT: '🔀', VENTE_COMPTOIR: '🛒', OFFERT_CAISSE: '🎁', DOTATION: '🎁', DEMARQUE: '⚠️', AJUSTEMENT_INVENTAIRE: '🔢', VENTE_WEB: '🌐' };
+  const ic = { VENTE_HORS_MATCH: '💶', ENTREE_ACHAT: '📥', TRANSFERT: '🔀', VENTE_COMPTOIR: '🛒', OFFERT_CAISSE: '🎁', DOTATION: '🎁', DEMARQUE: '⚠️', AJUSTEMENT_INVENTAIRE: '🔢', VENTE_WEB: '🌐' };
   const H = S.etat.historique || [];
   return '<div class="card"><h2>🕓 Derniers mouvements</h2><p class="lead">Tout ce qui entre et sort du stock, du plus récent au plus ancien.</p>' +
     (H.length ? '<div class="hist">' + H.map(h => '<div class="h"><span class="e">' + (ic[h.type] || '•') + '</span><div style="flex:1"><b>' + esc(h.produit) + '</b> <span class="tag ' + esc(h.point) + '">' + esc((LIEUX[h.point] || {}).court || (LIEUX[h.point] || {}).nom || h.point) + '</span> ' +
@@ -534,6 +553,13 @@ document.addEventListener('click', e => {
       executer('dotation', { enveloppe: S.sortie.env, ref: S.sortie.ref, point: S.sortie.pt, quantite: Number(S.sortie.q) || 0,
         beneficiaire: S.sortie.ben, match: S.sortie.occ, commentaire: S.sortie.com, justificatif: S.sortie.com }, () => { S.sortie = {}; });
     },
+    hmGo: () => {
+      const g = id => $(id).value;
+      S.hm = { ref: g('hmRef'), pt: g('hmPt'), q: g('hmQ'), prix: g('hmPrix'), mode: g('hmMode'), occ: g('hmOcc'), cli: g('hmCli') };
+      if (!S.hm.ref) { toast('Choisis l\'article vendu.', true); return; }
+      executer('vente_hors_match', { ref: S.hm.ref, point: S.hm.pt, quantite: Number(S.hm.q) || 0, prix: String(S.hm.prix).replace(',', '.'),
+        mode: S.hm.mode, occasion: S.hm.occ, client: S.hm.cli }, () => { S.hm = { pt: S.hm.pt, mode: S.hm.mode, occ: S.hm.occ }; });
+    },
     btnRefresh: () => charger(S.match),
     btnOut: () => { cfg.pin = ''; saveCfg(); location.reload(); },
     lgGo: login
@@ -544,6 +570,7 @@ document.addEventListener('change', e => {
   const t = e.target;
   if (t.dataset && t.dataset.in) { valeurChamp(t.dataset.in, t.value); majCompteurs(); return; }
   if (t.id === 'bmMatch') { charger(t.value); return; }
+  if (t.id === 'hmRef' || t.id === 'hmPt') { const g = id => $(id).value; S.hm = { ref: g('hmRef'), pt: g('hmPt'), q: g('hmQ'), prix: t.id === 'hmRef' ? '' : g('hmPrix'), mode: g('hmMode'), occ: g('hmOcc'), cli: g('hmCli') }; render(); return; }
   if (t.id === 'soEnv') { S.sortie.env = t.value; S.sortie.ref = $('soRef').value; S.sortie.pt = $('soPt').value; S.sortie.q = $('soQ').value; render(); }
 });
 document.addEventListener('input', e => { const t = e.target; if (t.dataset && t.dataset.in) { valeurChamp(t.dataset.in, t.value); majCompteurs(); } });
@@ -579,6 +606,7 @@ function demoDb() {
   const add = (code, modele, cat, prix, tailles, st) => tailles.forEach((t, i) => P.push({ ref: code + (t ? '-' + t : ''), produit: modele + (t ? ' ' + t : ''), modele: modele, taille: t, categorie: cat, prix: prix, cout: prix * .45, R: st[i][0], B1: st[i][1], B2: st[i][2], seuil: 2 }));
   add('MAI-BLC', 'Maillot Blanc', 'Maillots', 75, ['S', 'M', 'L', 'XL', 'XXL'], [[6, 2, 1], [10, 3, 2], [8, 1, 2], [4, 2, 0], [2, 1, 0]]);
   add('MAI-BNU', 'Maillot Bleu Nuit', 'Maillots', 75, ['S', 'M', 'L', 'XL', 'XXL'], [[5, 1, 1], [9, 2, 1], [7, 0, 1], [3, 1, 1], [2, 0, 0]]);
+  add('MAP-BNU', 'Maillot partenaire Bleu Nuit', 'Maillots', 55, ['M', 'L', 'XL'], [[0, 0, 11], [0, 0, 1], [0, 0, 1]]);
   add('TSH-NAR', 'Nara Tee', 'Textile', 25, ['S', 'M', 'L'], [[0, 0, 0], [4, 2, 1], [3, 1, 1]]);
   add('ECH', 'Écharpe', 'Accessoires', 18, [''], [[150, 39, 12]]);
   add('GOU', 'Gourde', 'Accessoires', 10, [''], [[20, -1, 3]]);
@@ -610,6 +638,7 @@ function demoOp(op, d) {
   if (op === 'repartition') { d.lignes.forEach(l => { const p = f(l.ref); ['B1', 'B2'].forEach(k => { if (l[k]) { p.R -= l[k]; p[k] += l[k]; h(p, k, l[k], 'TRANSFERT', 'depuis Réserve'); } }); }); msg = 'Répartition enregistrée.'; }
   if (op === 'transfert') { const p = f(d.ref); p[d.de] -= d.quantite; p[d.vers] += d.quantite; h(p, d.vers, d.quantite, 'TRANSFERT', 'depuis ' + d.de); msg = d.quantite + ' × ' + p.produit + ' déplacé(s).'; }
   if (op === 'inventaire') { let n = 0; d.lignes.forEach(l => ['R', 'B1', 'B2'].forEach(k => { if (l[k] !== '') { const p = f(l.ref), e = l[k] - p[k]; if (e) { n++; p[k] = l[k]; h(p, k, e, 'AJUSTEMENT_INVENTAIRE', 'Inventaire'); } } })); msg = n ? n + ' écart(s) corrigé(s).' : 'Inventaire conforme, aucun écart.'; }
+  if (op === 'vente_hors_match') { const p = f(d.ref); p[d.point] -= d.quantite; h(p, d.point, -d.quantite, 'VENTE_HORS_MATCH', d.mode); msg = d.quantite + ' × ' + p.produit + ' vendu(s) hors match.'; }
   if (op === 'dotation') { const p = f(d.ref); p[d.point] -= d.quantite; h(p, d.point, -d.quantite, 'DOTATION', d.enveloppe); msg = 'DOT-2627-0001 · ' + d.quantite + ' × ' + p.produit + '.'; }
   return new Promise(res => setTimeout(() => res({ status: 'ok', message: msg, etat: demoEtat('') }), 300));
 }
