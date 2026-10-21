@@ -308,6 +308,7 @@ function vAccueil() {
     '</div></div>' +
     vMatchTablettes() +
     '<div class="grid3" style="margin-bottom:16px">' + lieu('R') + lieu('B1') + lieu('B2') + '</div>' +
+    vWeb() +
     (negatifs.length ? '<div class="card" style="border-color:var(--bad)"><h2 class="ko">Stock négatif à vérifier</h2><p class="lead">Un stock ne peut pas être sous zéro : un comptage ou une vente a été mal saisi. Fais un inventaire sur ces articles.</p><div class="chips">' +
       negatifs.map(p => '<span class="chip bad">' + esc(p.produit) + '</span>').join('') + '</div></div>' : '') +
     '<div class="card"><h2>Tes badges 🏅</h2><p class="lead">Ils se débloquent tout seuls quand les boutiques sont bien tenues.</p>' +
@@ -330,6 +331,14 @@ function vMatchTablettes() {
     C.map(m => '<option value="' + esc(m.id) + '"' + (m.tablettes ? ' selected' : '') + '>' + esc(m.date + ' ' + m.heure + ' — ' + m.nom) + (m.tablettes ? ' ✅' : '') + '</option>').join('') + '</select></div>' +
     '<button class="btn" type="button" id="mtGo">' + (actuel ? 'Changer de match' : 'Préparer ce match') + '</button></div>' +
     (actuel ? '<p style="margin-top:10px"><span class="chip good">✅ Tablettes : ' + esc(actuel.date + ' — ' + actuel.nom) + '</span></p>' : '<p style="margin-top:10px"><span class="chip warn">Aucun match choisi pour les tablettes</span></p>') + '</div>';
+}
+
+function vWeb() {
+  const W = S.etat.produits.filter(p => p.web > 0);
+  if (!W.length) return '';
+  const n = W.reduce((s, p) => s + p.web, 0);
+  return '<div class="card"><h2>🌐 Vendus en ligne, à remettre au stand</h2><p class="lead">Payés sur Tickie avec un billet : déjà comptés dans les ventes, encore en boutique. Ils sortent du stock quand le bénévole scanne le billet et les remet. Ne pas les vendre à quelqu\'un d\'autre.</p>' +
+    '<div class="chips">' + W.map(p => '<span class="chip warn">' + esc(p.produit) + ' × ' + p.web + '</span>').join('') + '</div><p style="margin-top:8px;color:var(--muted);font-size:13px">' + n + ' article(s) réservé(s) au total.</p></div>';
 }
 
 /* ---------- Réception ---------- */
@@ -371,7 +380,7 @@ function vRepartir() {
       const x = S.rep[p.ref] || {}, reste = p.R - (x.B1 || 0) - (x.B2 || 0);
       rows += '<tr><td>' + esc(libTaille(p)) + '</td><td class="n"><span class="tag R">' + p.R + '</span></td>' +
         '<td class="n hide-sm" id="rpr-' + esc(p.ref) + '">' + reste + '</td>' +
-        '<td class="n"><span class="tag B1">' + p.B1 + '</span></td><td>' + mini('rp:B1:' + p.ref, x.B1, p.R) + '</td>' +
+        '<td class="n"><span class="tag B1">' + p.B1 + '</span>' + (p.web ? '<div style="font-size:11px" class="wa">dont ' + p.web + ' web</div>' : '') + '</td><td>' + mini('rp:B1:' + p.ref, x.B1, p.R) + '</td>' +
         '<td class="n"><span class="tag B2">' + p.B2 + '</span></td><td>' + mini('rp:B2:' + p.ref, x.B2, p.R) + '</td></tr>';
     });
   });
@@ -463,7 +472,7 @@ function vInventaire() {
         '<td class="n" id="ive-' + esc(p.ref) + '">' + (compte ? (e ? '<span class="chip ' + (e < 0 ? 'bad' : 'warn') + '">' + (e > 0 ? '+' : '') + e + '</span>' : '<span class="chip good">✓</span>') : '') + '</td></tr>';
     });
   });
-  return '<div class="card"><h2>🔢 Inventaire</h2><p class="lead">Compte ce qu\'il y a réellement, lieu par lieu. Laisse vide ce que tu n\'as pas compté. À la validation, le stock prend tes chiffres et chaque écart est tracé.</p>' +
+  return '<div class="card"><h2>🔢 Inventaire</h2><p class="lead">Compte ce qu\'il y a réellement, lieu par lieu, <b>y compris les articles vendus en ligne pas encore remis</b> (ils sont encore en boutique). Laisse vide ce que tu n\'as pas compté. À la validation, le stock prend tes chiffres et chaque écart est tracé.</p>' +
     '<div class="seg" role="group" aria-label="Lieu compté" style="margin-bottom:14px">' + ['R', 'B1', 'B2'].map(k => '<button type="button" data-lieu="' + k + '" aria-pressed="' + (lieu === k) + '">' + LIEUX[k].ic + ' ' + LIEUX[k].nom + '</button>').join('') + '</div>' +
     '<div style="overflow-x:auto"><table><thead><tr><th>Article</th><th class="n">Attendu</th><th class="n">Compté</th><th class="n">Écart</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
     '<div class="sticky-act"><span class="sum" id="ivSum">' + n + ' compté(s) · ' + ec + ' écart(s)</span><button class="btn big" type="button" id="ivGo"' + (n ? '' : ' disabled') + '>✅ Valider l\'inventaire ' + LIEUX[lieu].nom + '</button></div></div>';
@@ -766,6 +775,7 @@ function demoDb() {
   add('MAP-BNU', 'Maillot partenaire Bleu Nuit', 'Maillots', 55, ['M', 'L', 'XL'], [[0, 0, 11], [0, 0, 1], [0, 0, 1]]);
   add('TSH-NAR', 'Nara Tee', 'Textile', 25, ['S', 'M', 'L'], [[0, 0, 0], [4, 2, 1], [3, 1, 1]]);
   add('ECH', 'Écharpe', 'Accessoires', 18, [''], [[150, 39, 12]]);
+  P.find(p => p.ref === 'ECH').web = 3;
   add('GOU', 'Gourde', 'Accessoires', 10, [''], [[20, -1, 3]]);
   DEMO_DB = { produits: P, hist: [] };
   return DEMO_DB;

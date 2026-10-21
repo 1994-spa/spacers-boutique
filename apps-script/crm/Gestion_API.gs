@@ -82,9 +82,11 @@ function ga_doPost_(payload) {
 
 function ga_etat_(matchDemande) {
   const P = sb_lireProduits_();
+  let reserves = {};
+  try { if (typeof tv_reserves_ === 'function') reserves = tv_reserves_(); } catch (e) { reserves = {}; }
   const produits = P.rows.filter(x => x.actif && x.ref).map(x => ({
     ref: x.ref, produit: x.produit, modele: x.modele, taille: x.taille, categorie: String(x.categorie || ''),
-    prix: x.prix_vente, cout: x.cout, R: x.R, B1: x.B1, B2: x.B2, seuil: x.seuil
+    prix: x.prix_vente, cout: x.cout, R: x.R, B1: x.B1, B2: x.B2, seuil: x.seuil, web: reserves[x.ref] || 0
   }));
   const matchs = ga_matchsVentes_();
   const match = matchDemande || (matchs[0] && matchs[0].label) || '';
