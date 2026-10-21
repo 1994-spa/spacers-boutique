@@ -231,12 +231,17 @@ function doGet(e) {
     const action = e && e.parameter && e.parameter.action || 'ping';
 
     if (action === 'ping') {
-      return jsonResponse({ status: 'ok', app: 'boutique', version: 'V3.5', timestamp: new Date().toISOString() });
+      return jsonResponse({ status: 'ok', app: 'boutique', version: 'V3.6', timestamp: new Date().toISOString() });
     }
 
     if (action === 'get_abonnes') {
       return jsonResponse({ status: 'ok', app: 'boutique', remise: REMISE_ABONNE, saison: SAISON_ABONNEMENTS,
         maj: new Date().toISOString(), abonnes: getAbonnesPourTablette_() });
+    }
+
+    if (action === 'gestion_etat') {
+      if (typeof ga_doGet_ !== 'function') return jsonResponse({ status: 'error', message: 'Gestion_API.gs absent du projet Apps Script' });
+      return jsonResponse(Object.assign({ status: 'ok' }, ga_doGet_(e)));
     }
 
     if (action === 'get_catalogue') {
@@ -258,6 +263,18 @@ function doGet(e) {
  * doPost() — { action: 'import_session', session: {...}, ventes: [...], stock_cloture: [...] }
  */
 function doPost(e) {
+  // Espace Gestion : les fonctions de Stock_Boutique.gs prennent leur propre verrou
+  try {
+    const pre = e && e.postData && e.postData.contents ? JSON.parse(e.postData.contents) : {};
+    if (pre.action === 'gestion') {
+      if (typeof ga_doPost_ !== 'function') return jsonResponse({ status: 'error', message: 'Gestion_API.gs absent du projet Apps Script' });
+      return jsonResponse(Object.assign({ status: 'ok' }, ga_doPost_(pre)));
+    }
+  } catch (err) {
+    logDiag('doPost', 'ERROR', 'gestion : ' + err.message);
+    return jsonResponse({ status: 'error', message: err.message });
+  }
+
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) return jsonResponse({ status: 'error', message: 'Serveur occupé, réessayez dans un instant.' });
   try {

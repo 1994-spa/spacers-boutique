@@ -1,7 +1,7 @@
 // Service worker — Spacer's Boutique : la caisse s'ouvre même sans réseau.
 // Pages : réseau d'abord (pour recevoir les mises à jour), cache si hors ligne.
 // Fichiers statiques (icônes, polices, lecteur QR) : cache d'abord.
-const CACHE = 'spacers-boutique-v14';
+const CACHE = 'spacers-boutique-v15';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './fonts/sansation-bold.woff2', './fonts/heaters.woff2',
   'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js'];
 
@@ -21,7 +21,7 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
   // Jamais de cache pour l'Apps Script, le relais Tickie ou le tableau de bord
   if (url.hostname.includes('script.google') || url.hostname.includes('googleusercontent') || url.hostname.includes('tickie-proxy')) return;
-  if (url.pathname.endsWith('/pilotage.html')) return;
+  if (url.pathname.endsWith('/pilotage.html') || url.pathname.endsWith('/gestion.html')) return;
 
   if (req.mode === 'navigate') {
     // Réseau lent (salle pleine) : au-delà de 4 s on sert la version en cache. Seules les vraies pages (200) sont mises en cache

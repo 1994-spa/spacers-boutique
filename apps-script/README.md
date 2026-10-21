@@ -92,3 +92,17 @@ La personne en charge de la boutique travaille uniquement dans son classeur Inve
 - **🏁 APRÈS MATCH** : rapport des ventes tablette (01_VENTES) par match — CA GP/VIP, CB, espèces, offerts, articles vendus, stock CRM ; saisie relevé TPE, espèces comptées, stock compté ; « Valider le contrôle » → `enregistrerInventaire` (écarts), onglet `25_CONTROLES_CAISSE`, rapport par mail.
 - Déclencheurs : à la modification du classeur Inventaire (programme le traitement dans la minute) + toutes les 5 min (traitement, rafraîchissement des colonnes grises sans toucher aux saisies, réparation des `#ERROR!` de 🔄 STOCK LIVE / VENTES LIVE).
 - Propriété facultative `INVENTAIRE_ID` (sinon l'identifiant par défaut du classeur Inventaire).
+
+
+## Espace Gestion du stock (`crm/Gestion_API.gs` + `gestion.html`)
+
+Pour la personne qui gère le stock, sans passer par les onglets. Les bénévoles en boutique restent sur la caisse.
+
+1. Projet Apps Script **du classeur CRM Boutique** : ➕ Fichier › Script, nom `Gestion_API`, coller `crm/Gestion_API.gs`.
+2. Remplacer `CRM_Boutique_V3.gs` (V3.6 : route `gestion_etat` / `gestion`) et `Stock_Boutique.gs` (auteur des mouvements) par les versions du dépôt.
+3. **Paramètres du projet › Propriétés du script** : `GESTION_PIN` = un code de 4 à 6 chiffres, à donner à la personne qui gère le stock.
+4. **Déployer › Gérer les déploiements › ✏️ › Nouvelle version** (l'URL des tablettes ne change pas).
+5. Ouvrir `https://spacers-boutique.spacersytb.workers.dev/gestion.html` : prénom + code PIN.
+
+Écrans : Accueil (état dépôt / GP / VIP, alertes, badges) · Réception au dépôt · Remplir les boutiques (réassort proposé d'après le dernier match et les seuils) · Bilan du match (CA par boutique et par paiement, ventes rapprochées des sorties de stock, « à rajouter ») · Inventaire (par lieu, écarts tracés) · Sortie / don (bons DOT numérotés, contrôle 73 €) · Historique.
+Chaque action passe par les fonctions existantes de `Stock_Boutique.gs` (03_PRODUITS, 11_MOUVEMENTS_STOCK, 02_ACHATS) ; le classeur « Inventaire 2026 2027 » continue d'être mis à jour par `Inventaire_Boutique.gs`. Les onglets de comptage du matériel club (chasubles, gobelets, gilets…) ne sont pas touchés.

@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#001E2D">
+<meta name="robots" content="noindex">
+<link rel="icon" href="icon-192.png">
+<title>Gestion Stock Spacers</title>
+<style>
+/* Charte 26-27 « NIGHT » : Night, Day, Périvenche, blanc — jaune proscrit. Sansation (texte), Heaters (titres).
+   Espace Gestion : la personne qui gère le stock (dépôt → boutiques GP/VIP → bilan du match). Les bénévoles restent sur la caisse. */
+@font-face{font-family:'Sansation';src:url('fonts/sansation-bold.woff2') format('woff2');font-weight:100 900;font-display:swap}
+@font-face{font-family:'Heaters';src:url('fonts/heaters.woff2') format('woff2');font-weight:400 900;font-display:swap}
+:root{
+  --bg:#ECF0F8;--surface:#fff;--surface-2:#F3F5FB;--border:rgba(0,30,45,.15);--divider:rgba(0,30,45,.09);
+  --text:#001E2D;--muted:#3A4E5C;--faint:#647887;
+  --navy:#001E2D;--day:#91BEE6;--peri:#C8D2EB;
+  --dep:#5B6CA8;--dep-bg:#E6E9F6;--gp:#1F6FB2;--gp-bg:#E1EEF9;--vip:#001E2D;--vip-bg:#DCE3EC;
+  --good:#17772F;--good-bg:#E2F4E6;--warn:#A35400;--warn-bg:#FFF0DA;--bad:#C0262D;--bad-bg:#FDE5E6;
+  --shadow:0 1px 2px rgba(0,30,45,.06),0 6px 18px rgba(0,30,45,.09);
+  --columns:linear-gradient(180deg,rgba(145,190,230,.16),rgba(145,190,230,0) 85%),repeating-linear-gradient(90deg,rgba(145,190,230,0) 0 54px,rgba(145,190,230,.07) 54px 58px,rgba(145,190,230,0) 58px 112px);
+  --font:'Sansation','Trebuchet MS',Arial,sans-serif;--f-t:'Heaters','Sansation',sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#00141F;--surface:#06283A;--surface-2:#0B3446;--border:rgba(255,255,255,.14);--divider:rgba(255,255,255,.08);
+  --text:#F2F4FA;--muted:#C2C8DA;--faint:#929AB3;
+  --dep:#A9B4E6;--dep-bg:rgba(169,180,230,.14);--gp:#91BEE6;--gp-bg:rgba(145,190,230,.14);--vip:#C8D2EB;--vip-bg:rgba(200,210,235,.12);
+  --good:#5FD07A;--good-bg:rgba(95,208,122,.14);--warn:#FFB547;--warn-bg:rgba(255,181,71,.14);--bad:#FF6B72;--bad-bg:rgba(255,107,114,.14);
+  --shadow:0 4px 16px rgba(0,0,0,.35);color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#00141F;--surface:#06283A;--surface-2:#0B3446;--border:rgba(255,255,255,.14);--divider:rgba(255,255,255,.08);
+  --text:#F2F4FA;--muted:#C2C8DA;--faint:#929AB3;
+  --dep:#A9B4E6;--dep-bg:rgba(169,180,230,.14);--gp:#91BEE6;--gp-bg:rgba(145,190,230,.14);--vip:#C8D2EB;--vip-bg:rgba(200,210,235,.12);
+  --good:#5FD07A;--good-bg:rgba(95,208,122,.14);--warn:#FFB547;--warn-bg:rgba(255,181,71,.14);--bad:#FF6B72;--bad-bg:rgba(255,107,114,.14);
+  --shadow:0 4px 16px rgba(0,0,0,.35);color-scheme:dark}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+body{font-synthesis:none;font-family:var(--font);background:var(--bg);color:var(--text);font-size:15px;-webkit-font-smoothing:antialiased;min-height:100vh}
+button,select,input{font:inherit;color:inherit}
+/* Heaters réservée au titre du bandeau : ses capitales décoratives gênent la lecture ailleurs */
+h1{font-family:var(--f-t);font-weight:400;letter-spacing:.02em}
+h2,.ti{font-weight:700}
+.top{background:var(--columns),var(--navy);color:#fff;padding:12px 20px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:5;box-shadow:0 2px 10px rgba(0,0,0,.2)}
+.top h1{font-size:26px;line-height:1}
+.top .who{display:flex;align-items:center;gap:10px;font-size:13px;color:#C8D2EB}
+.top .who b{color:#fff}
+.top button{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:8px;padding:6px 10px;cursor:pointer}
+nav{display:flex;gap:6px;flex-wrap:wrap;padding:12px 20px 0;max-width:1240px;margin:0 auto}
+nav button{border:1px solid var(--border);background:var(--surface);border-radius:999px;padding:9px 16px;cursor:pointer;display:flex;align-items:center;gap:6px;color:var(--muted)}
+nav button[aria-current="true"]{background:var(--navy);color:#fff;border-color:var(--navy)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) nav button[aria-current="true"]{background:var(--day);color:#001E2D;border-color:var(--day)}}
+nav .pill{background:var(--warn);color:#fff;border-radius:999px;font-size:11px;padding:1px 7px}
+main{max-width:1240px;margin:0 auto;padding:16px 20px 80px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:18px;margin-bottom:16px}
+.card h2{font-size:20px;margin-bottom:4px}
+.lead{color:var(--muted);margin-bottom:14px;line-height:1.45}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.lieu{border-radius:16px;padding:16px;border:2px solid transparent;position:relative;overflow:hidden}
+.lieu.R{background:var(--dep-bg);border-color:var(--dep)} .lieu.B1{background:var(--gp-bg);border-color:var(--gp)} .lieu.B2{background:var(--vip-bg);border-color:var(--vip)}
+.lieu .ic{font-size:30px}
+.lieu .n{font-size:44px;font-weight:700;line-height:1;margin:6px 0 2px}
+.lieu .s{color:var(--muted);font-size:13px}
+.lieu .al{margin-top:8px;font-size:13px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:3px 10px;font-size:12px;background:var(--surface-2);border:1px solid var(--border)}
+.chip.bad{background:var(--bad-bg);color:var(--bad);border-color:transparent}
+.chip.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.chip.good{background:var(--good-bg);color:var(--good);border-color:transparent}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.step{display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:12px;background:var(--surface-2);border:1px solid var(--border);cursor:pointer;text-align:left}
+.step .num{flex:none;width:32px;height:32px;border-radius:50%;background:var(--navy);color:#fff;display:grid;place-items:center;font-weight:700;font-size:16px}
+.step b{display:block} .step span{color:var(--muted);font-size:13px}
+.badges{display:flex;flex-wrap:wrap;gap:10px}
+.badge{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:14px;border:1px dashed var(--border);color:var(--faint);min-width:210px}
+.badge .e{font-size:26px;filter:grayscale(1);opacity:.45}
+.badge.on{border-style:solid;border-color:var(--good);color:var(--text);background:var(--good-bg)}
+.badge.on .e{filter:none;opacity:1}
+.badge small{display:block;color:var(--muted);font-size:12px}
+.meter{height:10px;border-radius:999px;background:var(--surface-2);overflow:hidden;border:1px solid var(--border)}
+.meter>div{height:100%;background:linear-gradient(90deg,var(--gp),var(--day));border-radius:999px;transition:width .5s}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.field{display:flex;flex-direction:column;gap:4px;min-width:160px;flex:1}
+.field label{font-size:12px;color:var(--muted)}
+.inp,select.inp{border:1px solid var(--border);border-radius:10px;padding:9px 11px;background:var(--surface);min-height:42px}
+.btn{border:0;border-radius:12px;padding:11px 18px;background:var(--navy);color:#fff;cursor:pointer;font-weight:700;min-height:44px;display:inline-flex;align-items:center;gap:8px}
+.btn.sec{background:var(--surface-2);color:var(--text);border:1px solid var(--border)}
+.btn.big{font-size:17px;padding:14px 24px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .btn:not(.sec){background:var(--day);color:#001E2D}}
+.models{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.model{border:2px solid var(--border);border-radius:14px;padding:12px;background:var(--surface);cursor:pointer;text-align:left}
+.model[aria-pressed="true"]{border-color:var(--gp);background:var(--gp-bg)}
+.model b{display:block} .model span{font-size:12px;color:var(--muted)}
+.sizes{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.size{border:1px solid var(--border);border-radius:12px;padding:10px;background:var(--surface-2)}
+.size .t{font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between}
+.stepper{display:flex;align-items:center;gap:6px}
+.stepper button{width:38px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--surface);font-size:20px;cursor:pointer;flex:none}
+.stepper input{width:100%;min-width:0;text-align:center;border:1px solid var(--border);border-radius:10px;height:38px;background:var(--surface);font-size:17px;font-weight:700}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px 8px;text-align:left;border-bottom:1px solid var(--divider);vertical-align:middle}
+th{font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.grp td{background:var(--surface-2);font-weight:700;font-size:15px}
+.tag{display:inline-block;border-radius:6px;padding:1px 8px;font-size:12px;font-weight:700}
+.tag.R{background:var(--dep-bg);color:var(--dep)} .tag.B1{background:var(--gp-bg);color:var(--gp)} .tag.B2{background:var(--vip-bg);color:var(--vip)}
+.mini{display:flex;align-items:center;gap:4px;justify-content:flex-end}
+.mini button{width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--surface);cursor:pointer}
+.mini input{width:52px;text-align:center;border:1px solid var(--border);border-radius:8px;height:30px;background:var(--surface);font-weight:700}
+.bar{display:flex;height:8px;border-radius:999px;overflow:hidden;background:var(--surface-2);min-width:90px}
+.bar i{display:block;height:100%}
+.bar .R{background:var(--dep)} .bar .B1{background:var(--gp)} .bar .B2{background:var(--vip)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:12px}
+.kpi .l{font-size:12px;color:var(--muted)} .kpi .v{font-size:26px;font-weight:700;display:block;line-height:1.2}
+.ok{color:var(--good)} .ko{color:var(--bad)} .wa{color:var(--warn)}
+.sticky-act{position:sticky;bottom:0;z-index:3;background:var(--surface);border-top:1px solid var(--divider);box-shadow:0 -8px 16px -10px rgba(0,30,45,.25);margin:12px -18px -18px;padding:12px 18px;border-radius:0 0 16px 16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
+.sum{margin-right:auto;color:var(--muted)}
+.empty{color:var(--faint);padding:14px 0}
+.hist{display:flex;flex-direction:column}
+.hist .h{display:flex;gap:12px;align-items:center;padding:9px 0;border-bottom:1px solid var(--divider)}
+.hist .e{font-size:20px;width:30px;text-align:center}
+.hist .d{font-size:12px;color:var(--faint)}
+.login{max-width:420px;margin:60px auto}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%) translateY(20px);background:var(--navy);color:#fff;padding:14px 20px;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.3);opacity:0;transition:.3s;z-index:20;max-width:min(560px,92vw);white-space:pre-line}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.err{background:var(--bad)}
+.confetti{position:fixed;inset:0;pointer-events:none;z-index:19;overflow:hidden}
+.confetti i{position:absolute;top:-12px;width:9px;height:14px;border-radius:2px;animation:fall 1.6s ease-in forwards}
+@keyframes fall{to{transform:translateY(105vh) rotate(540deg);opacity:.8}}
+.loading{position:fixed;top:0;left:0;height:3px;background:var(--day);z-index:30;animation:load 1.2s infinite}
+@keyframes load{0%{width:0;left:0}50%{width:60%;left:20%}100%{width:0;left:100%}}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.seg button{border:0;background:var(--surface);padding:10px 16px;cursor:pointer;border-right:1px solid var(--border)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--navy);color:#fff}
+.demo{background:var(--warn-bg);color:var(--warn);text-align:center;padding:6px;font-size:13px}
+@media (max-width:640px){.top h1{font-size:22px}main{padding:12px 12px 80px}nav{padding:10px 12px 0}.card{padding:14px}.hide-sm{display:none}}
+</style>
+</head>
+<body>
+<div id="demo" class="demo" hidden>Mode démo : données fictives, rien n'est enregistré.</div>
+<header class="top">
+  <h1>📦 Gestion du stock · Boutiques Spacer's</h1>
+  <div class="who" id="who" hidden><span>👋 <b id="whoName"></b></span><span id="maj"></span><button type="button" id="btnRefresh">↻ Actualiser</button><button type="button" id="btnOut">Quitter</button></div>
+</header>
+
+<section id="login" class="login" hidden>
+  <div class="card">
+    <h2>Bienvenue dans la gestion du stock</h2>
+    <p class="lead">Ici, on prépare les boutiques : réception au dépôt, répartition Grand Public / VIP, bilan après le match, inventaire. Les bénévoles, eux, n'utilisent que la caisse.</p>
+    <div class="field" style="margin-bottom:10px"><label for="lgName">Ton prénom</label><input class="inp" id="lgName" autocomplete="given-name"></div>
+    <div class="field" style="margin-bottom:10px"><label for="lgPin">Code PIN gestion</label><input class="inp" id="lgPin" type="password" inputmode="numeric" autocomplete="off"></div>
+    <details style="margin-bottom:14px"><summary style="cursor:pointer;color:var(--muted);font-size:13px">Réglage avancé</summary>
+      <div class="field" style="margin-top:8px"><label for="lgUrl">URL Apps Script du CRM Boutique</label><input class="inp" id="lgUrl" type="url"></div>
+    </details>
+    <button class="btn big" type="button" id="lgGo" style="width:100%;justify-content:center">C'est parti 🚀</button>
+    <p id="lgErr" class="ko" style="margin-top:10px" hidden></p>
+  </div>
+</section>
+
+<nav id="nav" hidden></nav>
+<main id="app" hidden></main>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script>
+'use strict';
+const CRM_URL_DEFAUT = 'https://script.google.com/macros/s/AKfycbz3v2-lSreW_Y7xQVbq4xtDrx_bL1R_KzsbbbOlFQHg5LWVVKaxJZw8vCIo4KGVVyk6ZA/exec';
+const STORE = 'spacers-gestion-v1';
+const DEMO = new URLSearchParams(location.search).has('demo');
+const LIEUX = { R: { nom: 'Dépôt', ic: '🏠' }, B1: { nom: 'Boutique Grand Public', court: 'GP', ic: '🛍️' }, B2: { nom: 'Boutique VIP', court: 'VIP', ic: '⭐' } };
+const ORDRE_TAILLES = ['4y','6y','8y','10y','12y','14y','Size 116','Size 128','Size 140','Size 152','Size 164','9-11','12-13','XS','S','M','L','XL','XXL','2XL','3XL','4XL','TU'];
+const ONGLETS = [
+  { id: 'accueil', ic: '🏠', nom: 'Accueil' },
+  { id: 'reception', ic: '📥', nom: 'Réception au dépôt' },
+  { id: 'repartir', ic: '🔀', nom: 'Remplir les boutiques' },
+  { id: 'bilan', ic: '🏁', nom: 'Bilan du match' },
+  { id: 'inventaire', ic: '🔢', nom: 'Inventaire' },
+  { id: 'sortie', ic: '🎁', nom: 'Sortie / don' },
+  { id: 'historique', ic: '🕓', nom: 'Historique' }
+];
+const ENCOURAGE = ['Bien joué ! 💪', 'Top, c\'est enregistré ✨', 'Nickel, les boutiques te disent merci 🙌', 'Smash ! 🏐', 'Carton plein 🎯'];
+
+let cfg = { url: CRM_URL_DEFAUT, pin: '', nom: '' };
+try { const s = JSON.parse(localStorage.getItem(STORE) || 'null'); if (s) cfg = Object.assign(cfg, s); } catch (e) {}
+const S = { etat: null, onglet: 'accueil', match: '', recep: { modele: '', q: {}, prix: '', fourn: '', fact: '' }, rep: {}, inv: { lieu: 'B1', q: {} }, trf: {}, sortie: {} };
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const eur = v => (Number(v) || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+const int = v => (Number(v) || 0).toLocaleString('fr-FR');
+const saveCfg = () => { try { localStorage.setItem(STORE, JSON.stringify({ url: cfg.url, pin: cfg.pin, nom: cfg.nom })); } catch (e) {} };
+const rangTaille = t => { const i = ORDRE_TAILLES.indexOf(t); return i === -1 ? 50 : i; };
+
+/* ============================== API ============================== */
+async function apiEtat(match) {
+  if (DEMO) return demoEtat(match);
+  const u = new URL(cfg.url);
+  u.searchParams.set('action', 'gestion_etat'); u.searchParams.set('pin', cfg.pin);
+  if (match) u.searchParams.set('match', match);
+  const d = await (await fetch(u.toString())).json();
+  if (d.status !== 'ok') throw new Error(d.message || 'Réponse inattendue du CRM');
+  return d;
+}
+async function apiOp(op, data) {
+  if (DEMO) return demoOp(op, data);
+  const r = await fetch(cfg.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'gestion', pin: cfg.pin, par: cfg.nom, op: op, data: data, match: S.match }) });
+  const d = await r.json();
+  if (d.status !== 'ok') throw new Error(d.message || 'Refusé par le CRM');
+  return d;
+}
+let busy = 0;
+function chargement(on) { busy += on ? 1 : -1; let b = document.querySelector('.loading'); if (busy > 0 && !b) { b = document.createElement('div'); b.className = 'loading'; document.body.appendChild(b); } if (busy <= 0 && b) b.remove(); }
+async function charger(match) {
+  chargement(true);
+  try { const d = await apiEtat(match); S.etat = d; S.match = d.match || ''; $('maj').textContent = 'à jour ' + (d.maj || ''); render(); return true; }
+  catch (e) { toast(msgErr(e), true); return false; }
+  finally { chargement(false); }
+}
+async function executer(op, data, apres) {
+  chargement(true);
+  try {
+    const d = await apiOp(op, data);
+    if (d.etat) { S.etat = d.etat; S.match = d.etat.match || S.match; }
+    if (apres) apres();
+    toast(ENCOURAGE[Math.floor(Math.random() * ENCOURAGE.length)] + '\n' + d.message);
+    confettis();
+    render();
+  } catch (e) { toast(msgErr(e), true); }
+  finally { chargement(false); }
+}
+function msgErr(e) { return e instanceof TypeError ? 'Pas de connexion avec le CRM. Vérifie internet puis réessaie.' : '⚠ ' + e.message; }
+
+/* ============================ OUTILS UI ============================ */
+let tTo;
+function toast(msg, err) { const t = $('toast'); t.textContent = msg; t.className = 'toast on' + (err ? ' err' : ''); clearTimeout(tTo); tTo = setTimeout(() => t.className = 'toast', err ? 6000 : 3800); }
+function confettis() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const c = document.createElement('div'); c.className = 'confetti';
+  const couleurs = ['#001E2D', '#91BEE6', '#C8D2EB', '#1F6FB2', '#5B6CA8'];
+  for (let i = 0; i < 40; i++) { const p = document.createElement('i'); p.style.left = Math.random() * 100 + 'vw'; p.style.background = couleurs[i % couleurs.length]; p.style.animationDelay = (Math.random() * .4) + 's'; c.appendChild(p); }
+  document.body.appendChild(c); setTimeout(() => c.remove(), 2400);
+}
+function modeles() {
+  const m = {};
+  (S.etat ? S.etat.produits : []).forEach(p => { (m[p.modele] = m[p.modele] || { modele: p.modele, categorie: p.categorie, prix: p.prix, lignes: [] }).lignes.push(p); });
+  return Object.values(m).map(x => { x.lignes.sort((a, b) => rangTaille(a.taille) - rangTaille(b.taille)); return x; })
+    .sort((a, b) => a.categorie.localeCompare(b.categorie) || a.modele.localeCompare(b.modele));
+}
+const libTaille = p => p.taille || 'Taille unique';
+function stepper(id, val, max) {
+  return '<div class="stepper"><button type="button" data-st="' + id + '" data-d="-1" aria-label="moins">−</button>' +
+    '<input inputmode="numeric" data-in="' + id + '" value="' + (val || '') + '" placeholder="0"' + (max != null ? ' data-max="' + max + '"' : '') + '>' +
+    '<button type="button" data-st="' + id + '" data-d="1" aria-label="plus">+</button></div>';
+}
+function mini(id, val, max) {
+  return '<div class="mini"><button type="button" data-st="' + id + '" data-d="-1" aria-label="moins">−</button>' +
+    '<input inputmode="numeric" data-in="' + id + '" value="' + (val || '') + '" placeholder="0"' + (max != null ? ' data-max="' + max + '"' : '') + '>' +
+    '<button type="button" data-st="' + id + '" data-d="1" aria-label="plus">+</button></div>';
+}
+function barre(p) {
+  const tot = Math.max(1, p.R + p.B1 + p.B2);
+  return '<div class="bar" title="Dépôt ' + p.R + ' · GP ' + p.B1 + ' · VIP ' + p.B2 + '">' +
+    ['R', 'B1', 'B2'].map(k => '<i class="' + k + '" style="width:' + (Math.max(0, p[k]) / tot * 100).toFixed(1) + '%"></i>').join('') + '</div>';
+}
+
+/* ============================== RENDU ============================== */
+function render() {
+  $('nav').innerHTML = ONGLETS.map(o => {
+    let pill = '';
+    if (o.id === 'bilan' && S.etat && S.etat.bilan && S.etat.bilan.ecarts) pill = '<span class="pill">' + S.etat.bilan.ecarts + '</span>';
+    return '<button type="button" data-tab="' + o.id + '" aria-current="' + (S.onglet === o.id) + '"><span>' + o.ic + '</span><span class="' + (o.id === 'accueil' ? '' : 'hide-sm') + '">' + o.nom + '</span>' + pill + '</button>';
+  }).join('');
+  const f = { accueil: vAccueil, reception: vReception, repartir: vRepartir, bilan: vBilan, inventaire: vInventaire, sortie: vSortie, historique: vHistorique }[S.onglet];
+  $('app').innerHTML = S.etat ? f() : '<p class="empty">Chargement…</p>';
+  majCompteurs();
+}
+
+/* ---------- Accueil ---------- */
+function vAccueil() {
+  const P = S.etat.produits, b = S.etat.bilan;
+  const tot = k => P.reduce((s, p) => s + Math.max(0, p[k]), 0);
+  const val = k => P.reduce((s, p) => s + Math.max(0, p[k]) * (p.prix || 0), 0);
+  const bas = k => P.filter(p => p[k] <= 0 && p.R > 0);
+  const negatifs = P.filter(p => p.R < 0 || p.B1 < 0 || p.B2 < 0);
+  const garnis = P.filter(p => p.B1 > 0).length, couverture = P.length ? garnis / P.length : 0;
+  const lieu = k => {
+    const manque = k === 'R' ? P.filter(p => p.R + p.B1 + p.B2 <= 0) : bas(k);
+    return '<div class="lieu ' + k + '"><div class="ic">' + LIEUX[k].ic + '</div><div class="ti" style="font-size:20px">' + LIEUX[k].nom + '</div>' +
+      '<div class="n">' + int(tot(k)) + '</div><div class="s">articles · ' + eur(val(k)) + ' en prix de vente</div>' +
+      '<div class="al">' + (manque.length ? '<span class="chip warn">' + manque.length + (k === 'R' ? ' réf. épuisée(s) partout' : ' réf. vide(s) mais dispo au dépôt') + '</span>' : '<span class="chip good">Tout est en place ✓</span>') + '</div></div>';
+  };
+  const bdg = (on, e, t, s) => '<div class="badge' + (on ? ' on' : '') + '"><span class="e">' + e + '</span><div><b>' + t + '</b><small>' + s + '</small></div></div>';
+  return '<div class="card"><h2>Salut ' + esc(cfg.nom) + ' 👋</h2><p class="lead">Voici l\'état des boutiques en un coup d\'œil. Le cycle d\'un match tient en 4 étapes.</p>' +
+    '<div class="steps">' +
+      [['reception', '1', 'Réception', 'Une livraison arrive ? Elle entre au dépôt.'],
+       ['repartir', '2', 'Remplir les boutiques', 'Avant le match : du dépôt vers GP et VIP.'],
+       ['bilan', '3', 'Bilan du match', 'Après : ventes, écarts, ce qu\'il faut rajouter.'],
+       ['inventaire', '4', 'Inventaire', 'De temps en temps : on compte et on corrige.']]
+        .map(s => '<button type="button" class="step" data-tab="' + s[0] + '"><span class="num">' + s[1] + '</span><span><b>' + s[2] + '</b><span>' + s[3] + '</span></span></button>').join('') +
+    '</div></div>' +
+    '<div class="grid3" style="margin-bottom:16px">' + lieu('R') + lieu('B1') + lieu('B2') + '</div>' +
+    (negatifs.length ? '<div class="card" style="border-color:var(--bad)"><h2 class="ko">Stock négatif à vérifier</h2><p class="lead">Un stock ne peut pas être sous zéro : un comptage ou une vente a été mal saisi. Fais un inventaire sur ces articles.</p><div class="chips">' +
+      negatifs.map(p => '<span class="chip bad">' + esc(p.produit) + '</span>').join('') + '</div></div>' : '') +
+    '<div class="card"><h2>Tes badges 🏅</h2><p class="lead">Ils se débloquent tout seuls quand les boutiques sont bien tenues.</p>' +
+      '<div style="margin-bottom:14px"><div class="row" style="justify-content:space-between;margin-bottom:6px"><b>Boutique GP bien garnie</b><span>' + Math.round(couverture * 100) + ' % des références en rayon</span></div><div class="meter"><div style="width:' + (couverture * 100).toFixed(0) + '%"></div></div></div>' +
+      '<div class="badges">' +
+        bdg(b && b.ecarts === 0 && b.articles > 0, '🎯', 'Zéro écart', 'dernier match : ventes = sorties de stock') +
+        bdg(couverture >= .9, '🛍️', 'Rayon plein', '90 % des références en boutique GP') +
+        bdg(negatifs.length === 0, '🧮', 'Comptes propres', 'aucun stock négatif') +
+        bdg(b && b.ca.total >= 500, '💶', 'Match à 500 €', 'chiffre d\'affaires d\'un match') +
+        bdg(S.etat.retraits === 0, '📦', 'Retraits web à jour', 'aucune commande en ligne en attente') +
+      '</div></div>';
+}
+
+/* ---------- Réception ---------- */
+function vReception() {
+  const M = modeles(), r = S.recep;
+  const m = M.find(x => x.modele === r.modele);
+  const total = m ? m.lignes.reduce((s, p) => s + (Number(r.q[p.ref]) || 0), 0) : 0;
+  return '<div class="card"><h2>📥 Réception au dépôt</h2><p class="lead">Une livraison arrive : choisis l\'article, compte les pièces par taille. Tout entre au <b>dépôt</b> ; on remplira les boutiques ensuite.</p>' +
+    '<div class="models">' + M.map(x => '<button type="button" class="model" data-modele="' + esc(x.modele) + '" aria-pressed="' + (x.modele === r.modele) + '"><b>' + esc(x.modele) + '</b><span>' + esc(x.categorie) + ' · dépôt ' + x.lignes.reduce((s, p) => s + p.R, 0) + '</span></button>').join('') + '</div>' +
+    (m ? '<div class="sizes" style="margin-bottom:14px">' + m.lignes.map(p => '<div class="size"><div class="t"><span>' + esc(libTaille(p)) + '</span><span class="tag R">dépôt ' + p.R + '</span></div>' + stepper('rc:' + p.ref, r.q[p.ref]) + '</div>').join('') + '</div>' +
+      '<div class="row"><div class="field"><label for="rcPrix">Prix d\'achat unitaire HT (facture)</label><input class="inp" id="rcPrix" inputmode="decimal" value="' + esc(r.prix) + '" placeholder="ex. 32,50"></div>' +
+      '<div class="field"><label for="rcFourn">Fournisseur</label><input class="inp" id="rcFourn" value="' + esc(r.fourn) + '" placeholder="ex. Mizuno"></div>' +
+      '<div class="field"><label for="rcFact">N° de facture / bon de livraison</label><input class="inp" id="rcFact" value="' + esc(r.fact) + '"></div></div>' +
+      '<div class="sticky-act"><span class="sum" id="rcSum">' + total + ' pièce(s) à entrer</span><button class="btn big" type="button" id="rcGo"' + (total ? '' : ' disabled') + '>✅ Entrer au dépôt</button></div>'
+      : '<p class="empty">👆 Choisis l\'article livré. Article nouveau ? Il doit d\'abord être créé au catalogue (demande à Clément).</p>') + '</div>';
+}
+
+/* ---------- Répartir ---------- */
+function suggestion() {
+  const b = S.etat.bilan, vendu = {};
+  if (b) b.lignes.forEach(l => { if (l.ref) vendu[l.point + '|' + l.ref] = (vendu[l.point + '|' + l.ref] || 0) + l.vendu + l.offert; });
+  const rep = {};
+  S.etat.produits.forEach(p => {
+    const besoin = k => Math.max(vendu[k + '|' + p.ref] || 0, (p.seuil || 0) - p[k], 0);
+    let gp = besoin('B1'), vip = besoin('B2'), dispo = Math.max(0, p.R);
+    gp = Math.min(gp, dispo); vip = Math.min(vip, dispo - gp);
+    if (gp || vip) rep[p.ref] = { B1: gp, B2: vip };
+  });
+  return rep;
+}
+function vRepartir() {
+  const M = modeles();
+  const tot = Object.values(S.rep).reduce((s, x) => s + (x.B1 || 0) + (x.B2 || 0), 0);
+  let rows = '';
+  M.forEach(m => {
+    if (!m.lignes.some(p => p.R + p.B1 + p.B2 !== 0)) return;
+    rows += '<tr class="grp"><td colspan="7">' + esc(m.modele) + '</td></tr>';
+    m.lignes.forEach(p => {
+      const x = S.rep[p.ref] || {}, reste = p.R - (x.B1 || 0) - (x.B2 || 0);
+      rows += '<tr><td>' + esc(libTaille(p)) + '</td><td class="n"><span class="tag R">' + p.R + '</span></td>' +
+        '<td class="n hide-sm" id="rpr-' + esc(p.ref) + '">' + reste + '</td>' +
+        '<td class="n"><span class="tag B1">' + p.B1 + '</span></td><td>' + mini('rp:B1:' + p.ref, x.B1, p.R) + '</td>' +
+        '<td class="n"><span class="tag B2">' + p.B2 + '</span></td><td>' + mini('rp:B2:' + p.ref, x.B2, p.R) + '</td></tr>';
+    });
+  });
+  const P = S.etat.produits;
+  return '<div class="card"><h2>🔀 Remplir les boutiques</h2><p class="lead">Avant le match, sors les articles du <b>dépôt</b> vers la <b>boutique GP</b> ou la <b>boutique VIP</b>. Les restes du dernier match restent en boutique : on ne rajoute que ce qui manque.</p>' +
+    '<div class="row" style="margin-bottom:12px"><button class="btn sec" type="button" id="rpSug">✨ Proposer le réassort (ventes du dernier match + seuils)</button><button class="btn sec" type="button" id="rpRaz">Tout remettre à zéro</button></div>' +
+    '<div style="overflow-x:auto"><table><thead><tr><th>Taille</th><th class="n">Au dépôt</th><th class="n hide-sm">Restera</th><th class="n">En GP</th><th class="n">+ vers GP</th><th class="n">En VIP</th><th class="n">+ vers VIP</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '<div class="sticky-act"><span class="sum" id="rpSum">' + tot + ' article(s) à sortir du dépôt</span><button class="btn big" type="button" id="rpGo"' + (tot ? '' : ' disabled') + '>🚚 Valider la répartition</button></div></div>' +
+    '<div class="card"><h2>↔️ Déplacer entre GP et VIP</h2><p class="lead">Un article est parti de la boutique GP vers la VIP (ou l\'inverse) en dehors de la caisse ? Enregistre-le ici. Les « courses » du volant faites depuis la tablette sont déjà comptées.</p>' +
+    '<div class="row"><div class="field" style="flex:2"><label for="tfRef">Article</label><select class="inp" id="tfRef"><option value="">— choisir —</option>' +
+      P.map(p => '<option value="' + esc(p.ref) + '"' + (S.trf.ref === p.ref ? ' selected' : '') + '>' + esc(p.produit) + ' (GP ' + p.B1 + ' · VIP ' + p.B2 + ' · dépôt ' + p.R + ')</option>').join('') + '</select></div>' +
+      '<div class="field"><label for="tfDe">De</label><select class="inp" id="tfDe">' + ['B1', 'B2', 'R'].map(k => '<option value="' + k + '"' + ((S.trf.de || 'B1') === k ? ' selected' : '') + '>' + LIEUX[k].nom + '</option>').join('') + '</select></div>' +
+      '<div class="field"><label for="tfVers">Vers</label><select class="inp" id="tfVers">' + ['B2', 'B1', 'R'].map(k => '<option value="' + k + '"' + ((S.trf.vers || 'B2') === k ? ' selected' : '') + '>' + LIEUX[k].nom + '</option>').join('') + '</select></div>' +
+      '<div class="field" style="max-width:120px"><label for="tfQ">Quantité</label><input class="inp" id="tfQ" inputmode="numeric" value="' + esc(S.trf.q || 1) + '"></div>' +
+      '<button class="btn" type="button" id="tfGo">Déplacer</button></div></div>';
+}
+
+/* ---------- Bilan ---------- */
+function vBilan() {
+  const b = S.etat.bilan, ms = S.etat.matchs || [];
+  const sel = '<div class="field" style="max-width:520px;margin-bottom:14px"><label for="bmMatch">Match</label><select class="inp" id="bmMatch">' +
+    (ms.length ? ms.map(m => '<option value="' + esc(m.label) + '"' + (m.label === S.match ? ' selected' : '') + '>' + esc(m.date ? m.date + ' — ' : '') + esc(m.label) + ' · ' + eur(m.ca) + '</option>').join('') : '<option>Aucun match synchronisé</option>') + '</select></div>';
+  if (!b) return '<div class="card"><h2>🏁 Bilan du match</h2>' + sel + '<p class="empty">Les ventes apparaissent ici après la synchronisation des tablettes en fin de match.</p></div>';
+  const pay = Object.entries(b.paiements || {}).map(([k, v]) => '<span class="chip">' + esc(k) + ' · <b>' + eur(v) + '</b></span>').join('');
+  const parStand = k => {
+    const L = b.lignes.filter(l => l.point === k);
+    if (!L.length) return '<p class="empty">Aucune vente en ' + LIEUX[k].nom + ' pour ce match.</p>';
+    return '<div style="overflow-x:auto"><table><thead><tr><th>Article</th><th class="n">Vendus</th><th class="n">Offerts</th><th class="n hide-sm">Sortis du stock</th><th>Contrôle</th><th class="n">Reste en boutique</th><th class="n">À rajouter</th></tr></thead><tbody>' +
+      L.map(l => {
+        const aj = Math.min(l.vendu + l.offert, Math.max(0, l.reserve));
+        const ctrl = l.ecart === 0 ? '<span class="chip good">✓ ok</span>' : !l.ref ? '<span class="chip warn">article hors catalogue</span>' : '<span class="chip bad">écart ' + (l.ecart > 0 ? '+' : '') + l.ecart + '</span>';
+        return '<tr><td>' + esc(l.produit) + '</td><td class="n">' + l.vendu + '</td><td class="n">' + (l.offert || '') + '</td><td class="n hide-sm">' + l.sorti + '</td><td>' + ctrl + '</td>' +
+          '<td class="n">' + (l.stock == null ? '—' : '<span class="' + (l.stock < 0 ? 'ko' : '') + '">' + l.stock + '</span>') + '</td><td class="n">' + (aj ? '<b>' + aj + '</b>' : '—') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  };
+  return '<div class="card"><h2>🏁 Bilan du match</h2><p class="lead">Ce que les tablettes ont vendu, comparé à ce qui est sorti du stock. Un <b>écart</b> veut dire qu\'une vente n\'a pas décompté le stock (article renommé, synchro incomplète…) : vérifie en boutique puis corrige avec l\'inventaire.</p>' + sel +
+    '<div class="kpis"><div class="kpi"><span class="l">Chiffre d\'affaires</span><span class="v">' + eur(b.ca.total) + '</span></div>' +
+      '<div class="kpi"><span class="l">🛍️ Boutique GP</span><span class="v">' + eur(b.ca.B1) + '</span><span class="l">' + b.ventes.B1 + ' ligne(s)</span></div>' +
+      '<div class="kpi"><span class="l">⭐ Boutique VIP</span><span class="v">' + eur(b.ca.B2) + '</span><span class="l">' + b.ventes.B2 + ' ligne(s)</span></div>' +
+      '<div class="kpi"><span class="l">Articles vendus</span><span class="v">' + int(b.articles) + '</span><span class="l">' + (b.offerts ? b.offerts + ' offert(s)' : 'aucun offert') + '</span></div>' +
+      '<div class="kpi"><span class="l">Contrôle stock</span><span class="v ' + (b.ecarts ? 'ko' : 'ok') + '">' + (b.ecarts ? b.ecarts + ' écart(s)' : 'Parfait 🎯') + '</span></div></div>' +
+    (pay ? '<div class="chips" style="margin-bottom:6px">' + pay + '</div>' : '') + '</div>' +
+    '<div class="card"><h2>🛍️ Boutique Grand Public</h2>' + parStand('B1') + '</div>' +
+    '<div class="card"><h2>⭐ Boutique VIP</h2>' + parStand('B2') + '</div>' +
+    '<div class="card"><div class="row" style="justify-content:space-between"><p class="lead" style="margin:0">Prochaine étape : remettre en boutique ce qui a été vendu, en le prenant au dépôt.</p><button class="btn big" type="button" id="bmRea">🔀 Préparer le réassort</button></div></div>';
+}
+
+/* ---------- Inventaire ---------- */
+function vInventaire() {
+  const M = modeles(), lieu = S.inv.lieu, q = S.inv.q;
+  let n = 0, ec = 0, rows = '';
+  M.forEach(m => {
+    rows += '<tr class="grp"><td colspan="4">' + esc(m.modele) + '</td></tr>';
+    m.lignes.forEach(p => {
+      const v = q[p.ref], compte = v !== undefined && v !== '';
+      const e = compte ? Number(v) - p[lieu] : 0;
+      if (compte) { n++; if (e) ec++; }
+      rows += '<tr><td>' + esc(libTaille(p)) + '</td><td class="n" style="color:var(--faint)">' + p[lieu] + '</td><td>' + mini('iv:' + p.ref, v) + '</td>' +
+        '<td class="n" id="ive-' + esc(p.ref) + '">' + (compte ? (e ? '<span class="chip ' + (e < 0 ? 'bad' : 'warn') + '">' + (e > 0 ? '+' : '') + e + '</span>' : '<span class="chip good">✓</span>') : '') + '</td></tr>';
+    });
+  });
+  return '<div class="card"><h2>🔢 Inventaire</h2><p class="lead">Compte ce qu\'il y a réellement, lieu par lieu. Laisse vide ce que tu n\'as pas compté. À la validation, le stock prend tes chiffres et chaque écart est tracé.</p>' +
+    '<div class="seg" role="group" aria-label="Lieu compté" style="margin-bottom:14px">' + ['R', 'B1', 'B2'].map(k => '<button type="button" data-lieu="' + k + '" aria-pressed="' + (lieu === k) + '">' + LIEUX[k].ic + ' ' + LIEUX[k].nom + '</button>').join('') + '</div>' +
+    '<div style="overflow-x:auto"><table><thead><tr><th>Article</th><th class="n">Attendu</th><th class="n">Compté</th><th class="n">Écart</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '<div class="sticky-act"><span class="sum" id="ivSum">' + n + ' compté(s) · ' + ec + ' écart(s)</span><button class="btn big" type="button" id="ivGo"' + (n ? '' : ' disabled') + '>✅ Valider l\'inventaire ' + LIEUX[lieu].nom + '</button></div></div>';
+}
+
+/* ---------- Sortie / don ---------- */
+function vSortie() {
+  const P = S.etat.produits, E = S.etat.enveloppes || [], s = S.sortie;
+  const env = E.find(e => e.nom === s.env);
+  return '<div class="card"><h2>🎁 Sortie hors vente</h2><p class="lead">Un cadeau partenaire, un lot de jeu concours, une tenue pour un joueur, un article abîmé ou perdu : rien ne sort sans bon. Le CRM numérote le bon et surveille le plafond fiscal des cadeaux (73 € TTC par personne et par an).</p>' +
+    '<div class="row"><div class="field" style="flex:2"><label for="soEnv">Motif</label><select class="inp" id="soEnv"><option value="">— choisir —</option>' + E.map(e => '<option' + (s.env === e.nom ? ' selected' : '') + '>' + esc(e.nom) + '</option>').join('') + '</select></div>' +
+    '<div class="field" style="flex:2"><label for="soRef">Article</label><select class="inp" id="soRef"><option value="">— choisir —</option>' + P.map(p => '<option value="' + esc(p.ref) + '"' + (s.ref === p.ref ? ' selected' : '') + '>' + esc(p.produit) + '</option>').join('') + '</select></div>' +
+    '<div class="field"><label for="soPt">Pris dans</label><select class="inp" id="soPt">' + ['R', 'B1', 'B2'].map(k => '<option value="' + k + '"' + ((s.pt || 'R') === k ? ' selected' : '') + '>' + LIEUX[k].nom + '</option>').join('') + '</select></div>' +
+    '<div class="field" style="max-width:110px"><label for="soQ">Quantité</label><input class="inp" id="soQ" inputmode="numeric" value="' + esc(s.q || 1) + '"></div></div>' +
+    (env && env.demarque ? '' : '<div class="row" style="margin-top:10px"><div class="field"><label for="soBen">Bénéficiaire</label><input class="inp" id="soBen" value="' + esc(s.ben || '') + '" placeholder="Nom, société…"></div>' +
+      '<div class="field"><label for="soOcc">Occasion</label><input class="inp" id="soOcc" value="' + esc(s.occ || '') + '" placeholder="Match, soirée partenaires, jeu concours…"></div></div>') +
+    '<div class="row" style="margin-top:10px"><div class="field"><label for="soCom">Commentaire / justificatif</label><input class="inp" id="soCom" value="' + esc(s.com || '') + '"></div><button class="btn" type="button" id="soGo">🧾 Enregistrer le bon</button></div></div>';
+}
+
+/* ---------- Historique ---------- */
+function vHistorique() {
+  const ic = { ENTREE_ACHAT: '📥', TRANSFERT: '🔀', VENTE_COMPTOIR: '🛒', OFFERT_CAISSE: '🎁', DOTATION: '🎁', DEMARQUE: '⚠️', AJUSTEMENT_INVENTAIRE: '🔢', VENTE_WEB: '🌐' };
+  const H = S.etat.historique || [];
+  return '<div class="card"><h2>🕓 Derniers mouvements</h2><p class="lead">Tout ce qui entre et sort du stock, du plus récent au plus ancien.</p>' +
+    (H.length ? '<div class="hist">' + H.map(h => '<div class="h"><span class="e">' + (ic[h.type] || '•') + '</span><div style="flex:1"><b>' + esc(h.produit) + '</b> <span class="tag ' + esc(h.point) + '">' + esc((LIEUX[h.point] || {}).court || (LIEUX[h.point] || {}).nom || h.point) + '</span> ' +
+      '<b class="' + (h.qte < 0 ? 'ko' : 'ok') + '">' + (h.qte > 0 ? '+' : '') + h.qte + '</b><div class="d">' + esc(h.date) + ' · ' + esc(h.type.replace(/_/g, ' ').toLowerCase()) + (h.match ? ' · ' + esc(h.match) : '') + (h.commentaire ? ' · ' + esc(h.commentaire) : '') + (h.auteur ? ' · ' + esc(h.auteur) : '') + '</div></div></div>').join('') + '</div>'
+      : '<p class="empty">Aucun mouvement pour l\'instant.</p>') + '</div>';
+}
+
+/* ============================ INTERACTIONS ============================ */
+function valeurChamp(id, v) {
+  const n = v === '' ? '' : Math.max(0, Math.round(Number(String(v).replace(',', '.')) || 0));
+  const p = id.split(':');
+  if (p[0] === 'rc') S.recep.q[p[1]] = n;
+  if (p[0] === 'rp') { S.rep[p[2]] = S.rep[p[2]] || {}; S.rep[p[2]][p[1]] = n || 0; }
+  if (p[0] === 'iv') S.inv.q[p[1]] = n;
+}
+function majCompteurs() {
+  if (S.onglet === 'reception') {
+    const m = modeles().find(x => x.modele === S.recep.modele);
+    const t = m ? m.lignes.reduce((s, p) => s + (Number(S.recep.q[p.ref]) || 0), 0) : 0;
+    if ($('rcSum')) { $('rcSum').textContent = t + ' pièce(s) à entrer'; $('rcGo').disabled = !t; }
+  }
+  if (S.onglet === 'repartir' && $('rpSum')) {
+    const t = Object.values(S.rep).reduce((s, x) => s + (x.B1 || 0) + (x.B2 || 0), 0);
+    let trop = 0;
+    S.etat.produits.forEach(p => {
+      const c = document.getElementById('rpr-' + p.ref); if (!c) return;
+      const x = S.rep[p.ref] || {}, r = p.R - (x.B1 || 0) - (x.B2 || 0);
+      c.textContent = r; c.className = 'n' + (r < 0 ? ' ko' : ' hide-sm'); if (r < 0) trop++;
+    });
+    $('rpSum').textContent = trop ? '⚠ ' + trop + ' taille(s) : plus que ce que le dépôt contient' : t + ' article(s) à sortir du dépôt';
+    $('rpSum').className = 'sum' + (trop ? ' ko' : ''); $('rpGo').disabled = !t || trop > 0;
+  }
+  if (S.onglet === 'inventaire' && $('ivSum')) {
+    const lieu = S.inv.lieu; let n = 0, ec = 0;
+    S.etat.produits.forEach(p => {
+      const v = S.inv.q[p.ref], compte = v !== undefined && v !== '', e = compte ? Number(v) - p[lieu] : 0;
+      if (compte) { n++; if (e) ec++; }
+      const c = document.getElementById('ive-' + p.ref);
+      if (c) c.innerHTML = compte ? (e ? '<span class="chip ' + (e < 0 ? 'bad' : 'warn') + '">' + (e > 0 ? '+' : '') + e + '</span>' : '<span class="chip good">✓</span>') : '';
+    });
+    $('ivSum').textContent = n + ' compté(s) · ' + ec + ' écart(s)'; $('ivGo').disabled = !n;
+  }
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('button'); if (!t) return;
+  if (t.dataset.tab) { S.onglet = t.dataset.tab; render(); window.scrollTo(0, 0); return; }
+  if (t.dataset.st) {
+    const inp = document.querySelector('[data-in="' + CSS.escape(t.dataset.st) + '"]');
+    let v = (Number(inp.value) || 0) + Number(t.dataset.d); v = Math.max(0, v);
+    if (inp.dataset.max != null && t.dataset.st.indexOf('rp:') === 0 && Number(t.dataset.d) > 0) {
+      const ref = t.dataset.st.split(':')[2], x = S.rep[ref] || {}, autre = t.dataset.st.split(':')[1] === 'B1' ? (x.B2 || 0) : (x.B1 || 0);
+      if (v + autre > Number(inp.dataset.max)) { toast('Le dépôt n\'en a que ' + inp.dataset.max + ' 😉', true); return; }
+    }
+    inp.value = v || (t.dataset.st.indexOf('iv:') === 0 ? 0 : '');
+    valeurChamp(t.dataset.st, inp.value);
+    majCompteurs();
+    return;
+  }
+  if (t.dataset.modele) { S.recep.modele = t.dataset.modele; S.recep.q = {}; render(); return; }
+  if (t.dataset.lieu) { S.inv.lieu = t.dataset.lieu; S.inv.q = {}; render(); return; }
+  const actions = {
+    rcGo: () => {
+      const m = modeles().find(x => x.modele === S.recep.modele);
+      S.recep.prix = $('rcPrix').value; S.recep.fourn = $('rcFourn').value; S.recep.fact = $('rcFact').value;
+      const prix = Number(String(S.recep.prix).replace(',', '.'));
+      if (!(prix > 0)) { toast('Indique le prix d\'achat HT (sur la facture) : il sert à calculer la marge.', true); $('rcPrix').focus(); return; }
+      executer('reception', { modele: m.modele, prix_achat: prix, fournisseur: S.recep.fourn, reference: S.recep.fact,
+        lignes: m.lignes.map(p => ({ ref: p.ref, R: Number(S.recep.q[p.ref]) || 0 })) }, () => { S.recep.q = {}; });
+    },
+    rpSug: () => { S.rep = suggestion(); render(); toast(Object.keys(S.rep).length ? '✨ Réassort proposé : ajuste si besoin puis valide.' : 'Rien à rajouter : les boutiques sont prêtes 🎉'); },
+    rpRaz: () => { S.rep = {}; render(); },
+    rpGo: () => {
+      const lignes = Object.entries(S.rep).map(([ref, x]) => ({ ref: ref, B1: x.B1 || 0, B2: x.B2 || 0 })).filter(l => l.B1 || l.B2);
+      executer('repartition', { lignes: lignes }, () => { S.rep = {}; });
+    },
+    tfGo: () => {
+      S.trf = { ref: $('tfRef').value, de: $('tfDe').value, vers: $('tfVers').value, q: $('tfQ').value };
+      if (!S.trf.ref) { toast('Choisis l\'article à déplacer.', true); return; }
+      executer('transfert', { ref: S.trf.ref, de: S.trf.de, vers: S.trf.vers, quantite: Number(S.trf.q) || 0 }, () => { S.trf = {}; });
+    },
+    bmRea: () => { S.rep = suggestion(); S.onglet = 'repartir'; render(); window.scrollTo(0, 0); toast('✨ Réassort pré-rempli d\'après le match : vérifie puis valide.'); },
+    ivGo: () => {
+      const lieu = S.inv.lieu;
+      const lignes = Object.entries(S.inv.q).filter(([, v]) => v !== '' && v !== undefined).map(([ref, v]) => { const o = { ref: ref, R: '', B1: '', B2: '' }; o[lieu] = Number(v); return o; });
+      const ec = lignes.filter(l => S.etat.produits.find(p => p.ref === l.ref)[lieu] !== l[lieu]).length;
+      if (ec && !confirm(ec + ' écart(s) en ' + LIEUX[lieu].nom + ' : le stock va prendre tes chiffres. On valide ?')) return;
+      executer('inventaire', { lignes: lignes, commentaire: 'Inventaire ' + LIEUX[lieu].nom + ' — ' + cfg.nom }, () => { S.inv.q = {}; });
+    },
+    soGo: () => {
+      const g = id => $(id) ? $(id).value : '';
+      S.sortie = { env: g('soEnv'), ref: g('soRef'), pt: g('soPt'), q: g('soQ'), ben: g('soBen'), occ: g('soOcc'), com: g('soCom') };
+      if (!S.sortie.env || !S.sortie.ref) { toast('Choisis le motif et l\'article.', true); return; }
+      executer('dotation', { enveloppe: S.sortie.env, ref: S.sortie.ref, point: S.sortie.pt, quantite: Number(S.sortie.q) || 0,
+        beneficiaire: S.sortie.ben, match: S.sortie.occ, commentaire: S.sortie.com, justificatif: S.sortie.com }, () => { S.sortie = {}; });
+    },
+    btnRefresh: () => charger(S.match),
+    btnOut: () => { cfg.pin = ''; saveCfg(); location.reload(); },
+    lgGo: login
+  };
+  if (actions[t.id]) actions[t.id]();
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset && t.dataset.in) { valeurChamp(t.dataset.in, t.value); majCompteurs(); return; }
+  if (t.id === 'bmMatch') { charger(t.value); return; }
+  if (t.id === 'soEnv') { S.sortie.env = t.value; S.sortie.ref = $('soRef').value; S.sortie.pt = $('soPt').value; S.sortie.q = $('soQ').value; render(); }
+});
+document.addEventListener('input', e => { const t = e.target; if (t.dataset && t.dataset.in) { valeurChamp(t.dataset.in, t.value); majCompteurs(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.target.id === 'lgPin' || e.target.id === 'lgName')) login(); });
+
+/* ============================== CONNEXION ============================== */
+async function login() {
+  const nom = $('lgName').value.trim(), pin = $('lgPin').value.trim(), url = $('lgUrl').value.trim() || CRM_URL_DEFAUT;
+  $('lgErr').hidden = true;
+  if (!nom || !pin) { $('lgErr').textContent = 'Indique ton prénom et le code PIN.'; $('lgErr').hidden = false; return; }
+  Object.assign(cfg, { nom: nom, pin: pin, url: url });
+  chargement(true);
+  try { const d = await apiEtat(''); S.etat = d; S.match = d.match || ''; saveCfg(); demarrer(); }
+  catch (e) { $('lgErr').textContent = msgErr(e); $('lgErr').hidden = false; }
+  finally { chargement(false); }
+}
+function demarrer() {
+  $('login').hidden = true; $('nav').hidden = false; $('app').hidden = false; $('who').hidden = false;
+  $('whoName').textContent = cfg.nom; if (S.etat) $('maj').textContent = 'à jour ' + (S.etat.maj || '');
+  render();
+}
+function init() {
+  if (DEMO) { $('demo').hidden = false; cfg.nom = cfg.nom || 'Élise'; S.etat = demoEtat(''); S.match = S.etat.match; demarrer(); return; }
+  if (cfg.pin && cfg.nom) { demarrer(); S.etat = null; render(); charger('').then(ok => { if (!ok) { $('login').hidden = false; $('nav').hidden = true; $('app').hidden = true; } }); return; }
+  $('lgName').value = cfg.nom || ''; $('lgUrl').value = cfg.url || CRM_URL_DEFAUT; $('login').hidden = false;
+}
+
+/* ============================== DÉMO ============================== */
+let DEMO_DB = null;
+function demoDb() {
+  if (DEMO_DB) return DEMO_DB;
+  const P = [];
+  const add = (code, modele, cat, prix, tailles, st) => tailles.forEach((t, i) => P.push({ ref: code + (t ? '-' + t : ''), produit: modele + (t ? ' ' + t : ''), modele: modele, taille: t, categorie: cat, prix: prix, cout: prix * .45, R: st[i][0], B1: st[i][1], B2: st[i][2], seuil: 2 }));
+  add('MAI-BLC', 'Maillot Blanc', 'Maillots', 75, ['S', 'M', 'L', 'XL', 'XXL'], [[6, 2, 1], [10, 3, 2], [8, 1, 2], [4, 2, 0], [2, 1, 0]]);
+  add('MAI-BNU', 'Maillot Bleu Nuit', 'Maillots', 75, ['S', 'M', 'L', 'XL', 'XXL'], [[5, 1, 1], [9, 2, 1], [7, 0, 1], [3, 1, 1], [2, 0, 0]]);
+  add('TSH-NAR', 'Nara Tee', 'Textile', 25, ['S', 'M', 'L'], [[0, 0, 0], [4, 2, 1], [3, 1, 1]]);
+  add('ECH', 'Écharpe', 'Accessoires', 18, [''], [[150, 39, 12]]);
+  add('GOU', 'Gourde', 'Accessoires', 10, [''], [[20, -1, 3]]);
+  DEMO_DB = { produits: P, hist: [] };
+  return DEMO_DB;
+}
+function demoEtat(match) {
+  const db = demoDb();
+  const lignes = [
+    { point: 'B1', produit: 'Écharpe', ref: 'ECH', vendu: 7, offert: 1, sorti: 8, ca: 126 },
+    { point: 'B1', produit: 'Maillot Blanc M', ref: 'MAI-BLC-M', vendu: 3, offert: 0, sorti: 3, ca: 225 },
+    { point: 'B1', produit: 'Nara Tee S', ref: 'TSH-NAR-S', vendu: 1, offert: 0, sorti: 1, ca: 25 },
+    { point: 'B1', produit: 'Gourde', ref: 'GOU', vendu: 2, offert: 0, sorti: 1, ca: 20 },
+    { point: 'B2', produit: 'Maillot Bleu Nuit L', ref: 'MAI-BNU-L', vendu: 2, offert: 0, sorti: 2, ca: 150 },
+    { point: 'B2', produit: 'Écharpe', ref: 'ECH', vendu: 3, offert: 0, sorti: 3, ca: 54 }
+  ].map(l => { const p = db.produits.find(x => x.ref === l.ref); return Object.assign(l, { stock: p ? p[l.point] : null, reserve: p ? p.R : 0, ecart: l.sorti - l.vendu - l.offert }); });
+  const bilan = { match: "Spacer's vs Sète", lignes: lignes, ca: { B1: 396, B2: 204, total: 600 }, ventes: { B1: 13, B2: 5 }, paiements: { CB: 470, 'Espèces': 130 },
+    articles: lignes.reduce((s, l) => s + l.vendu, 0), offerts: 1, ecarts: lignes.filter(l => l.ecart).length };
+  return { status: 'ok', maj: new Date().toLocaleString('fr-FR'), points: { R: 'Réserve', B1: 'Grand Public', B2: 'VIP' }, produits: JSON.parse(JSON.stringify(db.produits)),
+    matchs: [{ label: "Spacer's vs Sète", date: '17/10/2026', ca: 600 }, { label: "Spacer's vs Narbonne", date: '10/10/2026', ca: 457.15 }],
+    match: "Spacer's vs Sète", bilan: bilan, historique: db.hist.slice(0, 40),
+    enveloppes: [{ nom: 'Cadeau partenaire / prospect', demarque: false }, { nom: 'Jeu concours / réseaux sociaux', demarque: false }, { nom: 'Démarque — casse / défaut', demarque: true }], retraits: 0 };
+}
+function demoOp(op, d) {
+  const db = demoDb(), P = db.produits, f = r => P.find(p => p.ref === r);
+  const h = (p, pt, q, type, com) => db.hist.unshift({ date: new Date().toLocaleString('fr-FR'), type: type, produit: p.produit, point: pt, qte: q, match: '', commentaire: com || '', auteur: cfg.nom + ' (gestion)' });
+  let msg = '';
+  if (op === 'reception') { d.lignes.forEach(l => { if (l.R) { f(l.ref).R += l.R; h(f(l.ref), 'R', l.R, 'ENTREE_ACHAT', d.fournisseur); } }); msg = d.lignes.reduce((s, l) => s + l.R, 0) + ' article(s) entré(s) en réserve.'; }
+  if (op === 'repartition') { d.lignes.forEach(l => { const p = f(l.ref); ['B1', 'B2'].forEach(k => { if (l[k]) { p.R -= l[k]; p[k] += l[k]; h(p, k, l[k], 'TRANSFERT', 'depuis Réserve'); } }); }); msg = 'Répartition enregistrée.'; }
+  if (op === 'transfert') { const p = f(d.ref); p[d.de] -= d.quantite; p[d.vers] += d.quantite; h(p, d.vers, d.quantite, 'TRANSFERT', 'depuis ' + d.de); msg = d.quantite + ' × ' + p.produit + ' déplacé(s).'; }
+  if (op === 'inventaire') { let n = 0; d.lignes.forEach(l => ['R', 'B1', 'B2'].forEach(k => { if (l[k] !== '') { const p = f(l.ref), e = l[k] - p[k]; if (e) { n++; p[k] = l[k]; h(p, k, e, 'AJUSTEMENT_INVENTAIRE', 'Inventaire'); } } })); msg = n ? n + ' écart(s) corrigé(s).' : 'Inventaire conforme, aucun écart.'; }
+  if (op === 'dotation') { const p = f(d.ref); p[d.point] -= d.quantite; h(p, d.point, -d.quantite, 'DOTATION', d.enveloppe); msg = 'DOT-2627-0001 · ' + d.quantite + ' × ' + p.produit + '.'; }
+  return new Promise(res => setTimeout(() => res({ status: 'ok', message: msg, etat: demoEtat('') }), 300));
+}
+
+init();
+</script>
+</body>
+</html>

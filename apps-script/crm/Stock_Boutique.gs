@@ -712,7 +712,7 @@ function sb_mouvement_(m) {
   let auteur = '';
   try { auteur = Session.getActiveUser().getEmail() || ''; } catch (e) { auteur = ''; }
   const row = new Array(sh.getLastColumn()).fill('');
-  const vals = Object.assign({}, m, { horodatage: new Date(), auteur: m.auteur || auteur });
+  const vals = Object.assign({}, m, { horodatage: new Date(), auteur: m.auteur || (typeof GESTION_AUTEUR_ !== 'undefined' && GESTION_AUTEUR_) || auteur });
   Object.keys(c).forEach(k => { if (vals[k] !== undefined) row[c[k] - 1] = vals[k]; });
   sh.appendRow(row);
 }
