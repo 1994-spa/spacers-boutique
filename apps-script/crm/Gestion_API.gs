@@ -37,7 +37,10 @@ const GA = {
     dotation:    p => enregistrerDotation(p),
     vente_hors_match: p => ga_venteHorsMatch_(p),
     match_tablettes: p => ga_matchTablettes_(p),
-    controle_caisse: p => ga_controleCaisse_(p)
+    controle_caisse: p => ga_controleCaisse_(p),
+    produit_creer: p => ga_produitCreer_(p),
+    produit_modifier: p => ga_produitModifier_(p),
+    cloture: p => ga_cloture_(p)
   },
   CAL: '04b_CALENDRIER',
   CONTROLES: '25_CONTROLES_CAISSE',
@@ -96,6 +99,9 @@ function ga_etat_(matchDemande) {
     enveloppes: sb_enveloppes_().filter(e => e.actif).map(e => ({ nom: e.nom, demarque: e.demarque, tva73: e.tva73 })),
     retraits: sb_retraitsEnAttente_().length,
     calendrier: ga_calendrier_(),
+    catalogue: ga_catalogue_(P),
+    categories: P.rows.map(x => String(x.categorie || '')).filter((v, i, a) => v && a.indexOf(v) === i).sort(),
+    email_comptable: PropertiesService.getScriptProperties().getProperty('EMAIL_COMPTABLE') || '',
     controle: match ? ga_dernierControle_(match) : null
   };
 }
@@ -464,4 +470,184 @@ function retirerSaisieClasseur() {
   const msg = 'Classeur Inventaire en lecture seule : Préparation et Après match masqués, mode d\'emploi mis à jour. Tout se fait sur la page Gestion.';
   Logger.log(msg);
   return msg;
+}
+
+/* ================================ CATALOGUE ================================= */
+
+/** Tous les articles (actifs et désactivés) avec prix, prix partenaire, coût, seuil et stock. */
+function ga_catalogue_(P) {
+  const cPP = P.c.prix_partenaire;
+  const brut = cPP && P.rows.length ? P.sh.getRange(2, cPP, P.sh.getLastRow() - 1, 1).getValues() : [];
+  return P.rows.filter(x => x.ref || x.actif).map(x => ({
+    ref: x.ref, produit: x.produit, modele: x.modele, taille: x.taille, categorie: String(x.categorie || ''),
+    prix: x.prix_vente, prix_partenaire: cPP ? (brut[x.ligne - 2] ? brut[x.ligne - 2][0] : '') : '', cout: x.cout,
+    seuil: x.seuil, actif: x.actif, R: x.R, B1: x.B1, B2: x.B2
+  }));
+}
+
+function ga_code_(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+/**
+ * Création d'un article : un modèle, une ou plusieurs tailles → une ligne par taille dans 03_PRODUITS
+ * (réf. CODE-TAILLE), stock à 0 partout. Le stock entre ensuite par « Réception au dépôt ».
+ */
+function ga_produitCreer_(p) {
+  return sb_avecVerrou_(() => {
+    const modele = String(p.modele || '').trim().replace(/\s+/g, ' ');
+    if (modele.length < 3) throw new Error('Indiquez le nom de l\'article.');
+    const categorie = String(p.categorie || '').trim();
+    if (!categorie) throw new Error('Choisissez une catégorie.');
+    const prix = sb_num_(p.prix);
+    if (!(prix > 0)) throw new Error('Indiquez le prix de vente TTC.');
+    const pp = p.prix_partenaire === '' || p.prix_partenaire === undefined ? '' : sb_num_(p.prix_partenaire);
+    const cout = p.cout === '' || p.cout === undefined ? 0 : sb_num_(p.cout);
+    const tailles = (p.tailles || []).map(t => String(t).trim()).filter(Boolean);
+    const liste = tailles.length ? tailles : [''];
+    const code = ga_code_(p.code || modele.split(' ').map(w => w.slice(0, 3)).join('-')).slice(0, 14);
+    if (!code) throw new Error('Code article invalide.');
+
+    const P = sb_lireProduits_();
+    const sh = P.sh;
+    sb_assurerColonnes_(sh, ['ref_boutique', 'modele', 'taille', 'seuil_alerte', 'stock_R', 'prix_partenaire']);
+    const c = sb_cols_(sh);
+    const noms = {}, refs = {};
+    P.rows.forEach(x => { noms[slugify(x.produit)] = 1; if (x.ref) refs[x.ref] = 1; });
+    const lignes = liste.map(t => {
+      const ref = code + '-' + (t ? ga_code_(t) : 'TU');
+      const nom = modele + (t ? ' - ' + t : '');
+      if (refs[ref]) throw new Error('La référence ' + ref + ' existe déjà : changez le code article.');
+      if (noms[slugify(nom)]) throw new Error('« ' + nom + ' » existe déjà dans le catalogue.');
+      const row = new Array(sh.getLastColumn()).fill('');
+      const set = (k, v) => { if (c[k]) row[c[k] - 1] = v; };
+      set('produit', nom); set('categorie', categorie); set('prix_vente', prix); set('cout', cout);
+      set('stock_B1', 0); set('stock_B2', 0); set('stock_R', 0); set('actif', true); set('ref_boutique', ref);
+      set('modele', modele); set('taille', t || 'TU'); set('seuil_alerte', p.seuil === '' || p.seuil === undefined ? SB.SEUIL_ALERTE_DEFAUT : sb_num_(p.seuil));
+      set('prix_partenaire', pp);
+      return row;
+    });
+    sh.getRange(sh.getLastRow() + 1, 1, lignes.length, lignes[0].length).setValues(lignes);
+    logDiag('gestion', 'INFO', 'Article créé par ' + (p._par || '?') + ' : ' + modele + ' (' + lignes.length + ' réf.)');
+    rafraichirSynthese_();
+    return '« ' + modele + ' » créé (' + lignes.length + ' réf. ' + code + '-…). Prochaine étape : « Réception au dépôt » pour entrer le stock, puis recharger le catalogue des tablettes.';
+  });
+}
+
+/**
+ * Modification d'articles (toutes les tailles d'un modèle, ou une liste de réf.) :
+ * prix de vente TTC, prix partenaire, seuil d'alerte, actif. Chaque changement est tracé dans 99_DIAGNOSTIC.
+ */
+function ga_produitModifier_(p) {
+  return sb_avecVerrou_(() => {
+    const P = sb_lireProduits_();
+    sb_assurerColonnes_(P.sh, ['prix_partenaire', 'seuil_alerte']);
+    const c = sb_cols_(P.sh);
+    const cibles = P.rows.filter(x => (p.refs || []).indexOf(x.ref) !== -1 || (p.modele && x.modele === p.modele));
+    if (!cibles.length) throw new Error('Article introuvable.');
+    const ch = p.champs || {};
+    const faits = [];
+    if (ch.prix !== undefined && ch.prix !== '') {
+      const v = sb_num_(ch.prix); if (!(v > 0)) throw new Error('Prix de vente invalide.');
+      cibles.forEach(x => P.sh.getRange(x.ligne, c.prix_vente).setValue(v)); faits.push('prix ' + v + ' €');
+    }
+    if (ch.prix_partenaire !== undefined) {
+      const v = ch.prix_partenaire === '' ? '' : sb_num_(ch.prix_partenaire);
+      if (v !== '' && !(v > 0)) throw new Error('Prix partenaire invalide.');
+      cibles.forEach(x => P.sh.getRange(x.ligne, c.prix_partenaire).setValue(v)); faits.push('prix partenaire ' + (v === '' ? 'retiré' : v + ' €'));
+    }
+    if (ch.seuil !== undefined && ch.seuil !== '') {
+      const v = Math.max(0, Math.round(sb_num_(ch.seuil)));
+      cibles.forEach(x => P.sh.getRange(x.ligne, c.seuil_alerte).setValue(v)); faits.push('seuil ' + v);
+    }
+    if (ch.actif !== undefined) {
+      cibles.forEach(x => P.sh.getRange(x.ligne, c.actif).setValue(!!ch.actif)); faits.push(ch.actif ? 'réactivé' : 'désactivé');
+    }
+    if (!faits.length) throw new Error('Aucune modification.');
+    const nom = p.modele || cibles.map(x => x.produit).join(', ');
+    logDiag('gestion', 'INFO', 'Catalogue modifié par ' + (p._par || '?') + ' : ' + nom + ' → ' + faits.join(', '));
+    rafraichirSynthese_();
+    return nom + ' : ' + faits.join(', ') + '. Les tablettes le verront au prochain chargement du catalogue.';
+  });
+}
+
+/* ========================= CLÔTURE DE SAISON (30/06) ======================== */
+
+/**
+ * Photo du stock valorisé (coût moyen pondéré HT) → onglet 15_INVENTAIRE_AAAAMMJJ,
+ * bilan des sorties hors vente de l'exercice (par enveloppe / compte) et bénéficiaires au-delà de 73 € TTC,
+ * envoyés par mail à l'expert-comptable (adresse mémorisée). À faire APRÈS le comptage des 3 lieux.
+ */
+function ga_cloture_(p) {
+  const email = String(p.email || '').trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('Indiquez l\'adresse mail de l\'expert-comptable.');
+  PropertiesService.getScriptProperties().setProperty('EMAIL_COMPTABLE', email);
+  const ss = SpreadsheetApp.getActive();
+  const P = sb_lireProduits_();
+  const jour = Utilities.formatDate(new Date(), 'Europe/Paris', 'yyyyMMdd');
+  const nom = '15_INVENTAIRE_' + jour;
+  const ancien = ss.getSheetByName(nom);
+  if (ancien) ss.deleteSheet(ancien);
+  const sh = ss.insertSheet(nom);
+  const H = ['Réf', 'Produit', 'Actif', 'Dépôt', 'Grand Public', 'VIP', 'Quantité totale', 'Coût moyen HT (€)', 'Valeur HT (€)'];
+  const rows = P.rows.filter(x => x.R + x.B1 + x.B2 !== 0 || x.actif).map(x => {
+    const t = x.R + x.B1 + x.B2;
+    return [x.ref || '—', x.produit, x.actif ? 'oui' : 'non', x.R, x.B1, x.B2, t, x.cout, Math.round(t * x.cout * 100) / 100];
+  });
+  const total = Math.round(rows.reduce((s, r) => s + r[8], 0) * 100) / 100;
+  const qte = rows.reduce((s, r) => s + r[6], 0);
+  const sansCout = rows.filter(r => r[6] > 0 && !(r[7] > 0)).map(r => r[1]);
+  const negatifs = P.rows.filter(x => x.R < 0 || x.B1 < 0 || x.B2 < 0).map(x => x.produit);
+  sh.getRange(1, 1).setValue('INVENTAIRE DE CLÔTURE — ' + sb_fmt_(new Date()) + ' · valorisation au coût moyen pondéré HT · établi par ' + (p._par || ''))
+    .setFontWeight('bold').setFontSize(13);
+  sh.getRange(3, 1, 1, H.length).setValues([H]).setFontWeight('bold').setBackground('#001E2D').setFontColor('#ffffff');
+  if (rows.length) { sh.getRange(4, 1, rows.length, H.length).setValues(rows); sh.getRange(4, 8, rows.length, 2).setNumberFormat('#,##0.00 "€"'); }
+  sh.getRange(5 + rows.length, 8, 1, 2).setValues([['TOTAL', total]]).setFontWeight('bold');
+  sh.getRange(5 + rows.length, 9).setNumberFormat('#,##0.00 "€"');
+  sh.setFrozenRows(3);
+
+  // Sorties hors vente de l'exercice
+  const hist = sb_mouvementsExercice_();
+  const parEnv = {};
+  hist.filter(m => m.type === 'DOTATION' || m.type === 'DEMARQUE').forEach(m => {
+    const k = m.enveloppe || m.type;
+    parEnv[k] = parEnv[k] || { u: 0, v: 0 };
+    parEnv[k].u += m.quantite; parEnv[k].v += m.valeurHT;
+  });
+  const comptes = {};
+  sb_enveloppes_().forEach(e => { comptes[e.nom] = e.compte; });
+  const envs73 = sb_enveloppes_().filter(e => e.tva73).map(e => e.nom);
+  const parBenef = {};
+  hist.filter(m => m.type === 'DOTATION' && m.beneficiaire && envs73.indexOf(m.enveloppe) !== -1).forEach(m => {
+    const k = sb_norm_(m.beneficiaire);
+    parBenef[k] = parBenef[k] || { nom: m.beneficiaire, v: 0 };
+    parBenef[k].v += m.valeurTTC;
+  });
+  const au73 = Object.keys(parBenef).map(k => parBenef[k]).filter(b => b.v > SB.SEUIL_TVA_CADEAUX).sort((a, b) => b.v - a.v);
+  let lig = 8 + rows.length;
+  sh.getRange(lig, 1).setValue('SORTIES HORS VENTE DE L\'EXERCICE (dons, cadeaux, démarque)').setFontWeight('bold'); lig++;
+  const dons = Object.keys(parEnv).map(k => [k, comptes[k] || '', parEnv[k].u, Math.round(parEnv[k].v * 100) / 100]);
+  sh.getRange(lig, 1, 1, 4).setValues([['Enveloppe', 'Compte', 'Quantité', 'Valeur HT (€)']]).setFontWeight('bold'); lig++;
+  if (dons.length) { sh.getRange(lig, 1, dons.length, 4).setValues(dons); lig += dons.length; }
+  lig++;
+  sh.getRange(lig, 1).setValue('BÉNÉFICIAIRES AU-DELÀ DE ' + SB.SEUIL_TVA_CADEAUX + ' € TTC (TVA à régulariser)').setFontWeight('bold'); lig++;
+  if (au73.length) sh.getRange(lig, 1, au73.length, 2).setValues(au73.map(b => [b.nom, Math.round(b.v * 100) / 100]));
+  else sh.getRange(lig, 1).setValue('Aucun.');
+
+  const eur = v => (Number(v) || 0).toFixed(2).replace('.', ',') + ' €';
+  let h = '<h2 style="color:#001E2D">Boutique Spacer\'s — inventaire de clôture</h2>' +
+    '<p>Établi le ' + sb_fmt_(new Date()) + ' par ' + (p._par || '') + ', après comptage physique du dépôt et des deux boutiques.</p>' +
+    '<p><b>Valeur du stock final : ' + eur(total) + ' HT</b> (' + qte + ' articles, coût moyen pondéré HT).</p>' +
+    '<p>Détail par article : onglet « ' + nom + ' » du classeur <a href="' + ss.getUrl() + '">' + ss.getName() + '</a>.</p>' +
+    '<h3>Sorties hors vente de l\'exercice</h3>' + (dons.length ? '<ul>' + dons.map(d => '<li>' + d[0] + (d[1] ? ' (compte ' + d[1] + ')' : '') + ' : ' + d[2] + ' article(s), ' + eur(d[3]) + ' HT</li>').join('') + '</ul>' : '<p>Aucune.</p>') +
+    '<h3>Bénéficiaires au-delà de ' + SB.SEUIL_TVA_CADEAUX + ' € TTC</h3>' + (au73.length ? '<ul>' + au73.map(b => '<li>' + b.nom + ' : ' + eur(b.v) + ' TTC</li>').join('') + '</ul>' : '<p>Aucun.</p>') +
+    (sansCout.length ? '<p style="color:#A35400">⚠ Articles en stock sans coût d\'achat (valorisés à 0) : ' + sansCout.join(', ') + '.</p>' : '') +
+    (negatifs.length ? '<p style="color:#C0262D">⚠ Stocks négatifs : ' + negatifs.join(', ') + '.</p>' : '');
+  const dest = [email, Session.getEffectiveUser().getEmail()].filter((v, i, a) => v && a.indexOf(v) === i);
+  let mail = 'envoyé à ' + email;
+  try { MailApp.sendEmail({ to: dest.join(','), subject: 'Boutique Spacer\'s — inventaire de clôture ' + Utilities.formatDate(new Date(), 'Europe/Paris', 'dd/MM/yyyy'), htmlBody: h }); }
+  catch (e) { mail = 'mail NON envoyé (' + e.message + ')'; }
+  logDiag('gestion', 'INFO', 'Clôture par ' + (p._par || '?') + ' : ' + total + ' € HT, ' + mail);
+  return 'Clôture faite : stock final ' + eur(total) + ' HT (' + qte + ' articles), ' + dons.length + ' enveloppe(s) de sorties, ' + au73.length +
+    ' bénéficiaire(s) au-delà de 73 € · ' + mail + '.' + (sansCout.length ? '\n⚠ ' + sansCout.length + ' article(s) sans coût d\'achat.' : '') + (negatifs.length ? '\n⚠ ' + negatifs.length + ' stock(s) négatif(s).' : '');
 }

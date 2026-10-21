@@ -179,13 +179,17 @@ const ONGLETS = [
   { id: 'inventaire', ic: '🔢', nom: 'Inventaire' },
   { id: 'horsmatch', ic: '💶', nom: 'Vente hors match' },
   { id: 'sortie', ic: '🎁', nom: 'Sortie / don' },
+  { id: 'catalogue', ic: '🏷️', nom: 'Catalogue & prix' },
+  { id: 'cloture', ic: '🔒', nom: 'Clôture' },
   { id: 'historique', ic: '🕓', nom: 'Historique' }
 ];
 const ENCOURAGE = ['Bien joué ! 💪', 'Top, c\'est enregistré ✨', 'Nickel, les boutiques te disent merci 🙌', 'Smash ! 🏐', 'Carton plein 🎯'];
 
 let cfg = { url: CRM_URL_DEFAUT, pin: '', nom: '' };
 try { const s = JSON.parse(localStorage.getItem(STORE) || 'null'); if (s) cfg = Object.assign(cfg, s); } catch (e) {}
-const S = { etat: null, onglet: 'accueil', match: '', recep: { modele: '', q: {}, prix: '', fourn: '', fact: '' }, rep: {}, inv: { lieu: 'B1', q: {} }, trf: {}, sortie: {}, hm: {} };
+const S = { etat: null, onglet: 'accueil', match: '', recep: { modele: '', q: {}, prix: '', fourn: '', fact: '' }, rep: {}, inv: { lieu: 'B1', q: {} }, trf: {}, sortie: {}, hm: {}, cat: { edit: '', nv: { tailles: [] } } };
+const PRESETS_TAILLES = { 'Adulte S → XXL': ['S', 'M', 'L', 'XL', 'XXL'], 'Enfant 116 → 164': ['116', '128', '140', '152', '164'], 'Enfant 8 → 14 ans': ['8 ans', '10 ans', '12 ans', '14 ans'] };
+const TAILLES_DISPO = ['116', '128', '140', '152', '164', '8 ans', '10 ans', '12 ans', '14 ans', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL'];
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -274,7 +278,7 @@ function render() {
     if (o.id === 'bilan' && S.etat && S.etat.bilan && S.etat.bilan.ecarts) pill = '<span class="pill">' + S.etat.bilan.ecarts + '</span>';
     return '<button type="button" data-tab="' + o.id + '" aria-current="' + (S.onglet === o.id) + '"><span>' + o.ic + '</span><span class="' + (o.id === 'accueil' ? '' : 'hide-sm') + '">' + o.nom + '</span>' + pill + '</button>';
   }).join('');
-  const f = { accueil: vAccueil, reception: vReception, repartir: vRepartir, bilan: vBilan, inventaire: vInventaire, horsmatch: vHorsMatch, sortie: vSortie, historique: vHistorique }[S.onglet];
+  const f = { accueil: vAccueil, reception: vReception, repartir: vRepartir, bilan: vBilan, inventaire: vInventaire, horsmatch: vHorsMatch, sortie: vSortie, catalogue: vCatalogue, cloture: vCloture, historique: vHistorique }[S.onglet];
   $('app').innerHTML = S.etat ? f() : '<p class="empty">Chargement…</p>';
   majCompteurs();
 }
@@ -497,6 +501,72 @@ function vHorsMatch() {
     '<button class="btn" type="button" id="hmGo">💶 Enregistrer la vente</button></div></div>';
 }
 
+/* ---------- Catalogue ---------- */
+function vCatalogue() {
+  const C = S.etat.catalogue || [], ed = S.cat.edit, nv = S.cat.nv;
+  const mods = {};
+  C.forEach(p => { (mods[p.modele] = mods[p.modele] || { modele: p.modele, categorie: p.categorie, l: [] }).l.push(p); });
+  const L = Object.values(mods).sort((a, b) => (a.l[0].actif === b.l[0].actif ? 0 : a.l[0].actif ? -1 : 1) || a.categorie.localeCompare(b.categorie) || a.modele.localeCompare(b.modele));
+  const uniq = arr => arr.filter((v, i, a) => a.indexOf(v) === i);
+  const val = (l, k) => { const v = uniq(l.map(p => p[k])); return v.length === 1 ? v[0] : null; };
+  const rows = L.map(m => {
+    const actif = m.l.some(p => p.actif), stock = m.l.reduce((s, p) => s + p.R + p.B1 + p.B2, 0);
+    const prix = val(m.l, 'prix'), pp = val(m.l, 'prix_partenaire'), seuil = val(m.l, 'seuil'), cout = val(m.l, 'cout');
+    const marge = prix && cout ? Math.round((1 - cout * 1.2 / prix) * 100) : null;
+    if (ed === m.modele) {
+      return '<tr style="background:var(--gp-bg)"><td><b>' + esc(m.modele) + '</b><div class="d" style="font-size:12px;color:var(--muted)">' + m.l.length + ' taille(s) · ' + esc(m.categorie) + '</div></td>' +
+        '<td><input class="inp" style="width:90px" inputmode="decimal" id="ceP" value="' + esc(prix != null ? prix : '') + '" placeholder="varie"></td>' +
+        '<td><input class="inp" style="width:90px" inputmode="decimal" id="cePP" value="' + esc(pp != null ? pp : '') + '" placeholder="—"></td>' +
+        '<td class="n hide-sm">' + (cout != null ? eur(cout) : '—') + '</td><td><input class="inp" style="width:70px" inputmode="numeric" id="ceS" value="' + esc(seuil != null ? seuil : '') + '"></td>' +
+        '<td class="n">' + stock + '</td><td><div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn" type="button" id="ceGo">Enregistrer</button><button class="btn sec" type="button" id="ceX">Annuler</button></div></td></tr>';
+    }
+    return '<tr' + (actif ? '' : ' style="opacity:.55"') + '><td><b>' + esc(m.modele) + '</b><div style="font-size:12px;color:var(--muted)">' + m.l.length + ' taille(s) · ' + esc(m.categorie) + (actif ? '' : ' · désactivé') + '</div></td>' +
+      '<td class="n">' + (prix != null ? eur(prix) : 'varie') + '</td><td class="n">' + (pp != null && pp !== '' ? eur(pp) : '—') + '</td>' +
+      '<td class="n hide-sm">' + (cout != null ? eur(cout) : 'varie') + (marge != null ? '<div style="font-size:12px" class="' + (marge >= 40 ? 'ok' : 'wa') + '">marge ' + marge + ' %</div>' : '') + '</td>' +
+      '<td class="n">' + (seuil != null ? seuil : 'varie') + '</td><td class="n">' + stock + '</td>' +
+      '<td><div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn sec" type="button" data-ced="' + esc(m.modele) + '">✏️ Modifier</button>' +
+      '<button class="btn sec" type="button" data-cact="' + esc(m.modele) + '" data-v="' + (actif ? 0 : 1) + '">' + (actif ? 'Désactiver' : 'Réactiver') + '</button></div></td></tr>';
+  }).join('');
+  const cats = S.etat.categories || [];
+  const chip = t => '<button type="button" class="chip' + (nv.tailles.indexOf(t) !== -1 ? ' good' : '') + '" data-nvt="' + esc(t) + '" style="cursor:pointer">' + esc(t) + '</button>';
+  return '<div class="card"><h2>🏷️ Catalogue & prix</h2><p class="lead">Prix de vente TTC, prix partenaire (appliqué en boutique VIP), seuil d\'alerte. Une modification s\'applique à toutes les tailles de l\'article. Les tablettes la reçoivent au prochain « Mettre à jour le catalogue ». Un article désactivé disparaît des tablettes mais garde son historique.</p>' +
+    '<div style="overflow-x:auto"><table><thead><tr><th>Article</th><th class="n">Prix TTC</th><th class="n">Prix partenaire</th><th class="n hide-sm">Coût HT</th><th class="n">Seuil</th><th class="n">Stock</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div></div>' +
+    '<div class="card"><h2>➕ Nouvel article</h2><p class="lead">Une ligne est créée par taille, avec un stock à 0. Le stock entre ensuite par « Réception au dépôt ». Pour le vendre aussi en ligne sur Tickie, préviens Clément.</p>' +
+    '<div class="row"><div class="field" style="flex:2"><label for="nvM">Nom de l\'article</label><input class="inp" id="nvM" value="' + esc(nv.modele || '') + '" placeholder="ex. Sweat zippé Mizuno navy"></div>' +
+    '<div class="field"><label for="nvC">Catégorie</label><select class="inp" id="nvC"><option value="">— choisir —</option>' + cats.map(c => '<option' + (nv.categorie === c ? ' selected' : '') + '>' + esc(c) + '</option>').join('') + '<option value="__autre"' + (nv.categorie === '__autre' ? ' selected' : '') + '>Autre…</option></select></div>' +
+    (nv.categorie === '__autre' ? '<div class="field"><label for="nvC2">Nouvelle catégorie</label><input class="inp" id="nvC2" value="' + esc(nv.cat2 || '') + '"></div>' : '') + '</div>' +
+    '<div style="margin:12px 0"><label style="font-size:12px;color:var(--muted)">Tailles (aucune = taille unique)</label><div class="chips" style="margin:6px 0">' +
+      Object.keys(PRESETS_TAILLES).map(k => '<button type="button" class="chip" data-nvp="' + esc(k) + '" style="cursor:pointer">+ ' + esc(k) + '</button>').join('') + '<button type="button" class="chip" data-nvp="" style="cursor:pointer">Taille unique</button></div>' +
+      '<div class="chips">' + TAILLES_DISPO.map(chip).join('') + '</div></div>' +
+    '<div class="row"><div class="field"><label for="nvP">Prix de vente TTC</label><input class="inp" id="nvP" inputmode="decimal" value="' + esc(nv.prix || '') + '"></div>' +
+    '<div class="field"><label for="nvPP">Prix partenaire (facultatif)</label><input class="inp" id="nvPP" inputmode="decimal" value="' + esc(nv.pp || '') + '"></div>' +
+    '<div class="field"><label for="nvCo">Coût d\'achat HT (facultatif)</label><input class="inp" id="nvCo" inputmode="decimal" value="' + esc(nv.cout || '') + '" placeholder="sinon à la réception"></div>' +
+    '<div class="field" style="max-width:110px"><label for="nvS">Seuil d\'alerte</label><input class="inp" id="nvS" inputmode="numeric" value="' + esc(nv.seuil != null ? nv.seuil : 3) + '"></div>' +
+    '<button class="btn" type="button" id="nvGo">➕ Créer l\'article</button></div></div>';
+}
+function lireNouveau() {
+  const g = id => $(id) ? $(id).value : '';
+  Object.assign(S.cat.nv, { modele: g('nvM'), categorie: g('nvC'), cat2: g('nvC2'), prix: g('nvP'), pp: g('nvPP'), cout: g('nvCo'), seuil: g('nvS') });
+}
+
+/* ---------- Clôture ---------- */
+function vCloture() {
+  const P = S.etat.produits, neg = P.filter(p => p.R < 0 || p.B1 < 0 || p.B2 < 0);
+  const sansCout = P.filter(p => p.R + p.B1 + p.B2 > 0 && !(p.cout > 0));
+  const val = P.reduce((s, p) => s + Math.max(0, p.R + p.B1 + p.B2) * (p.cout || 0), 0);
+  const ok = (b, t) => '<span class="chip ' + (b ? 'good' : 'warn') + '">' + (b ? '✓ ' : '⚠ ') + t + '</span>';
+  return '<div class="card"><h2>🔒 Clôture de saison</h2><p class="lead">Une fois par an, au 30 juin (ou à la demande de l\'expert-comptable). Elle photographie le stock valorisé au coût d\'achat moyen et récapitule les dons et cadeaux de l\'exercice. Le tout part par mail à l\'expert-comptable. Rien n\'est remis à zéro : la saison suivante repart du stock compté.</p>' +
+    '<div class="steps" style="margin-bottom:16px">' +
+      '<div class="step"><span class="num">1</span><span><b>Synchroniser les tablettes</b><span>« Synchroniser tout » sur chaque tablette, après le dernier match.</span></span></div>' +
+      '<button type="button" class="step" data-tab="inventaire"><span class="num">2</span><span><b>Compter les 3 lieux</b><span>Inventaire : Dépôt, puis GP, puis VIP. Valider chacun.</span></span></button>' +
+      '<div class="step"><span class="num">3</span><span><b>Vérifier</b><span>' + ok(!neg.length, neg.length ? neg.length + ' stock(s) négatif(s)' : 'aucun stock négatif') + ' ' + ok(!sansCout.length, sansCout.length ? sansCout.length + ' article(s) sans coût' : 'tous les coûts connus') + '</span></span></div>' +
+      '<div class="step"><span class="num">4</span><span><b>Envoyer la clôture</b><span>Ci-dessous.</span></span></div></div>' +
+    (sansCout.length ? '<p class="lead wa">Sans coût d\'achat, valorisés à 0 : ' + sansCout.map(p => esc(p.produit)).join(', ') + '. Renseigne le coût dans « Catalogue & prix » si tu le connais.</p>' : '') +
+    '<div class="kpis"><div class="kpi"><span class="l">Valeur actuelle du stock (estimation HT)</span><span class="v">' + eur(val) + '</span></div><div class="kpi"><span class="l">Articles en stock</span><span class="v">' + int(P.reduce((s, p) => s + Math.max(0, p.R + p.B1 + p.B2), 0)) + '</span></div></div>' +
+    '<div class="row"><div class="field" style="flex:2"><label for="clMail">Mail de l\'expert-comptable</label><input class="inp" id="clMail" type="email" value="' + esc(S.etat.email_comptable || '') + '"></div>' +
+    '<button class="btn big" type="button" id="clGo">🔒 Faire la clôture et envoyer</button></div></div>';
+}
+
 /* ---------- Historique ---------- */
 function vHistorique() {
   const ic = { VENTE_HORS_MATCH: '💶', ENTREE_ACHAT: '📥', TRANSFERT: '🔀', VENTE_COMPTOIR: '🛒', OFFERT_CAISSE: '🎁', DOTATION: '🎁', DEMARQUE: '⚠️', AJUSTEMENT_INVENTAIRE: '🔢', VENTE_WEB: '🌐' };
@@ -559,6 +629,14 @@ document.addEventListener('click', e => {
     majCompteurs();
     return;
   }
+  if (t.dataset.ced !== undefined) { S.cat.edit = t.dataset.ced; render(); return; }
+  if (t.dataset.cact !== undefined) {
+    const on = t.dataset.v === '1';
+    if (!on && !confirm('Désactiver « ' + t.dataset.cact + ' » ? Il disparaîtra des tablettes au prochain chargement du catalogue.')) return;
+    executer('produit_modifier', { modele: t.dataset.cact, champs: { actif: on } }); return;
+  }
+  if (t.dataset.nvt !== undefined) { lireNouveau(); const a = S.cat.nv.tailles, i = a.indexOf(t.dataset.nvt); if (i === -1) a.push(t.dataset.nvt); else a.splice(i, 1); a.sort((x, y) => TAILLES_DISPO.indexOf(x) - TAILLES_DISPO.indexOf(y)); render(); return; }
+  if (t.dataset.nvp !== undefined) { lireNouveau(); S.cat.nv.tailles = t.dataset.nvp ? PRESETS_TAILLES[t.dataset.nvp].slice() : []; render(); return; }
   if (t.dataset.modele) { S.recep.modele = t.dataset.modele; S.recep.q = {}; render(); return; }
   if (t.dataset.lieu) { S.inv.lieu = t.dataset.lieu; S.inv.q = {}; render(); return; }
   const actions = {
@@ -597,6 +675,31 @@ document.addEventListener('click', e => {
         beneficiaire: S.sortie.ben, match: S.sortie.occ, commentaire: S.sortie.com, justificatif: S.sortie.com }, () => { S.sortie = {}; });
     },
     mtGo: () => executer('match_tablettes', { id: $('mtSel').value }),
+    ceX: () => { S.cat.edit = ''; render(); },
+    ceGo: () => {
+      const n = v => String(v).trim().replace(',', '.');
+      const champs = { seuil: n($('ceS').value), prix_partenaire: n($('cePP').value) };
+      if (n($('ceP').value) !== '') champs.prix = n($('ceP').value);
+      executer('produit_modifier', { modele: S.cat.edit, champs: champs }, () => { S.cat.edit = ''; });
+    },
+    nvGo: () => {
+      lireNouveau(); const nv = S.cat.nv;
+      const cat = nv.categorie === '__autre' ? nv.cat2.trim() : nv.categorie;
+      if (nv.modele.trim().length < 3) { toast('Indique le nom de l\'article.', true); return; }
+      if (!cat) { toast('Choisis une catégorie.', true); return; }
+      if (!(Number(String(nv.prix).replace(',', '.')) > 0)) { toast('Indique le prix de vente TTC.', true); return; }
+      const lib = nv.tailles.length ? nv.tailles.length + ' taille(s) : ' + nv.tailles.join(', ') : 'taille unique';
+      if (!confirm('Créer « ' + nv.modele.trim() + ' » (' + lib + ') à ' + nv.prix + ' € ?')) return;
+      const n = v => String(v || '').trim().replace(',', '.');
+      executer('produit_creer', { modele: nv.modele, categorie: cat, tailles: nv.tailles, prix: n(nv.prix), prix_partenaire: n(nv.pp), cout: n(nv.cout), seuil: n(nv.seuil) },
+        () => { S.cat.nv = { tailles: [] }; });
+    },
+    clGo: () => {
+      const m = $('clMail').value.trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m)) { toast('Indique le mail de l\'expert-comptable.', true); return; }
+      if (!confirm('As-tu bien compté le dépôt et les deux boutiques ? La clôture photographie le stock tel qu\'il est dans le CRM maintenant, puis l\'envoie à ' + m + '.')) return;
+      executer('cloture', { email: m });
+    },
     ccGo: () => {
       const g = id => $(id).value.trim();
       S.caisse = { cbB1: g('cbB1'), esB1: g('esB1'), cbB2: g('cbB2'), esB2: g('esB2'), com: g('ccCom'), copie: g('ccCopie') };
@@ -623,6 +726,7 @@ document.addEventListener('change', e => {
   const t = e.target;
   if (t.dataset && t.dataset.in) { valeurChamp(t.dataset.in, t.value); majCompteurs(); return; }
   if (t.id === 'bmMatch') { charger(t.value); return; }
+  if (t.id === 'nvC') { lireNouveau(); render(); return; }
   if (t.id === 'hmRef' || t.id === 'hmPt') { const g = id => $(id).value; S.hm = { ref: g('hmRef'), pt: g('hmPt'), q: g('hmQ'), prix: t.id === 'hmRef' ? '' : g('hmPrix'), mode: g('hmMode'), occ: g('hmOcc'), cli: g('hmCli') }; render(); return; }
   if (t.id === 'soEnv') { S.sortie.env = t.value; S.sortie.ref = $('soRef').value; S.sortie.pt = $('soPt').value; S.sortie.q = $('soQ').value; render(); }
 });
@@ -683,7 +787,9 @@ function demoEtat(match) {
     matchs: [{ label: "Spacer's vs Sète", date: '17/10/2026', ca: 600 }, { label: "Spacer's vs Narbonne", date: '10/10/2026', ca: 457.15 }],
     match: "Spacer's vs Sète", bilan: bilan, historique: db.hist.slice(0, 40),
     calendrier: [{ id: 'e1', nom: "Spacer's vs Tourcoing", date: '24/10', heure: '20:00', tablettes: DEMO_MT === 'e1' }, { id: 'e2', nom: "Spacer's vs Cannes", date: '07/11', heure: '20:00', tablettes: DEMO_MT === 'e2' }],
-    controle: null,
+    controle: null, email_comptable: '',
+    catalogue: JSON.parse(JSON.stringify(db.produits)).map(p => Object.assign(p, { actif: p.actif !== false, prix_partenaire: p.modele.indexOf('partenaire') !== -1 ? 55 : '' })),
+    categories: ['Accessoires', 'Maillots', 'Textile'],
     enveloppes: [{ nom: 'Cadeau partenaire / prospect', demarque: false }, { nom: 'Jeu concours / réseaux sociaux', demarque: false }, { nom: 'Démarque — casse / défaut', demarque: true }], retraits: 0 };
 }
 function demoOp(op, d) {
@@ -695,6 +801,9 @@ function demoOp(op, d) {
   if (op === 'transfert') { const p = f(d.ref); p[d.de] -= d.quantite; p[d.vers] += d.quantite; h(p, d.vers, d.quantite, 'TRANSFERT', 'depuis ' + d.de); msg = d.quantite + ' × ' + p.produit + ' déplacé(s).'; }
   if (op === 'inventaire') { let n = 0; d.lignes.forEach(l => ['R', 'B1', 'B2'].forEach(k => { if (l[k] !== '') { const p = f(l.ref), e = l[k] - p[k]; if (e) { n++; p[k] = l[k]; h(p, k, e, 'AJUSTEMENT_INVENTAIRE', 'Inventaire'); } } })); msg = n ? n + ' écart(s) corrigé(s).' : 'Inventaire conforme, aucun écart.'; }
   if (op === 'vente_hors_match') { const p = f(d.ref); p[d.point] -= d.quantite; h(p, d.point, -d.quantite, 'VENTE_HORS_MATCH', d.mode); msg = d.quantite + ' × ' + p.produit + ' vendu(s) hors match.'; }
+  if (op === 'produit_creer') { (d.tailles.length ? d.tailles : ['']).forEach(t => P.push({ ref: 'NEW-' + (t || 'TU'), produit: d.modele + (t ? ' - ' + t : ''), modele: d.modele, taille: t, categorie: d.categorie, prix: Number(d.prix), cout: Number(d.cout) || 0, R: 0, B1: 0, B2: 0, seuil: Number(d.seuil) || 3 })); msg = '« ' + d.modele + ' » créé.'; }
+  if (op === 'produit_modifier') { P.filter(p => p.modele === d.modele).forEach(p => { if (d.champs.prix) p.prix = Number(d.champs.prix); if (d.champs.seuil !== undefined && d.champs.seuil !== '') p.seuil = Number(d.champs.seuil); if (d.champs.actif !== undefined) p.actif = d.champs.actif; }); msg = d.modele + ' modifié.'; }
+  if (op === 'cloture') { msg = 'Clôture faite · envoyée à ' + d.email + '.'; }
   if (op === 'match_tablettes') { DEMO_MT = d.id; msg = 'Match préparé.'; }
   if (op === 'controle_caisse') { msg = 'Contrôle enregistré · rapport envoyé par mail.'; }
   if (op === 'dotation') { const p = f(d.ref); p[d.point] -= d.quantite; h(p, d.point, -d.quantite, 'DOTATION', d.enveloppe); msg = 'DOT-2627-0001 · ' + d.quantite + ' × ' + p.produit + '.'; }
