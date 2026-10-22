@@ -510,3 +510,45 @@ function annulerArchivage() {
   ScriptApp.newTrigger('majInventaire').timeBased().everyMinutes(10).create();
   Logger.log('Onglets réaffichés, décompte relancé.');
 }
+
+// ── Correction de l'affichage (▶ corrigerAffichageInventaire, une fois) ──────────
+// Élise garde SES tableaux (En boutique, Stock Total, Dépot, Journal ventes) : réaffichés,
+// et de nouveau mis à jour automatiquement par les ventes caisse, les retraits web et les
+// transferts (décompte toutes les 10 min, rattrapage immédiat de ce qui s'est passé depuis l'archivage).
+// Les onglets techniques alimentés par le CRM sont masqués (rien n'est effacé, ils continuent
+// d'être mis à jour en arrière-plan) : 🔄 STOCK / VENTES / MOUVEMENTS LIVE, 🔄 MAJ auto,
+// 📦 PRÉPARATION STOCK, 🏁 APRÈS MATCH, 📖 MODE D'EMPLOI.
+// Les onglets du matériel club (Panneautique, Gilets, chasubles, gobelets, ramasseurs…) ne bougent pas.
+const INV_TECHNIQUES = ['🔄 STOCK LIVE', '🔄 VENTES LIVE', '🔄 MOUVEMENTS LIVE', INV.JOURNAL,
+                        '📦 PRÉPARATION STOCK', '🏁 APRÈS MATCH', '📖 MODE D\'EMPLOI', '📖 MODE DEMPLOI'];
+
+function corrigerAffichageInventaire() {
+  const p = PropertiesService.getScriptProperties();
+  p.deleteProperty('INVENTAIRE_ARCHIVE');
+  const ss = invSS_();
+  const montres = [], masques = [];
+  INV_ARCHIVES.forEach(function (nom) {
+    const sh = ss.getSheetByName(nom);
+    if (!sh) return;
+    sh.setTabColor(null);
+    if (sh.isSheetHidden()) { sh.showSheet(); montres.push(nom); }
+  });
+  const premier = ss.getSheetByName('En boutique') || ss.getSheetByName('Stock Total');
+  if (premier) ss.setActiveSheet(premier);
+  INV_TECHNIQUES.forEach(function (nom) {
+    const sh = ss.getSheetByName(nom);
+    if (sh && !sh.isSheetHidden()) { sh.hideSheet(); masques.push(nom); }
+  });
+  // Décompte automatique : un seul déclencheur 10 min
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'majInventaire') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('majInventaire').timeBased().everyMinutes(10).create();
+  let rattrapage = '';
+  try { rattrapage = majInventaire_(); } catch (e) { rattrapage = 'rattrapage : ' + e.message; }
+  const msg = 'Réaffichés : ' + (montres.join(', ') || 'déjà visibles') + '.\nMasqués : ' + (masques.join(', ') || 'déjà masqués') +
+    '.\nDécompte automatique relancé (toutes les 10 min). ' + rattrapage;
+  Logger.log(msg);
+  try { SpreadsheetApp.getUi().alert('Classeur Inventaire', msg, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) {}
+  return msg;
+}
