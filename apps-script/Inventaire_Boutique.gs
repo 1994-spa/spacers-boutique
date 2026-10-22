@@ -552,3 +552,77 @@ function corrigerAffichageInventaire() {
   try { SpreadsheetApp.getUi().alert('Classeur Inventaire', msg, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) {}
   return msg;
 }
+
+// ── Fusion de la copie « Inventaire 2026 2027 – 21 octobre » (▶ fusionnerCopie21Octobre, une fois) ──
+// Tous les scripts (décompte des ventes, onglets 🔄, CRM) travaillent sur le classeur d'origine.
+// Élise a continué le 22/10 dans une copie : ses modifications y sont ramenées, puis la copie est
+// renommée « ⚠ ARCHIVE – ne plus utiliser » (rien n'est supprimé).
+//  - Stock Total : chaque case « Stock » des tableaux est alignée sur la copie (même tableau, même taille).
+//  - Onglets ajoutés dans la copie (Stock 2110, Stock facture…) : copiés dans l'original.
+//  - En boutique, Dépot, Journal ventes : identiques dans les deux, rien à faire (vérifié).
+const INV_COPIE_ID = '1F9H9A_ySMTbddU2BvHVsBg2KQmTVyBTOhxaOkjChjLs';
+
+function fusionnerCopie21Octobre() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  const rapport = [];
+  try {
+    const orig = invSS_();
+    const copie = SpreadsheetApp.openById(INV_COPIE_ID);
+    if (orig.getId() === copie.getId()) throw new Error('La copie et l\'original sont le même fichier.');
+
+    // 1. Stock Total : valeurs « Stock » des tableaux
+    const lire = function (ss) {
+      const meta = invMeta_(ss), out = {};
+      (meta.sheets || []).forEach(function (s) {
+        if (s.properties.title !== 'Stock Total') return;
+        const sh = ss.getSheetByName('Stock Total');
+        (s.tables || []).forEach(function (t) {
+          const g = t.range, r0 = (g.startRowIndex || 0) + 1, c0 = (g.startColumnIndex || 0) + 1;
+          const nbL = g.endRowIndex - (g.startRowIndex || 0), nbC = g.endColumnIndex - (g.startColumnIndex || 0);
+          if (nbL < 2) return;
+          const v = sh.getRange(r0, c0, nbL, nbC).getValues();
+          const h = invEntetes_(v[0]), cS = h[invNorm_('Stock')], cT = h[invNorm_('Taille')];
+          if (cS === undefined) return;
+          out[t.name] = v.slice(1).map(function (row, i) {
+            return { taille: cT === undefined ? '' : String(row[cT]).trim(), stock: row[cS], range: sh.getRange(r0 + 1 + i, c0 + cS) };
+          });
+        });
+      });
+      return out;
+    };
+    const A = lire(orig), B = lire(copie);
+    let nb = 0;
+    Object.keys(B).forEach(function (nom) {
+      if (!A[nom]) { rapport.push('Stock Total › tableau « ' + nom + ' » absent de l\'original : non repris'); return; }
+      B[nom].forEach(function (lb, i) {
+        const la = A[nom].filter(function (x) { return x.taille === lb.taille; })[0] || A[nom][i];
+        if (!la || String(la.stock) === String(lb.stock)) return;
+        la.range.setValue(lb.stock);
+        rapport.push('Stock Total › ' + nom.replace(/_/g, ' ').trim() + (lb.taille && lb.taille !== '//' ? ' ' + lb.taille : '') + ' : ' + la.stock + ' → ' + lb.stock);
+        nb++;
+      });
+    });
+
+    // 2. Onglets présents seulement dans la copie
+    const noms = orig.getSheets().map(function (s) { return s.getName(); });
+    copie.getSheets().forEach(function (s) {
+      const nom = s.getName();
+      if (noms.indexOf(nom) !== -1) return;
+      const n = s.copyTo(orig);
+      n.setName(nom);
+      rapport.push('Onglet « ' + nom + ' » copié dans l\'original');
+    });
+
+    // 3. La copie devient une archive
+    if (copie.getName().indexOf('ARCHIVE') === -1) copie.rename('⚠ ARCHIVE – ne plus utiliser – ' + copie.getName());
+    rapport.push('Copie renommée : « ' + copie.getName() + ' »');
+    const msg = (nb ? nb + ' case(s) de stock reprise(s).\n' : 'Aucune case de stock différente.\n') + rapport.join('\n') +
+      '\n\nÀ partir de maintenant, Élise travaille uniquement dans : ' + orig.getUrl();
+    Logger.log(msg);
+    try { SpreadsheetApp.getUi().alert('Fusion de la copie du 21 octobre', msg, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) {}
+    return msg;
+  } finally {
+    lock.releaseLock();
+  }
+}
