@@ -626,3 +626,20 @@ function fusionnerCopie21Octobre() {
     lock.releaseLock();
   }
 }
+
+// ── Masquer des onglets du classeur Inventaire (▶ masquerOngletsMateriel) ─────────
+// Rien n'est effacé : clic droit sur la barre des onglets › « Afficher la feuille » pour les revoir.
+const INV_A_MASQUER = ['ramasseurs', 'gobelet', 'chasubles'];
+
+function masquerOngletsMateriel() {
+  const ss = invSS_();
+  const faits = [], absents = [];
+  INV_A_MASQUER.forEach(function (nom) {
+    const sh = ss.getSheets().filter(function (s) { return invNorm_(s.getName()) === invNorm_(nom); })[0];
+    if (!sh) { absents.push(nom); return; }
+    if (!sh.isSheetHidden()) { sh.hideSheet(); faits.push(sh.getName()); }
+  });
+  const msg = 'Masqués : ' + (faits.join(', ') || 'déjà masqués') + (absents.length ? '. Introuvables : ' + absents.join(', ') : '') + '.';
+  Logger.log(msg);
+  return msg;
+}
