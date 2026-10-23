@@ -975,3 +975,205 @@ function harmoniserTaillesEnfantsCm() {
   try { SpreadsheetApp.getUi().alert('Tailles enfants en cm', msg, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) {}
   return msg;
 }
+// ═══════════════════════════════════════════════════════════════════════════
+// « En boutique » : GP et VIP SÉPARÉS, côte à côte (23/10/2026)
+// ▶ apercuSeparerEnBoutique : montre ce qui va être fait (rien n'est modifié)
+// ▶ separerEnBoutique       : reconstruit l'onglet (une fois)
+//
+// Stock de départ = celui de chaque boutique avant la fusion (onglet masqué
+// « En boutique (avant fusion) »), donc rien n'est perdu.
+// Mise en page : une ligne par article → tableau BOUTIQUE GP (bleu) à gauche,
+// tableau BOUTIQUE VIP (rouge) à droite, nom de l'article bien lisible au-dessus.
+// Maillots de match : GP = classique, VIP = Sohei. Tailles adultes puis enfants.
+// Un article présent d'un seul côté reçoit un tableau vide (stock 0) de l'autre côté,
+// pour que les ventes des deux boutiques trouvent toujours leur ligne.
+// L'onglet fusionné est gardé, masqué, sous le nom « En boutique (fusion GP+VIP) ».
+// ═══════════════════════════════════════════════════════════════════════════
+const SEP = {
+  FUSION: 'En boutique (fusion GP+VIP)',
+  GP:  { lib: 'BOUTIQUE GP',  tete: { red: 30 / 255, green: 91 / 255, blue: 184 / 255 },  bande: { red: 232 / 255, green: 240 / 255, blue: 252 / 255 }, hex: '#1E5BB8', clair: '#E8F0FC' },
+  VIP: { lib: 'BOUTIQUE VIP', tete: { red: 198 / 255, green: 40 / 255, blue: 40 / 255 },  bande: { red: 253 / 255, green: 236 / 255, blue: 236 / 255 }, hex: '#C62828', clair: '#FDECEC' },
+  BLANC: { red: 1, green: 1, blue: 1 },
+  // Libellés lisibles par article (famille du décompte → nom affiché)
+  NOMS: {
+    'Maillot Bleu foncé': 'Maillot de match Bleu foncé', 'Maillot Bleu clair': 'Maillot de match Bleu clair',
+    'Maillot Blanc': 'Maillot de match Blanc', 'T-shirt Nara': 'T-shirt Nara', 'T-shirt Free time': 'T-shirt Freetime',
+    'Écharpe': 'Écharpe', 'Short': 'Short', 'Gourde': 'Gourde', 'Sac': 'Sac à dos', 'Polo femme': 'Polo femme',
+    'Polo homme': 'Polo homme', 'Sweat zippé': 'Sweat zippé', 'T-shirt sportif blanc': 'T-shirt sportif blanc',
+    'T-shirt sportif bleu': 'T-shirt sportif bleu', 'Porte-clés': 'Porte-clés', 'Sticker': 'Stickers', 'Mug': 'Mug',
+    'Casquette': 'Casquette',
+  },
+};
+
+function apercuSeparerEnBoutique() {
+  const ss = invSS_();
+  const plan = sepPlan_(ss);
+  const msg = sepResume_(plan) + '\n\nRien n\'a été modifié. Pour appliquer : ▶ separerEnBoutique';
+  Logger.log(msg);
+  return msg;
+}
+
+function separerEnBoutique() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(60000);
+  const ss = invSS_();
+  let neuf = null, actuel = null;
+  try {
+    if (ss.getSheetByName(SEP.FUSION)) throw new Error('Déjà fait : l\'onglet « ' + SEP.FUSION + ' » existe.');
+    const plan = sepPlan_(ss);
+    actuel = ss.getSheetByName(FUS.ONGLET);
+    const pos = actuel ? actuel.getIndex() : 1;
+    if (actuel) actuel.setName(SEP.FUSION);
+    neuf = ss.insertSheet(FUS.ONGLET, Math.max(0, pos - 1));
+    sepEcrire_(ss, neuf, plan);
+    if (actuel) actuel.hideSheet();
+    ss.setActiveSheet(neuf);
+    const msg = 'Onglet « En boutique » reconstruit : GP (bleu) et VIP (rouge) séparés.\n' + sepResume_(plan) +
+      '\n\nOnglet fusionné gardé (masqué) : « ' + SEP.FUSION + ' ».\n\n' + diagnosticInventaire();
+    Logger.log(msg);
+    try { SpreadsheetApp.getUi().alert('En boutique : GP et VIP séparés', msg, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) {}
+    return msg;
+  } catch (e) {
+    if (neuf) { try { ss.deleteSheet(neuf); } catch (x) {} }
+    if (actuel && actuel.getName() === SEP.FUSION) { actuel.setName(FUS.ONGLET); if (actuel.isSheetHidden()) actuel.showSheet(); }
+    throw e;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Lit les tableaux d'un onglet (nom, boutique, famille, lignes)
+function sepLire_(ss, onglet) {
+  const sh = ss.getSheetByName(onglet);
+  if (!sh) return [];
+  const meta = fusMeta_(ss);
+  const feuille = (meta.sheets || []).filter(function (s) { return s.properties.title === onglet; })[0];
+  const out = [];
+  ((feuille && feuille.tables) || []).forEach(function (t) {
+    const g = t.range, r0 = (g.startRowIndex || 0) + 1, c0 = (g.startColumnIndex || 0) + 1;
+    const nbL = g.endRowIndex - (g.startRowIndex || 0), nbC = g.endColumnIndex - (g.startColumnIndex || 0);
+    if (nbL < 1 || nbC < 2) return;
+    const v = sh.getRange(r0, c0, nbL, nbC).getValues();
+    const h = invEntetes_(v[0]);
+    const cS = h[invNorm_('Stock')], cT = h[invNorm_('Taille')], cN = h[invNorm_('Notes')], cC = h[invNorm_('Caractéristique')];
+    if (cS === undefined) return;
+    const nomNorm = invNorm_(String(t.name).replace(/_\d+$/, '')).replace(/[_\s]+/g, ' ');
+    const lignes = [];
+    v.slice(1).forEach(function (r) {
+      let brut = cT === undefined ? '' : r[cT];
+      if (String(brut).trim() === '' && String(r[cS]).trim() === '' && (cN === undefined || String(r[cN]).trim() === '')) return;
+      // Taille enfant notée en âge (« 6y », « 8 ans ») → affichée en cm, la base retenue (« Size 116 »)
+      const cleT = cT === undefined ? 'TU' : invNormTaille_(brut);
+      if (/^\d{3}$/.test(cleT) && !/^\s*(size\s*)?\d{3}/i.test(String(brut))) brut = 'Size ' + cleT;
+      lignes.push({ taille: String(brut).trim() === '' ? '//' : brut, cle: (cT === undefined ? 'TU' : invNormTaille_(brut)) || 'TU', stock: r[cS],
+        note: cN === undefined ? '' : String(r[cN] || '').trim(), carac: cC === undefined ? '' : String(r[cC] || '').trim() });
+    });
+    out.push({ nom: t.name, nomNorm: nomNorm, stand: /\bvip\b/.test(nomNorm) ? 'VIP' : (/\bgp\b/.test(nomNorm) ? 'GP' : ''),
+      fam: INV_FAMILLES.filter(function (f) { return f.tableau.test(nomNorm); })[0] || null, r0: r0, c0: c0, lignes: lignes });
+  });
+  return out.sort(function (a, b) { return a.r0 - b.r0 || a.c0 - b.c0; });
+}
+
+function sepRang_(cle) {
+  const age = fusAge_(cle);
+  if (age !== null) return 100 + age;
+  const i = FUS_ADULTES.indexOf(cle);
+  return i < 0 ? 50 : i;
+}
+
+function sepPlan_(ss) {
+  const avant = sepLire_(ss, FUS.ANCIEN);
+  if (!avant.length) throw new Error('Onglet « ' + FUS.ANCIEN + ' » introuvable ou sans tableau : impossible de retrouver le stock de chaque boutique.');
+  // Regroupement par article ; un tableau sans GP/VIP compte pour GP
+  const articles = [], parCle = {};
+  avant.forEach(function (t) {
+    const cle = t.fam ? t.fam.nom : t.nomNorm.replace(/\b(gp|vip|sohei)\b/g, '').replace(/\s+/g, ' ').trim();
+    if (!parCle[cle]) {
+      parCle[cle] = { cle: cle, fam: t.fam, nom: (t.fam && SEP.NOMS[t.fam.nom]) || fusNomBase_(t.nom).replace(/_/g, ' '), GP: null, VIP: null, maillot: /maillot/.test(t.nomNorm) };
+      articles.push(parCle[cle]);
+    }
+    const a = parCle[cle], cote = t.stand || 'GP';
+    if (!a[cote]) a[cote] = { lignes: [] };
+    t.lignes.forEach(function (l) { a[cote].lignes.push(l); });
+  });
+  articles.forEach(function (a) {
+    // Côté manquant : mêmes tailles, stock 0
+    ['GP', 'VIP'].forEach(function (c) {
+      const autre = a[c === 'GP' ? 'VIP' : 'GP'];
+      if (!a[c]) a[c] = { vide: true, lignes: autre.lignes.map(function (l) { return { taille: l.taille, cle: l.cle, stock: 0, note: '', carac: '' }; }) };
+      a[c].lignes.sort(function (x, y) { return sepRang_(x.cle) - sepRang_(y.cle); });
+    });
+  });
+  // Maillots de match d'abord, puis les autres articles dans l'ordre de l'onglet
+  articles.sort(function (x, y) { return (y.maillot ? 1 : 0) - (x.maillot ? 1 : 0); });
+  // Contrôle : écart éventuel entre l'onglet fusionné actuel et la somme d'avant (ventes depuis la fusion)
+  const ecarts = [];
+  const somme = function (ls) { return ls.reduce(function (s, l) { return s + (typeof l.stock === 'number' ? l.stock : 0); }, 0); };
+  sepLire_(ss, FUS.ONGLET).forEach(function (t) {
+    if (!/boutiques/.test(t.nomNorm) || !t.fam) return;
+    const a = parCle[t.fam.nom];
+    if (!a) return;
+    const avantTot = somme(a.GP.lignes) + somme(a.VIP.lignes), apres = somme(t.lignes);
+    if (avantTot !== apres) ecarts.push(a.nom + ' : ' + avantTot + ' avant fusion, ' + apres + ' maintenant');
+  });
+  return { articles: articles, ecarts: ecarts };
+}
+
+function sepResume_(plan) {
+  const somme = function (ls) { return ls.reduce(function (s, l) { return s + (typeof l.stock === 'number' ? l.stock : 0); }, 0); };
+  const fmt = function (c) { return c.lignes.map(function (l) { return (String(l.taille) === '//' ? '' : String(l.taille).replace(/^size\s*/i, '') + ' ') + l.stock; }).join(' | '); };
+  const l = ['Stock repris par boutique (avant fusion) :'];
+  plan.articles.forEach(function (a) {
+    l.push('• ' + a.nom + (a.maillot ? ' (GP classique / VIP Sohei)' : '') + (a.fam ? '' : '  ⚠ non relié au décompte'));
+    l.push('     GP  : ' + fmt(a.GP) + ' (total ' + somme(a.GP.lignes) + ')' + (a.GP.vide ? ' — tableau créé vide' : ''));
+    l.push('     VIP : ' + fmt(a.VIP) + ' (total ' + somme(a.VIP.lignes) + ')' + (a.VIP.vide ? ' — tableau créé vide' : ''));
+  });
+  l.push('');
+  l.push(plan.ecarts.length ? '⚠ Ventes décomptées depuis la fusion (à reporter à la main dans la bonne boutique) :\n   ' + plan.ecarts.join('\n   ')
+    : '✓ Aucune vente depuis la fusion : stocks identiques.');
+  return l.join('\n');
+}
+
+function sepEcrire_(ss, sh, plan) {
+  const sid = sh.getSheetId(), reqs = [];
+  const COLS = { GP: [1, 13], VIP: [7, 19] };      // article 1 : A (GP) + G (VIP) ; article 2 : M (GP) + S (VIP)
+  sh.getRange(1, 1).setValue('STOCK EN BOUTIQUE — 🔵 BOUTIQUE GP (bleu) · 🔴 BOUTIQUE VIP (rouge) · tailles adultes puis enfants')
+    .setFontWeight('bold').setFontSize(14).setFontColor('#001E2D');
+  let ligne = 4;
+  for (let i = 0; i < plan.articles.length; i += 2) {
+    const duo = plan.articles.slice(i, i + 2);
+    let haut = 0;
+    duo.forEach(function (a, k) {
+      // Nom de l'article : 3 lignes au-dessus du tableau, sur la largeur des 2 tableaux
+      const cA = COLS.GP[k];
+      sh.getRange(ligne - 3, cA, 1, 11).merge().setValue(a.nom.toUpperCase() + (a.maillot ? '   (GP = classique · VIP = Sohei)' : ''))
+        .setFontWeight('bold').setFontSize(13).setFontColor('#001E2D').setBackground('#F2F4F7');
+      ['GP', 'VIP'].forEach(function (cote) {
+        const c0 = COLS[cote][k], st = SEP[cote], it = a[cote], n = it.lignes.length;
+        // Étiquette de la boutique : 2 lignes au-dessus (la ligne juste au-dessus est occupée par l'icône du tableau)
+        sh.getRange(ligne - 2, c0, 1, 4).merge().setValue((cote === 'GP' ? '🔵 ' : '🔴 ') + st.lib + (a.maillot ? (cote === 'GP' ? ' · classique' : ' · Sohei') : ''))
+          .setFontWeight('bold').setFontColor('#FFFFFF').setBackground(st.hex).setHorizontalAlignment('center');
+        const vals = [FUS.ENTETES].concat(it.lignes.map(function (x) { return [x.carac || '', x.stock, x.taille, x.note || '']; }));
+        sh.getRange(ligne, c0, vals.length, 4).setValues(vals);
+        sh.getRange(ligne + 1, c0 + 2, Math.max(1, n), 1).setNumberFormat('@');
+        sh.getRange(ligne, c0 + 4).setFormula('="TOTAL : "&SUM(' + sh.getRange(ligne + 1, c0 + 1, Math.max(1, n), 1).getA1Notation() + ')')
+          .setBackground(st.clair).setFontColor(st.hex).setFontWeight('bold');
+        const base = (a.fam ? a.fam.nom : a.nom).replace(/-/g, '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
+        reqs.push({ addTable: { table: {
+          name: 'B_' + base + '_' + cote,
+          range: { sheetId: sid, startRowIndex: ligne - 1, endRowIndex: ligne + Math.max(1, n), startColumnIndex: c0 - 1, endColumnIndex: c0 + 3 },
+          rowsProperties: { headerColorStyle: { rgbColor: st.tete }, firstBandColorStyle: { rgbColor: SEP.BLANC }, secondBandColorStyle: { rgbColor: st.bande } },
+        } } });
+        haut = Math.max(haut, n + 1);
+      });
+    });
+    ligne += haut + 5;
+  }
+  [1, 7, 13, 19].forEach(function (c) {
+    sh.setColumnWidth(c, 120); sh.setColumnWidth(c + 1, 70); sh.setColumnWidth(c + 2, 80); sh.setColumnWidth(c + 3, 150);
+    sh.setColumnWidth(c + 4, 95);
+    if (c + 5 <= 24) sh.setColumnWidth(c + 5, 16);
+  });
+  SpreadsheetApp.flush();
+  fusBatch_(ss, reqs);
+}
