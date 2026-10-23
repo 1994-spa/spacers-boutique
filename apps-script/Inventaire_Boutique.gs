@@ -460,6 +460,10 @@ function invNormTaille_(v) {
   if (t === 'XXL') t = '2XL';
   if (t === 'XXXL') t = '3XL';
   t = t.replace(/ANS$/, 'Y');
+  // Tailles enfants : la base est la taille en cm (116 à 164). « 8 ans », « 8Y », « 8A » → 128
+  const age = t.match(/^(\d{1,2})(Y|A)$/);
+  if (age && +age[1] >= 4 && +age[1] <= 16) t = String(116 + (+age[1] - 6) * 6);
+  t = t.replace(/^(\d{3})\.0+$/, '$1');
   return t;
 }
 function invNorm_(s) {
@@ -913,4 +917,42 @@ function fusBatch_(ss, reqs) {
     method: 'post', contentType: 'application/json', payload: JSON.stringify({ requests: reqs }),
     headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
   if (r.getResponseCode() >= 300) throw new Error('Création des tableaux impossible (' + r.getResponseCode() + ') : ' + r.getContentText().slice(0, 400));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TAILLES ENFANTS EN CM DANS LE CRM (▶ harmoniserTaillesEnfantsCm, une fois, depuis App_Boutique)
+// Base des tailles enfants = cm (116, 128, 140, 152, 164), comme les maillots.
+// 03_PRODUITS : « Nara Tee junior 8 ans » (TSH-NARJ-8A, taille 8 ans) → « Nara Tee junior - 128 »
+// (TSH-NARJ-128, taille 128). Correspondance : 6 ans 116 · 8 ans 128 · 10 ans 140 · 12 ans 152 · 14 ans 164.
+// Stocks, prix et autres colonnes ne bougent pas. Avant : « Synchroniser tout » sur la tablette ;
+// après : « Mettre à jour le catalogue ».
+// ═══════════════════════════════════════════════════════════════════════════
+function harmoniserTaillesEnfantsCm() {
+  const crm = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById('1mE9gSCtetFgnWEt0kA6cS2lcgJDe7oPRLDiXdGhH2EQ');
+  const sh = crm.getSheetByName('03_PRODUITS');
+  if (!sh) throw new Error('Onglet 03_PRODUITS introuvable : lancer cette fonction depuis le projet App_Boutique du CRM.');
+  const d = sh.getDataRange().getValues();
+  const h = invEntetes_(d[0]);
+  const cP = h['produit'], cR = h['ref_boutique'], cT = h['taille'];
+  if (cP === undefined || cT === undefined) throw new Error('Colonnes « produit » / « taille » introuvables dans 03_PRODUITS.');
+  const faits = [];
+  d.slice(1).forEach(function (r, i) {
+    const m = String(r[cT]).trim().match(/^(\d{1,2})\s*(ans|y|a)$/i);
+    if (!m) return;
+    const cm = 116 + (+m[1] - 6) * 6, ligne = i + 2;
+    const nom = String(r[cP]).replace(/\s*[-–]?\s*\d{1,2}\s*ans\s*$/i, '').trim() + ' - ' + cm;
+    sh.getRange(ligne, cT + 1).setValue(cm);
+    sh.getRange(ligne, cP + 1).setValue(nom);
+    let ref = '';
+    if (cR !== undefined && r[cR]) {
+      ref = String(r[cR]).replace(/-\d{1,2}(A|Y|ANS)?$/i, '-' + cm);
+      sh.getRange(ligne, cR + 1).setValue(ref);
+    }
+    faits.push('Ligne ' + ligne + ' : « ' + r[cP] + ' » (' + r[cT] + ') → « ' + nom + ' » (' + cm + ')' + (ref ? ' · réf. ' + r[cR] + ' → ' + ref : ''));
+  });
+  const msg = faits.length ? faits.length + ' article(s) passé(s) en taille cm :\n' + faits.join('\n') +
+    '\n\nTablette : « Mettre à jour le catalogue ».' : 'Aucune taille enfant en âge : rien à faire.';
+  Logger.log(msg);
+  try { SpreadsheetApp.getUi().alert('Tailles enfants en cm', msg, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) {}
+  return msg;
 }
