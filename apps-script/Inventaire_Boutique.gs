@@ -868,8 +868,7 @@ function fusEcrire_(ss, sh, plan) {
       reqs.push({ addTable: { table: {
         name: it.nom,
         range: { sheetId: sid, startRowIndex: ligne - 1, endRowIndex: ligne + Math.max(1, n), startColumnIndex: c0 - 1, endColumnIndex: c0 + 3 },
-        columnProperties: FUS.ENTETES.map(function (e, j) { return { columnIndex: j, columnName: e }; }),
-        rowsProperties: it.style || { headerColorStyle: { rgbColor: FUS.NAVY }, firstBandColorStyle: { rgbColor: FUS.BANDE1 }, secondBandColorStyle: { rgbColor: FUS.BANDE2 } },
+        rowsProperties: { headerColorStyle: { rgbColor: FUS.NAVY }, firstBandColorStyle: { rgbColor: FUS.BANDE1 }, secondBandColorStyle: { rgbColor: FUS.BANDE2 } },
       } } });
       haut = Math.max(haut, n + 1);
     });
@@ -878,7 +877,7 @@ function fusEcrire_(ss, sh, plan) {
   const paquets = function (liste) { const out = []; for (let i = 0; i < liste.length; i += 4) out.push(liste.slice(i, i + 4)); return out; };
   const maillot = function (t, lieu) {
     // Nom unique dans le classeur (les anciens tableaux restent dans l'onglet masqué)
-    return { nom: t.nom.replace(/_\d+$/, '') + '_match', titre: t.nom.replace(/_\d+$/, '').replace(/_/g, ' ') + ' (' + lieu + ')',
+    return { nom: t.nom.replace(/_\d+$/, '').replace(/\s+/g, '_') + '_match', titre: t.nom.replace(/_\d+$/, '').replace(/_/g, ' ') + ' (' + lieu + ')',
       lignes: t.lignes.map(function (l) { return { taille: l.taille, stock: l.stock, note: l.note, carac: l.carac }; }), style: t.style };
   };
 
@@ -911,48 +910,30 @@ function fusMeta_(ss) {
 }
 
 function fusBatch_(ss, reqs) {
-  if (!reqs.length) return;
+  const erreurs = [];
+  reqs.forEach(function (rq) {
+    const t = rq.addTable.table;
+    const essais = [
+      t,
+      { name: t.name, range: t.range },                                                   // sans couleurs
+      { name: fusNomSimple_(t.name), range: t.range },                                    // nom sans accent
+    ];
+    let ok = false, dernier = '';
+    for (let i = 0; i < essais.length && !ok; i++) {
+      try { fusAppel_(ss, [{ addTable: { table: essais[i] } }]); ok = true; }
+      catch (e) { dernier = e.message; Utilities.sleep(400); }
+    }
+    if (!ok) erreurs.push(t.name + ' : ' + dernier);
+  });
+  if (erreurs.length) throw new Error('Tableau(x) non créé(s) — fusion annulée, rien n\'a changé :\n' + erreurs.join('\n'));
+}
+function fusNomSimple_(nom) {
+  return String(nom).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9_]/g, '_').replace(/_+/g, '_');
+}
+function fusAppel_(ss, reqs) {
   if (typeof Sheets !== 'undefined' && Sheets.Spreadsheets) { Sheets.Spreadsheets.batchUpdate({ requests: reqs }, ss.getId()); return; }
   const r = UrlFetchApp.fetch('https://sheets.googleapis.com/v4/spreadsheets/' + ss.getId() + ':batchUpdate', {
     method: 'post', contentType: 'application/json', payload: JSON.stringify({ requests: reqs }),
     headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
-  if (r.getResponseCode() >= 300) throw new Error('Création des tableaux impossible (' + r.getResponseCode() + ') : ' + r.getContentText().slice(0, 400));
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// TAILLES ENFANTS EN CM DANS LE CRM (▶ harmoniserTaillesEnfantsCm, une fois, depuis App_Boutique)
-// Base des tailles enfants = cm (116, 128, 140, 152, 164), comme les maillots.
-// 03_PRODUITS : « Nara Tee junior 8 ans » (TSH-NARJ-8A, taille 8 ans) → « Nara Tee junior - 128 »
-// (TSH-NARJ-128, taille 128). Correspondance : 6 ans 116 · 8 ans 128 · 10 ans 140 · 12 ans 152 · 14 ans 164.
-// Stocks, prix et autres colonnes ne bougent pas. Avant : « Synchroniser tout » sur la tablette ;
-// après : « Mettre à jour le catalogue ».
-// ═══════════════════════════════════════════════════════════════════════════
-function harmoniserTaillesEnfantsCm() {
-  const crm = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById('1mE9gSCtetFgnWEt0kA6cS2lcgJDe7oPRLDiXdGhH2EQ');
-  const sh = crm.getSheetByName('03_PRODUITS');
-  if (!sh) throw new Error('Onglet 03_PRODUITS introuvable : lancer cette fonction depuis le projet App_Boutique du CRM.');
-  const d = sh.getDataRange().getValues();
-  const h = invEntetes_(d[0]);
-  const cP = h['produit'], cR = h['ref_boutique'], cT = h['taille'];
-  if (cP === undefined || cT === undefined) throw new Error('Colonnes « produit » / « taille » introuvables dans 03_PRODUITS.');
-  const faits = [];
-  d.slice(1).forEach(function (r, i) {
-    const m = String(r[cT]).trim().match(/^(\d{1,2})\s*(ans|y|a)$/i);
-    if (!m) return;
-    const cm = 116 + (+m[1] - 6) * 6, ligne = i + 2;
-    const nom = String(r[cP]).replace(/\s*[-–]?\s*\d{1,2}\s*ans\s*$/i, '').trim() + ' - ' + cm;
-    sh.getRange(ligne, cT + 1).setValue(cm);
-    sh.getRange(ligne, cP + 1).setValue(nom);
-    let ref = '';
-    if (cR !== undefined && r[cR]) {
-      ref = String(r[cR]).replace(/-\d{1,2}(A|Y|ANS)?$/i, '-' + cm);
-      sh.getRange(ligne, cR + 1).setValue(ref);
-    }
-    faits.push('Ligne ' + ligne + ' : « ' + r[cP] + ' » (' + r[cT] + ') → « ' + nom + ' » (' + cm + ')' + (ref ? ' · réf. ' + r[cR] + ' → ' + ref : ''));
-  });
-  const msg = faits.length ? faits.length + ' article(s) passé(s) en taille cm :\n' + faits.join('\n') +
-    '\n\nTablette : « Mettre à jour le catalogue ».' : 'Aucune taille enfant en âge : rien à faire.';
-  Logger.log(msg);
-  try { SpreadsheetApp.getUi().alert('Tailles enfants en cm', msg, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) {}
-  return msg;
+  if (r.getResponseCode() >= 300) throw new Error('(' + r.getResponseCode() + ') ' + r.getContentText().slice(0, 300));
 }
