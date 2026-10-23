@@ -57,6 +57,12 @@ Fichier autonome : à ajouter au projet **du classeur** (App_Boutique) ou au pro
 
 ## Mise à jour du classeur « Inventaire 2026 2027 » (`Inventaire_Boutique.gs`)
 
+### Fusion GP + VIP de l'onglet « En boutique » (23/10/2026)
+- Remplacer `Inventaire_Boutique.gs`, puis ▶ `apercuFusionEnBoutique` (aperçu dans le journal, rien n'est modifié) et ▶ `fusionnerEnBoutique` (une fois).
+- Pour chaque article sauf les maillots de match, les tableaux GP (rouge) et VIP (bleu) deviennent un tableau « … boutiques » = stock total en boutique, tailles adultes puis enfants. Les maillots de match restent séparés (GP = classique, VIP = Sohei).
+- Le décompte suit tout seul : une vente GP ou VIP sort du tableau commun ; un transfert GP ↔ VIP ne change rien. Ancien onglet gardé masqué (« En boutique (avant fusion) ») ; ▶ `annulerFusionEnBoutique` pour revenir en arrière.
+- Familles ajoutées au décompte : polos, sweats zippés, t-shirts sportifs, porte-clés, stickers, mugs, casquettes.
+
 Fichier autonome, à ajouter au projet **du classeur** (App_Boutique) puis ▶ `installerInventaire` une fois (déclencheur 10 min). ▶ `diagnosticInventaire` liste les tableaux reconnus.
 
 - Sources : ventes caisse (`21_LIGNES_LIVE`, en direct pendant le match) et retraits d'add-ons web remis au stand (`17b_REMISES`).

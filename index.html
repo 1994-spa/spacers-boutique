@@ -176,6 +176,10 @@ input,textarea,select{font-family:inherit;color:var(--text);outline:none}
 .pgroup-h b{font-family:var(--f-t);font-size:30px;text-transform:uppercase;letter-spacing:.5px;font-weight:400}
 .pgroup-h span{font-size:14px;color:var(--muted);font-weight:600}
 .pgroup-h::after{content:'';flex:1;height:2px;background:var(--divider);border-radius:2px}
+.pkids-h{display:flex;align-items:center;gap:8px;margin:12px 0 8px;font-size:13px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.pkids-h::after{content:'';flex:1;height:1px;background:var(--divider)}
+.ptile.kid .pt-main{font-size:26px}
+.pt-sub{font-size:12px;font-weight:700;color:var(--muted)}
 .ptiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:12px}
 .ptile{--acc:var(--navy);position:relative;min-height:118px;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);display:flex;flex-direction:column;align-items:stretch;text-align:left;overflow:hidden;min-height:128px;transition:transform .1s,box-shadow .15s;-webkit-user-select:none;user-select:none}
 .ptile::before{content:'';height:8px;background:var(--acc);flex-shrink:0}
@@ -1132,9 +1136,33 @@ function accentOf(p){
   return'#0B3446';
 }
 const stockOf=p=>p.ss!==undefined?p.ss:p.stock;
+// ── Tailles enfants : regroupées sous les tailles adultes du même article ──
+const TAILLES_ADULTE=['XXS','XS','S','M','L','XL','XXL','2XL','3XL','4XL','TU'];
+const RE_JUNIOR=/\s*[\-–(]?\s*\b(junior|enfants?|kids?|jr)\b\)?/i;
+// Âge (ans) d'une taille enfant : « 8 ANS », « 8Y », « 116 » (taille en cm → ≈ 6 ans) ; null si taille adulte
+function ageTaille(t){
+  t=String(t||'').toUpperCase().replace(/^SIZE\s*/,'').trim();
+  let m=t.match(/^(\d{1,2})\s*(ANS|Y)$/);if(m)return +m[1];
+  m=t.match(/^(\d{3})(\.0+)?$/);if(m){const cm=+m[1];if(cm>=90&&cm<=176)return Math.round((cm-80)/6);}
+  return null;
+}
+function estEnfant(p){return RE_JUNIOR.test(String(p.modele||p.nom||''))||ageTaille(tailleOf(p))!==null;}
+// Article de base (« Nara Tee junior » → « Nara Tee ») : clé de regroupement de la grille
+function baseModele(p){return modeleOf(p).replace(RE_JUNIOR,' ').replace(/\s{2,}/g,' ').trim()||modeleOf(p);}
+// Rang d'affichage : tailles adultes (S → 3XL) puis enfants du plus petit au plus grand
+function rangTaille(p){const t=tailleOf(p),a=ageTaille(t);
+  if(a!==null)return 100+a+(/^\d{3}/.test(t)?0.01:0);
+  const i=TAILLES_ADULTE.indexOf(t==='XXL'?'XXL':t);return i<0?99:i;}
+// Libellé lisible : « 8 ans », « 128 (≈ 8 ans) », « M »
+function libTaille(p){const t=tailleOf(p),a=ageTaille(t);
+  if(a===null)return t;if(/ANS|Y$/.test(t))return a+' ans';return t.replace(/\.0+$/,'');}
+function sousLibTaille(p){const t=tailleOf(p),a=ageTaille(t);
+  return a!==null&&/^\d{3}/.test(t)?'≈ '+a+' ans':'';}
+// Stock total des deux boutiques (stand + autre boutique) — affiché sur la tablette
+function stockTotal(p){const ici=Math.max(0,Number(stockOf(p))||0),au=stockAutreEst(p);return ici+(au===null?0:au);}
 function refOf(p){return p.ref_boutique||p.ref||p.id;}
 // Ordre d'affichage : modèle puis taille (S, M, L, XL…)
-function triProduits(l){return [...l].sort((a,b)=>modeleOf(a).localeCompare(modeleOf(b),'fr')||((TAILLES.indexOf(tailleOf(a))+1||99)-(TAILLES.indexOf(tailleOf(b))+1||99)));}
+function triProduits(l){return [...l].sort((a,b)=>baseModele(a).localeCompare(baseModele(b),'fr')||rangTaille(a)-rangTaille(b)||modeleOf(a).localeCompare(modeleOf(b),'fr'));}
 
 // ── ACCUEIL ───────────────────────────────────
 // Saison sportive déduite de la date : juillet → juin
@@ -1312,24 +1340,30 @@ $('catbar').addEventListener('click',e=>{const b=e.target.closest('[data-cat]');
 function rGrid(){
   const list=getAct(curCat),g=$('pgrid');
   if(!list.length){g.innerHTML='<div class="empty">'+(curCat!=='Tous'?'Aucun produit dans cette catégorie':'Catalogue vide — Synchronisation → « Mettre à jour le catalogue »')+'</div>';return;}
-  // Regroupement par modèle : une ligne par modèle, une carte par taille
+  // Regroupement par article : une section par article, tailles adultes puis, juste en dessous, tailles enfants
   const groups=new Map();
-  list.forEach(p=>{const k=modeleOf(p);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(p);});
+  list.forEach(p=>{const k=baseModele(p);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(p);});
+  const tuile=p=>{
+    const ici=stockOf(p),au=stockAutreEst(p),tot=stockTotal(p),gp=ici<=0&&(au===null||au>0),rupt=ici<=0&&!gp,low=tot>0&&tot<=3,t=tailleOf(p),q=qtePan(p.id),kid=estEnfant(p);
+    const main=t?libTaille(p):p.nom,long=!t,sub=t?sousLibTaille(p):'',acc=accentOf(p);
+    return '<button class="ptile'+(rupt?' rupt':'')+(gp?' gp':'')+(q?' incart':'')+(kid?' kid':'')+'" style="--acc:'+acc+'" data-id="'+esc(p.id)+'" aria-label="'+esc(p.nom)+(kid?' (enfant)':'')+', '+fmtP(p.prix_vente)+(gp?', à chercher en '+nomPt(autreB()):'')+'">'+
+      (q?'<span class="pt-qty">'+q+'</span>':(rupt?'<span class="pt-flag">RUPTURE</span>':gp?'<span class="pt-flag gp">🏃 '+nomPt(autreB())+'</span>':''))+
+      '<span class="pt-in"><span class="pt-main'+(long?' long':'')+'">'+esc(main)+'</span>'+(sub?'<span class="pt-sub">'+esc(sub)+'</span>':'')+
+      '<span class="pt-foot"><span class="pt-price">'+fmtP(p.prix_vente)+'</span>'+
+      (rupt?'<span class="pt-stock out">épuisé</span>'
+        :gp?'<span class="pt-stock gp">'+(au===null?'à chercher en '+nomPt(autreB()):'0 ici · '+au+' en '+nomPt(autreB()))+'</span>'
+        :'<span class="pt-stock'+(low?' low':'')+'">'+(low?'plus que '+tot:'stock '+tot)+'</span>')+'</span></span></button>';
+  };
   let h='';
   [...groups.entries()].sort((a,b)=>b[1].length-a[1].length||a[0].localeCompare(b[0],'fr')).forEach(([mod,ps])=>{
-    ps.sort((a,b)=>{const ia=TAILLES.indexOf(tailleOf(a)),ib=TAILLES.indexOf(tailleOf(b));return (ia<0?99:ia)-(ib<0?99:ib)||String(a.nom).localeCompare(String(b.nom));});
+    ps.sort((a,b)=>rangTaille(a)-rangTaille(b)||String(a.nom).localeCompare(String(b.nom)));
+    const ad=ps.filter(p=>!estEnfant(p)),en=ps.filter(estEnfant);
     const prix=[...new Set(ps.map(p=>Number(p.prix_vente)||0))];
-    const acc=accentOf(ps[0]),dispo=ps.reduce((s,p)=>s+Math.max(0,stockOf(p)||0),0);
-    h+='<section><div class="pgroup-h"><span class="swatch" style="background:'+acc+'"></span><b>'+esc(mod)+'</b><span>'+(prix.length===1?fmtP(prix[0]):fmtP(Math.min(...prix))+' – '+fmtP(Math.max(...prix)))+' · '+dispo+' en stock</span></div><div class="ptiles">';
-    ps.forEach(p=>{
-      const st=stockOf(p),au=stockAutreEst(p),gp=st<=0&&(au===null||au>0),rupt=st<=0&&!gp,low=st>0&&st<=3,t=tailleOf(p),q=qtePan(p.id);
-      const main=t||p.nom,long=!t;
-      h+='<button class="ptile'+(rupt?' rupt':'')+(gp?' gp':'')+(q?' incart':'')+'" style="--acc:'+acc+'" data-id="'+esc(p.id)+'" aria-label="'+esc(p.nom)+', '+fmtP(p.prix_vente)+(gp?', à chercher en '+nomPt(autreB()):'')+'">'+
-        (q?'<span class="pt-qty">'+q+'</span>':(rupt?'<span class="pt-flag">RUPTURE</span>':gp?'<span class="pt-flag gp">🏃 '+nomPt(autreB())+'</span>':''))+
-        '<span class="pt-in"><span class="pt-main'+(long?' long':'')+'">'+esc(main)+'</span>'+
-        '<span class="pt-foot"><span class="pt-price">'+fmtP(p.prix_vente)+'</span>'+(rupt?'<span class="pt-stock out">épuisé</span>':gp?'<span class="pt-stock gp">'+(au===null?'à chercher en '+nomPt(autreB()):'0 ici · ≈'+au+' en '+nomPt(autreB()))+'</span>':low?'<span class="pt-stock low">plus que '+st+'</span>':'')+'</span></span></button>';
-    });
-    h+='</div></section>';
+    const acc=accentOf(ps[0]),dispo=ps.reduce((s,p)=>s+stockTotal(p),0);
+    h+='<section><div class="pgroup-h"><span class="swatch" style="background:'+acc+'"></span><b>'+esc(mod)+'</b><span>'+(prix.length===1?fmtP(prix[0]):fmtP(Math.min(...prix))+' – '+fmtP(Math.max(...prix)))+' · '+dispo+' en stock (2 boutiques)</span></div>';
+    if(ad.length)h+='<div class="ptiles">'+ad.map(tuile).join('')+'</div>';
+    if(en.length)h+=(ad.length?'<div class="pkids-h">👶 Tailles enfant</div>':'')+'<div class="ptiles">'+en.map(tuile).join('')+'</div>';
+    h+='</section>';
   });
   g.innerHTML=h;
 }
@@ -1486,7 +1520,7 @@ function rPan(){
       :'<div class="empty"><span class="stepn">2</span><br>Touche un article<br>pour l\'ajouter</div>';
     return;}
   el.innerHTML=items.map(i=>{const t=tailleOf(i);
-    return '<div class="pi'+(i.src?' gp':'')+'"><div class="pinam">'+esc(t?modeleOf(i):i.nom)+(t?'<small>Taille '+esc(t)+'</small>':'')+(i.src?'<small class="gp">🏃 à chercher en '+nomPt(i.src)+'</small>':'')+(i.tarif==='partenaire'?'<small>Tarif partenaire</small>':'')+'</div><div class="piqty"><button class="qb" onclick="chQty(\''+esc(i.k)+'\',-1)" aria-label="Moins">−</button><div class="qv">'+i.qty+'</div><button class="qb plus" onclick="chQty(\''+esc(i.k)+'\',1)" aria-label="Plus">+</button></div><div class="pipr">'+fmt(i.prix_vente*i.qty)+'</div></div>';
+    return '<div class="pi'+(i.src?' gp':'')+'"><div class="pinam">'+esc(t?modeleOf(i):i.nom)+(t?'<small>Taille '+esc(libTaille(i))+(estEnfant(i)?' (enfant)':'')+'</small>':'')+(i.src?'<small class="gp">🏃 à chercher en '+nomPt(i.src)+'</small>':'')+(i.tarif==='partenaire'?'<small>Tarif partenaire</small>':'')+'</div><div class="piqty"><button class="qb" onclick="chQty(\''+esc(i.k)+'\',-1)" aria-label="Moins">−</button><div class="qv">'+i.qty+'</div><button class="qb plus" onclick="chQty(\''+esc(i.k)+'\',1)" aria-label="Plus">+</button></div><div class="pipr">'+fmt(i.prix_vente*i.qty)+'</div></div>';
   }).join('');
 }
 function rBand(){
@@ -2161,7 +2195,7 @@ function rListeCourses(){
   $('coursesTit').textContent='🏃 Courses en '+a;
   $('coursesSub').textContent=att.length?'Articles déjà payés : le volant les rapporte de la boutique '+a+'. Touche « Remis » quand le client a son article.':'Aucune course en attente.';
   $('coursesList').innerHTML=att.map(t=>{const p=prods.find(x=>x.id===t.produit_id)||{nom:t.nom},tl=tailleOf(p);
-    return '<div class="crow"><div class="ci"><b>'+t.qte+' × '+esc(tl?modeleOf(p):t.nom)+(tl?' · '+esc(tl):'')+'</b><small>Payé à '+h(t.ts)+'</small></div><button class="cko" onclick="courseIntrouvable(\''+esc(t.id)+'\')">Introuvable</button><button class="cok" onclick="courseRemise(\''+esc(t.id)+'\')">✔ Remis</button></div>';}).join('')
+    return '<div class="crow"><div class="ci"><b>'+t.qte+' × '+esc(tl?modeleOf(p):t.nom)+(tl?' · '+esc(libTaille(p))+(estEnfant(p)?' enfant':''):'')+'</b><small>Payé à '+h(t.ts)+'</small></div><button class="cko" onclick="courseIntrouvable(\''+esc(t.id)+'\')">Introuvable</button><button class="cok" onclick="courseRemise(\''+esc(t.id)+'\')">✔ Remis</button></div>';}).join('')
     +(faites.length?'<div class="hist" style="margin-top:12px">Dernières courses</div>'+faites.map(t=>'<div class="list-row"><span>'+t.qte+' × '+esc(t.nom)+'</span><b class="'+(t.statut==='remis'?'c-ok':'c-err')+'" style="font-size:13px">'+(t.statut==='remis'?'✔ remis '+h(t.remis_ts):'✕ introuvable')+'</b></div>').join(''):'');
 }
 async function courseRemise(id){

@@ -57,6 +57,15 @@ const INV_FAMILLES = [
   { nom: 'Short',               produit: /sho-|short/,                    tableau: /shorts?/ },
   { nom: 'Gourde',              produit: /gourde/,                        tableau: /gourdes?/,   tu: true },
   { nom: 'Sac',                 produit: /\bsacs?\b/,                    tableau: /sacs?/,      tu: true },
+  { nom: 'Polo femme',          produit: /polo.*(femme|women)/,           tableau: /polos?.*\b(women|femmes?)\b/ },
+  { nom: 'Polo homme',          produit: /polo.*(homme|\bmen\b)/,        tableau: /polos?.*\b(men|man|hommes?)\b/ },
+  { nom: 'Sweat zippé',         produit: /sweat|hoodie/,                  tableau: /sweats?|hoodies?/ },
+  { nom: 'T-shirt sportif blanc', produit: /t-?shirt sportif.*blanc/,     tableau: /t-?shirts? sportifs? blancs?/ },
+  { nom: 'T-shirt sportif bleu',  produit: /t-?shirt sportif.*(navy|bleu)/, tableau: /t-?shirts? sportifs? (bleus?|navy)/ },
+  { nom: 'Porte-clés',          produit: /porte.?cles?/,                  tableau: /porte.?cles?/, tu: true },
+  { nom: 'Sticker',             produit: /sticker/,                       tableau: /stickers?/,  tu: true },
+  { nom: 'Mug',                 produit: /\bmugs?\b/,                    tableau: /\bmugs?\b/, tu: true },
+  { nom: 'Casquette',           produit: /casquette/,                     tableau: /casquettes?/, tu: true },
 ];
 
 const INV_JOURNAL_COLS = ['Clé', 'Traité le', 'Date mouvement', 'Origine', 'Match', 'Stand', 'Article',
@@ -642,4 +651,266 @@ function masquerOngletsMateriel() {
   const msg = 'Masqués : ' + (faits.join(', ') || 'déjà masqués') + (absents.length ? '. Introuvables : ' + absents.join(', ') : '') + '.';
   Logger.log(msg);
   return msg;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FUSION DES TABLEAUX GP + VIP DE L'ONGLET « En boutique » (23/10/2026)
+// ▶ apercuFusionEnBoutique  : montre ce qui va être fait (rien n'est modifié)
+// ▶ fusionnerEnBoutique     : fait la fusion (une fois)
+// ▶ annulerFusionEnBoutique : remet l'ancien onglet si besoin
+//
+// Pour chaque article SAUF les maillots de match, le tableau rouge (GP) et le tableau bleu (VIP)
+// deviennent UN tableau « … boutiques » = stock total en boutique (GP + VIP), taille par taille,
+// tailles adultes puis tailles enfants juste en dessous.
+// Les maillots de match restent séparés : GP = maillots classiques, VIP = maillots Sohei.
+// Le décompte automatique (ventes caisse, retraits web, transferts) suit tout seul :
+// une vente GP ou VIP se retire du tableau commun ; un transfert GP ↔ VIP ne change rien.
+// L'ancien onglet est gardé, masqué, sous le nom « En boutique (avant fusion) ».
+// ═══════════════════════════════════════════════════════════════════════════
+const FUS = {
+  ONGLET: 'En boutique',
+  ANCIEN: 'En boutique (avant fusion)',
+  COLS: [1, 7, 13, 19],               // A, G, M, S : 4 tableaux par rangée, comme avant
+  ENTETES: ['Caractéristique', 'Stock', 'Taille', 'Notes'],
+  NAVY: { red: 0 / 255, green: 30 / 255, blue: 45 / 255 },
+  BANDE1: { red: 1, green: 1, blue: 1 },
+  BANDE2: { red: 238 / 255, green: 242 / 255, blue: 247 / 255 },
+};
+const FUS_ADULTES = ['XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', 'TU'];
+
+function apercuFusionEnBoutique() {
+  const plan = fusPlan_(invSS_());
+  const msg = fusResume_(plan) + '\n\nRien n\'a été modifié. Pour appliquer : ▶ fusionnerEnBoutique';
+  Logger.log(msg);
+  return msg;
+}
+
+function fusionnerEnBoutique() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(60000);
+  const ss = invSS_();
+  let neuf = null, ancien = null;
+  try {
+    if (ss.getSheetByName(FUS.ANCIEN)) throw new Error('Fusion déjà faite (l\'onglet « ' + FUS.ANCIEN + ' » existe). Pour recommencer : ▶ annulerFusionEnBoutique');
+    // Décomptes en attente appliqués d'abord sur les anciens tableaux
+    try { Logger.log(majInventaire_()); } catch (e) { Logger.log('Décompte préalable : ' + e.message); }
+    const plan = fusPlan_(ss);
+    ancien = ss.getSheetByName(FUS.ONGLET);
+    const pos = ancien.getIndex();
+    ancien.setName(FUS.ANCIEN);
+    neuf = ss.insertSheet(FUS.ONGLET, pos - 1);
+    fusEcrire_(ss, neuf, plan);
+    ancien.hideSheet();
+    ss.setActiveSheet(neuf);
+    const msg = 'Fusion faite.\n' + fusResume_(plan) + '\n\nAncien onglet gardé (masqué) : « ' + FUS.ANCIEN + ' ».\n\n' + diagnosticInventaire();
+    Logger.log(msg);
+    try { SpreadsheetApp.getUi().alert('En boutique : tableaux GP + VIP fusionnés', msg, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) {}
+    return msg;
+  } catch (e) {
+    // Retour à l'état d'origine si quelque chose a échoué en cours de route
+    if (neuf) { try { ss.deleteSheet(neuf); } catch (x) {} }
+    if (ancien && ancien.getName() === FUS.ANCIEN) { ancien.setName(FUS.ONGLET); if (ancien.isSheetHidden()) ancien.showSheet(); }
+    throw e;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function annulerFusionEnBoutique() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(60000);
+  try {
+    const ss = invSS_(), ancien = ss.getSheetByName(FUS.ANCIEN);
+    if (!ancien) throw new Error('Pas d\'onglet « ' + FUS.ANCIEN + ' » : rien à annuler.');
+    const neuf = ss.getSheetByName(FUS.ONGLET);
+    if (neuf) { neuf.setName('En boutique (fusion annulée ' + Utilities.formatDate(new Date(), 'Europe/Paris', 'dd-MM HH:mm') + ')'); neuf.hideSheet(); }
+    ancien.setName(FUS.ONGLET); ancien.showSheet(); ss.setActiveSheet(ancien);
+    const msg = 'Ancien onglet « En boutique » remis. Attention : les ventes décomptées depuis la fusion l\'ont été dans l\'onglet fusionné (masqué, gardé pour contrôle).';
+    Logger.log(msg);
+    return msg;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ── Lecture des tableaux actuels et regroupement ─────────────────────────
+function fusPlan_(ss) {
+  const sh = ss.getSheetByName(FUS.ONGLET);
+  if (!sh) throw new Error('Onglet « ' + FUS.ONGLET + ' » introuvable.');
+  const meta = fusMeta_(ss);
+  const feuille = (meta.sheets || []).filter(function (s) { return s.properties.title === FUS.ONGLET; })[0];
+  if (!feuille || !(feuille.tables || []).length) throw new Error('Aucun tableau dans « ' + FUS.ONGLET + ' ».');
+  const tabs = [];
+  feuille.tables.forEach(function (t) {
+    const g = t.range, r0 = (g.startRowIndex || 0) + 1, c0 = (g.startColumnIndex || 0) + 1;
+    const nbL = g.endRowIndex - (g.startRowIndex || 0), nbC = g.endColumnIndex - (g.startColumnIndex || 0);
+    if (nbL < 1 || nbC < 2) return;
+    const v = sh.getRange(r0, c0, nbL, nbC).getValues();
+    const h = invEntetes_(v[0]);
+    const cS = h[invNorm_('Stock')], cT = h[invNorm_('Taille')], cN = h[invNorm_('Notes')], cC = h[invNorm_('Caractéristique')];
+    if (cS === undefined) return;
+    const nomNorm = invNorm_(String(t.name).replace(/_\d+$/, '')).replace(/_/g, ' ');
+    const stand = /\bvip\b/.test(nomNorm) ? 'VIP' : (/\bgp\b/.test(nomNorm) ? 'GP' : '');
+    const fam = INV_FAMILLES.filter(function (f) { return f.tableau.test(nomNorm); })[0] || null;
+    const lignes = [];
+    v.slice(1).forEach(function (r) {
+      const brut = cT === undefined ? '' : r[cT];
+      if (String(brut).trim() === '' && String(r[cS]).trim() === '' && (cN === undefined || String(r[cN]).trim() === '')) return;
+      lignes.push({ taille: brut, cle: (cT === undefined ? 'TU' : invNormTaille_(brut)) || 'TU', stock: r[cS],
+        note: cN === undefined ? '' : String(r[cN] || '').trim(), carac: cC === undefined ? '' : String(r[cC] || '').trim() });
+    });
+    tabs.push({ nom: t.name, nomNorm: nomNorm, stand: stand, fam: fam, r0: r0, c0: c0, lignes: lignes, style: t.rowsProperties || null,
+      maillot: /maillot/.test(nomNorm) });
+  });
+  tabs.sort(function (a, b) { return a.r0 - b.r0 || a.c0 - b.c0; });
+
+  // Maillots de match : gardés tels quels (GP classique / VIP Sohei)
+  const maillotsGP = tabs.filter(function (t) { return t.maillot && t.stand !== 'VIP'; });
+  const maillotsVIP = tabs.filter(function (t) { return t.maillot && t.stand === 'VIP'; });
+  // Autres articles : regroupés par article (famille reconnue, sinon nom sans GP/VIP)
+  const groupes = [], parCle = {};
+  tabs.filter(function (t) { return !t.maillot; }).forEach(function (t) {
+    const cle = t.fam ? 'F|' + t.fam.nom : 'N|' + t.nomNorm.replace(/\b(gp|vip)\b/g, '').replace(/\s+/g, ' ').trim().replace(/s\b/g, '');
+    if (!parCle[cle]) { parCle[cle] = { cle: cle, sources: [], fam: t.fam }; groupes.push(parCle[cle]); }
+    parCle[cle].sources.push(t);
+  });
+  const noms = {};
+  groupes.forEach(function (g) {
+    const base = fusNomBase_(g.sources[0].nom);
+    let nom = base + '_boutiques', i = 2;
+    while (noms[nom]) nom = base + '_boutiques_' + (i++);
+    noms[nom] = 1;
+    g.nom = nom;
+    g.lignes = fusFusionnerLignes_(g.sources);
+  });
+  return { maillotsGP: maillotsGP, maillotsVIP: maillotsVIP, groupes: groupes };
+}
+
+// « Tshirts_Nara_VIP » → « Tshirts_Nara » ; « Polo_Women_GP » → « Polo_Women »
+function fusNomBase_(nom) {
+  return String(nom).replace(/_\d+$/, '').split('_').filter(function (m) { return m && !/^(gp|vip)$/i.test(m); }).join('_') || 'Article';
+}
+
+// Additionne les stocks taille par taille ; tailles adultes puis enfants
+function fusFusionnerLignes_(sources) {
+  const parTaille = {}, ordre = [];
+  sources.forEach(function (t) {
+    const lieu = t.stand || (sources.length > 1 ? 'GP' : '');
+    t.lignes.forEach(function (l) {
+      if (!parTaille[l.cle]) { parTaille[l.cle] = { taille: l.taille, cle: l.cle, stock: 0, texte: [], notes: [], carac: [] }; ordre.push(l.cle); }
+      const x = parTaille[l.cle];
+      if (typeof l.stock === 'number') x.stock += l.stock;
+      else if (String(l.stock).trim() !== '') x.texte.push((lieu ? lieu + ' : ' : '') + l.stock);
+      if (l.note) x.notes.push((lieu ? lieu + ' : ' : '') + l.note);
+      if (l.carac && x.carac.indexOf(l.carac) < 0) x.carac.push(l.carac);
+      if (String(x.taille).trim() === '' && String(l.taille).trim() !== '') x.taille = l.taille;
+    });
+  });
+  const rang = function (cle) {
+    const age = fusAge_(cle);
+    if (age !== null) return 100 + age;
+    const i = FUS_ADULTES.indexOf(cle);
+    return i < 0 ? 50 : i;
+  };
+  return ordre.map(function (k) { return parTaille[k]; }).sort(function (a, b) { return rang(a.cle) - rang(b.cle); }).map(function (x) {
+    // Stock non chiffré (« Environ 120 ») : gardé en texte, avec la part chiffrée s'il y en a une
+    const stock = x.texte.length ? (x.stock ? x.stock + ' + ' : '') + x.texte.join(' + ') : x.stock;
+    return { taille: x.taille === '' ? '//' : x.taille, stock: stock, note: x.notes.join(' · '), carac: x.carac.join(' · ') };
+  });
+}
+// Âge d'une taille enfant normalisée (« 8Y » → 8, « 128 » → 8) ; null pour une taille adulte
+function fusAge_(cle) {
+  let m = String(cle).match(/^(\d{1,2})Y$/);
+  if (m) return +m[1];
+  m = String(cle).match(/^(\d{3})$/);
+  if (m && +m[1] >= 90 && +m[1] <= 176) return Math.round((+m[1] - 80) / 6);
+  return null;
+}
+
+function fusResume_(plan) {
+  const l = [];
+  l.push('Maillots de match gardés séparés — GP (classique) : ' + plan.maillotsGP.map(function (t) { return t.nom; }).join(', '));
+  l.push('Maillots de match gardés séparés — VIP (Sohei) : ' + plan.maillotsVIP.map(function (t) { return t.nom; }).join(', '));
+  l.push('');
+  l.push('Tableaux fusionnés (GP + VIP) :');
+  plan.groupes.forEach(function (g) {
+    const tot = g.lignes.reduce(function (s, x) { return s + (typeof x.stock === 'number' ? x.stock : 0); }, 0);
+    l.push('• ' + g.nom + ' ← ' + g.sources.map(function (t) { return t.nom; }).join(' + ') + ' : ' +
+      g.lignes.map(function (x) { return (String(x.taille) === '//' ? '' : x.taille + ' ') + x.stock; }).join(' | ') + ' (total ' + tot + ')' +
+      (g.fam ? '' : '  ⚠ article non relié au décompte automatique'));
+  });
+  return l.join('\n');
+}
+
+// ── Écriture du nouvel onglet ─────────────────────────────────────────────
+function fusEcrire_(ss, sh, plan) {
+  const reqs = [], sid = sh.getSheetId();
+  let ligne = 1;
+  const titre = function (texte) {
+    sh.getRange(ligne, 1).setValue(texte).setFontWeight('bold').setFontSize(13).setFontColor('#001E2D');
+    ligne += 2;
+  };
+  // Pose une rangée de tableaux (max 4) à partir de « ligne »
+  const rangee = function (items) {
+    let haut = 0;
+    items.forEach(function (it, i) {
+      const c0 = FUS.COLS[i], n = it.lignes.length;
+      const vals = [FUS.ENTETES].concat(it.lignes.map(function (x) { return [x.carac || '', x.stock, x.taille, x.note || '']; }));
+      sh.getRange(ligne, c0, vals.length, 4).setValues(vals);
+      sh.getRange(ligne + 1, c0 + 2, Math.max(1, n), 1).setNumberFormat('@');
+      sh.getRange(ligne, c0 + 4).setFormula('="TOTAL : "&SUM(' + sh.getRange(ligne + 1, c0 + 1, Math.max(1, n), 1).getA1Notation() + ')')
+        .setBackground('#EAD1DC').setFontWeight('bold');
+      sh.getRange(ligne - 1, c0).setValue(it.titre).setFontWeight('bold').setFontColor('#001E2D');
+      reqs.push({ addTable: { table: {
+        name: it.nom,
+        range: { sheetId: sid, startRowIndex: ligne - 1, endRowIndex: ligne + Math.max(1, n), startColumnIndex: c0 - 1, endColumnIndex: c0 + 3 },
+        columnProperties: FUS.ENTETES.map(function (e, j) { return { columnIndex: j, columnName: e }; }),
+        rowsProperties: it.style || { headerColorStyle: { rgbColor: FUS.NAVY }, firstBandColorStyle: { rgbColor: FUS.BANDE1 }, secondBandColorStyle: { rgbColor: FUS.BANDE2 } },
+      } } });
+      haut = Math.max(haut, n + 1);
+    });
+    ligne += haut + 3;
+  };
+  const paquets = function (liste) { const out = []; for (let i = 0; i < liste.length; i += 4) out.push(liste.slice(i, i + 4)); return out; };
+  const maillot = function (t, lieu) {
+    // Nom unique dans le classeur (les anciens tableaux restent dans l'onglet masqué)
+    return { nom: t.nom.replace(/_\d+$/, '') + '_match', titre: t.nom.replace(/_\d+$/, '').replace(/_/g, ' ') + ' (' + lieu + ')',
+      lignes: t.lignes.map(function (l) { return { taille: l.taille, stock: l.stock, note: l.note, carac: l.carac }; }), style: t.style };
+  };
+
+  ligne = 2;
+  titre('MAILLOTS DE MATCH — séparés : GP = classique · VIP = Sohei');
+  if (plan.maillotsGP.length) paquets(plan.maillotsGP.map(function (t) { return maillot(t, 'GP · classique'); })).forEach(rangee);
+  if (plan.maillotsVIP.length) paquets(plan.maillotsVIP.map(function (t) { return maillot(t, 'VIP · Sohei'); })).forEach(rangee);
+  titre('AUTRES ARTICLES — stock total en boutique (GP + VIP)');
+  paquets(plan.groupes.map(function (g) {
+    return { nom: g.nom, titre: g.nom.replace(/_boutiques(_\d+)?$/, '').replace(/_/g, ' ') + ' — GP + VIP', lignes: g.lignes, style: null };
+  })).forEach(rangee);
+
+  [1, 7, 13, 19].forEach(function (c) {
+    sh.setColumnWidth(c, 130); sh.setColumnWidth(c + 1, 70); sh.setColumnWidth(c + 2, 80); sh.setColumnWidth(c + 3, 170);
+    sh.setColumnWidth(c + 4, 100);
+    if (c + 5 <= 24) sh.setColumnWidth(c + 5, 20);
+  });
+  sh.setFrozenRows(0);
+  SpreadsheetApp.flush();
+  fusBatch_(ss, reqs);
+}
+
+function fusMeta_(ss) {
+  const champs = 'sheets(properties(sheetId,title),tables(name,range,rowsProperties))';
+  if (typeof Sheets !== 'undefined' && Sheets.Spreadsheets) return Sheets.Spreadsheets.get(ss.getId(), { fields: champs });
+  const r = UrlFetchApp.fetch('https://sheets.googleapis.com/v4/spreadsheets/' + ss.getId() + '?fields=' + encodeURIComponent(champs),
+    { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+  if (r.getResponseCode() >= 300) throw new Error('Lecture des tableaux impossible (' + r.getResponseCode() + ') : ' + r.getContentText().slice(0, 300));
+  return JSON.parse(r.getContentText());
+}
+
+function fusBatch_(ss, reqs) {
+  if (!reqs.length) return;
+  if (typeof Sheets !== 'undefined' && Sheets.Spreadsheets) { Sheets.Spreadsheets.batchUpdate({ requests: reqs }, ss.getId()); return; }
+  const r = UrlFetchApp.fetch('https://sheets.googleapis.com/v4/spreadsheets/' + ss.getId() + ':batchUpdate', {
+    method: 'post', contentType: 'application/json', payload: JSON.stringify({ requests: reqs }),
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+  if (r.getResponseCode() >= 300) throw new Error('Création des tableaux impossible (' + r.getResponseCode() + ') : ' + r.getContentText().slice(0, 400));
 }
