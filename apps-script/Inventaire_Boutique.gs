@@ -463,7 +463,7 @@ function invNormTaille_(v) {
   // Tailles enfants : la base est la taille en cm (116 à 164). « 8 ans », « 8Y », « 8A » → 128
   const age = t.match(/^(\d{1,2})(Y|A)$/);
   if (age && +age[1] >= 4 && +age[1] <= 16) t = String(116 + (+age[1] - 6) * 6);
-  t = t.replace(/^(\d{3})\.0+$/, '$1');
+  t = t.replace(/^(\d{3})(\.0+|Y|CM)$/, '$1');   // « 128y », « 128cm », « 128.0 » → 128
   return t;
 }
 function invNorm_(s) {
