@@ -788,7 +788,7 @@ function fusPlan_(ss) {
 
 // « Tshirts_Nara_VIP » → « Tshirts_Nara » ; « Polo_Women_GP » → « Polo_Women »
 function fusNomBase_(nom) {
-  return String(nom).replace(/_\d+$/, '').split('_').filter(function (m) { return m && !/^(gp|vip)$/i.test(m); }).join('_') || 'Article';
+  return String(nom).replace(/_\d+$/, '').split(/[_\s]+/).filter(function (m) { return m && !/^(gp|vip)$/i.test(m); }).join('_') || 'Article';
 }
 
 // Additionne les stocks taille par taille ; tailles adultes puis enfants
