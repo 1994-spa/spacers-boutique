@@ -1115,8 +1115,12 @@ function getCats(){return['Tous',...new Set(prods.filter(p=>p.actif!==false).map
 const TAILLES=['4 ANS','6 ANS','8 ANS','10 ANS','12 ANS','14 ANS','16 ANS','XXS','XS','S','M','L','XL','XXL','3XL','4XL','TU'];
 function tailleOf(p){
   if(p.taille)return String(p.taille).toUpperCase();
-  const m=String(p.nom||'').match(/(?:^|[\s\-–(])(XXS|XS|S|M|L|XL|XXL|3XL|4XL|TU)\)?\s*$/i);
-  return m?m[1].toUpperCase():'';
+  // Le catalogue n'envoie pas toujours la taille : lue à la fin du nom (« Maillot Blanc - 116 », « Nara Tee XL », « … 8 ans »)
+  const m=String(p.nom||'').match(/(?:^|[\s\-–(])(XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL|TU|1[0-7]\d|9\d|\d{1,2}\s?ANS)\)?\s*$/i);
+  if(m)return m[1].toUpperCase();
+  // Sinon, dernier segment de la référence (MAI-BLC-116, TSH-NARJ-128)
+  const r=String(p.ref||p.ref_boutique||'').match(/-(XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL|1[0-7]\d|9\d)$/i);
+  return r?r[1].toUpperCase():'';
 }
 function modeleOf(p){
   if(p.modele)return String(p.modele);
