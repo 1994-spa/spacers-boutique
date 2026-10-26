@@ -532,8 +532,8 @@ function annulerArchivage() {
 // d'être mis à jour en arrière-plan) : 🔄 STOCK / VENTES / MOUVEMENTS LIVE, 🔄 MAJ auto,
 // 📦 PRÉPARATION STOCK, 🏁 APRÈS MATCH, 📖 MODE D'EMPLOI.
 // Les onglets du matériel club (Panneautique, Gilets, chasubles, gobelets, ramasseurs…) ne bougent pas.
-const INV_TECHNIQUES = ['🔄 STOCK LIVE', '🔄 VENTES LIVE', '🔄 MOUVEMENTS LIVE', INV.JOURNAL,
-                        '📦 PRÉPARATION STOCK', '🏁 APRÈS MATCH', '📖 MODE D\'EMPLOI', '📖 MODE DEMPLOI'];
+// 26/10 : les onglets de pilotage 🔄 STOCK / VENTES / MOUVEMENTS LIVE restent VISIBLES (voir afficherOngletsPilotage).
+const INV_TECHNIQUES = [INV.JOURNAL, '📦 PRÉPARATION STOCK', '🏁 APRÈS MATCH', '📖 MODE D\'EMPLOI', '📖 MODE DEMPLOI'];
 
 function corrigerAffichageInventaire() {
   const p = PropertiesService.getScriptProperties();
@@ -1176,4 +1176,45 @@ function sepEcrire_(ss, sh, plan) {
   });
   SpreadsheetApp.flush();
   fusBatch_(ss, reqs);
+}
+
+
+// ── Onglets de pilotage visibles (▶ afficherOngletsPilotage, une fois — relançable) ──────────
+// Réaffiche 🔄 STOCK LIVE, 🔄 VENTES LIVE et 🔄 MOUVEMENTS LIVE, les range juste après les tableaux
+// d'Élise (En boutique, Stock Total, Dépot, Journal ventes), vérifie que leur mise à jour automatique
+// (majInventaireElise, toutes les 15 min) tourne et les rafraîchit immédiatement.
+// Restent masqués : 🔄 MAJ auto (CRM) (trace anti-doublon), 📦 PRÉPARATION STOCK et 🏁 APRÈS MATCH
+// (saisie arrêtée, remplacée par la page Gestion), l'ancien 📖 MODE D'EMPLOI (obsolète).
+// Le matériel club (Panneautique, gilets…) n'est pas touché.
+const INV_PILOTAGE = ['🔄 STOCK LIVE', '🔄 VENTES LIVE', '🔄 MOUVEMENTS LIVE'];
+
+function afficherOngletsPilotage() {
+  const ss = invSS_();
+  const montres = [], absents = [];
+  // 1. Mise à jour automatique en place + rafraîchissement immédiat (recrée les onglets s'ils manquent)
+  if (typeof majInventaireElise !== 'function') throw new Error('Lien_Inventaire.gs absent de ce projet : coller ce fichier dans le projet App_Boutique (classeur CRM).');
+  const aDeclencheur = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'majInventaireElise'; });
+  if (!aDeclencheur) ScriptApp.newTrigger('majInventaireElise').timeBased().everyMinutes(15).create();
+  let rafraichi = '';
+  try { majInventaireElise(); rafraichi = 'Données rafraîchies à l\'instant.'; }
+  catch (e) { rafraichi = '⚠ Rafraîchissement : ' + e.message; }
+  // 2. Affichage + couleur + rangement après les tableaux d'Élise
+  let pos = 0;
+  ss.getSheets().forEach(function (sh, i) { if (INV_ARCHIVES.indexOf(sh.getName()) !== -1) pos = Math.max(pos, i + 1); });
+  INV_PILOTAGE.forEach(function (nom) {
+    const sh = ss.getSheetByName(nom);
+    if (!sh) { absents.push(nom); return; }
+    if (sh.isSheetHidden()) { sh.showSheet(); montres.push(nom); }
+    sh.setTabColor('#0B1B3F');
+    ss.setActiveSheet(sh); ss.moveActiveSheet(++pos);
+  });
+  const premier = ss.getSheetByName('En boutique') || ss.getSheetByName(INV_PILOTAGE[0]);
+  if (premier) ss.setActiveSheet(premier);
+  const msg = 'Pilotage visible : ' + INV_PILOTAGE.filter(function (n) { return absents.indexOf(n) === -1; }).join(', ') +
+    (montres.length ? ' (réaffichés : ' + montres.join(', ') + ')' : ' (déjà visibles)') +
+    (absents.length ? '.\nIntrouvables : ' + absents.join(', ') : '') +
+    '.\nMise à jour auto toutes les 15 min ' + (aDeclencheur ? '(déjà active). ' : '(réactivée). ') + rafraichi;
+  Logger.log(msg);
+  try { SpreadsheetApp.getUi().alert('Classeur Inventaire', msg, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) {}
+  return msg;
 }
