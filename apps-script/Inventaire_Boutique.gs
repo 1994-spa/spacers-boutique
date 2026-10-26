@@ -533,7 +533,7 @@ function annulerArchivage() {
 // 📦 PRÉPARATION STOCK, 🏁 APRÈS MATCH, 📖 MODE D'EMPLOI.
 // Les onglets du matériel club (Panneautique, Gilets, chasubles, gobelets, ramasseurs…) ne bougent pas.
 // 26/10 : les onglets de pilotage 🔄 STOCK / VENTES / MOUVEMENTS LIVE restent VISIBLES (voir afficherOngletsPilotage).
-const INV_TECHNIQUES = [INV.JOURNAL, '📦 PRÉPARATION STOCK', '🏁 APRÈS MATCH', '📖 MODE D\'EMPLOI', '📖 MODE DEMPLOI'];
+const INV_TECHNIQUES = [INV.JOURNAL, '📦 PRÉPARATION STOCK', '📖 MODE D\'EMPLOI', '📖 MODE DEMPLOI'];   // 🏁 APRÈS MATCH : visible (26/10)
 
 function corrigerAffichageInventaire() {
   const p = PropertiesService.getScriptProperties();
@@ -1214,6 +1214,36 @@ function afficherOngletsPilotage() {
     (montres.length ? ' (réaffichés : ' + montres.join(', ') + ')' : ' (déjà visibles)') +
     (absents.length ? '.\nIntrouvables : ' + absents.join(', ') : '') +
     '.\nMise à jour auto toutes les 15 min ' + (aDeclencheur ? '(déjà active). ' : '(réactivée). ') + rafraichi;
+  Logger.log(msg);
+  try { SpreadsheetApp.getUi().alert('Classeur Inventaire', msg, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) {}
+  return msg;
+}
+
+
+// ── Onglet 🏁 APRÈS MATCH visible et actif (▶ afficherApresMatch, une fois — relançable) ──────────
+// Détail article par article d'un match (vendus GP/VIP, offerts, CA, stock CRM, compté, écarts, à rajouter)
+// + contrôle de caisse (CB tablette vs relevé TPE, espèces). Choisir le match en B4.
+// Pose uniquement le déclencheur « à la modification » de Saisie_Inventaire.gs (changement de match,
+// validation du contrôle) — pas le rafraîchissement 5 min, ni la réactivation de 📦 PRÉPARATION STOCK.
+function afficherApresMatch() {
+  if (typeof si_construireApres_ !== 'function') throw new Error('Saisie_Inventaire.gs absent de ce projet.');
+  const ss = invSS_();
+  const id = ss.getId();
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'si_surModification') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('si_surModification').forSpreadsheet(id).onEdit().create();
+  // Match le plus récent par défaut (liste déroulante en B4 pour en choisir un autre)
+  si_construireApres_(ss, '');
+  const sh = ss.getSheetByName('🏁 APRÈS MATCH');
+  if (!sh) throw new Error('Onglet 🏁 APRÈS MATCH introuvable après construction.');
+  if (sh.isSheetHidden()) sh.showSheet();
+  sh.setTabColor('#0B1B3F');
+  let pos = 0;
+  ss.getSheets().forEach(function (x, i) { if (INV_PILOTAGE.indexOf(x.getName()) !== -1) pos = Math.max(pos, i + 1); });
+  ss.setActiveSheet(sh); ss.moveActiveSheet(Math.max(pos, 1));
+  const msg = '🏁 APRÈS MATCH visible — match affiché : ' + (String(sh.getRange('B4').getValue()) || '?') +
+    '.\nChanger de match en B4 (rechargement en 1 à 2 min). Valider le contrôle : case H4.';
   Logger.log(msg);
   try { SpreadsheetApp.getUi().alert('Classeur Inventaire', msg, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) {}
   return msg;
