@@ -135,20 +135,20 @@ function ecrireStock_(crm, inv, maj) {
     .setFontColor('#555555').setFontStyle('italic');
 
   const ent = ['Réf.', 'Article', 'Taille', 'Dépôt', 'Boutique GP', 'Boutique VIP', 'TOTAL', 'Alerte',
-               'Compté (saisie)', 'Écart compté − CRM'];
+               'Compté (saisie)', 'Écart (à la MAJ)'];
   sh.getRange(4, 1, 1, ent.length).setValues([ent])
     .setBackground(LI.BLEU_NUIT).setFontColor('#FFFFFF').setFontWeight('bold').setHorizontalAlignment('center');
 
   if (lignes.length) {
-    const vals = lignes.map(l => [l.ref, l.modele, l.taille || 'TU', l.R, l.B1, l.B2, l.total, l.alerte,
-                                  comptes[l.ref] !== undefined ? comptes[l.ref] : '', '']);
+    // Écart calculé par le script (pas de formule : #ERROR! dans ce classeur selon ses paramètres régionaux)
+    const vals = lignes.map(l => {
+      const cpt = comptes[l.ref] !== undefined ? comptes[l.ref] : '';
+      const ecart = cpt === '' ? '' : num_(cpt) - l.total;
+      return [l.ref, l.modele, l.taille || 'TU', l.R, l.B1, l.B2, l.total, l.alerte, cpt, ecart];
+    });
     const n = vals.length;
     sh.getRange(5, 3, n, 1).setNumberFormat('@');                       // tailles en texte
     sh.getRange(5, 1, n, ent.length).setValues(vals).setFontColor('#000000');
-    // Formule d'écart (vide tant que rien n'est saisi) — notation A1 explicite, ligne par ligne
-    const f = [];
-    for (let i = 0; i < n; i++) { const L = 5 + i; f.push(['=IF(I' + L + '="","",I' + L + '-G' + L + ')']); }
-    sh.getRange(5, 10, n, 1).setFormulas(f);
     sh.getRange(5, 3, n, 1).setHorizontalAlignment('center');
     sh.getRange(5, 4, n, 4).setHorizontalAlignment('center');
     sh.getRange(5, 9, n, 2).setHorizontalAlignment('center');
@@ -163,8 +163,9 @@ function ecrireStock_(crm, inv, maj) {
     // Totaux
     const lt = 5 + n;
     sh.getRange(lt, 2).setValue('TOTAL').setFontWeight('bold');
-    ['D','E','F','G'].forEach((L, k) =>
-      sh.getRange(lt, 4 + k).setFormula('=SUM(' + L + '5:' + L + (lt - 1) + ')').setFontWeight('bold').setHorizontalAlignment('center'));
+    const tot = [lignes.reduce((x, l) => x + l.R, 0), lignes.reduce((x, l) => x + l.B1, 0),
+                 lignes.reduce((x, l) => x + l.B2, 0), lignes.reduce((x, l) => x + l.total, 0)];
+    sh.getRange(lt, 4, 1, 4).setValues([tot]).setFontWeight('bold').setHorizontalAlignment('center');
     sh.getRange(lt, 1, 1, ent.length).setBorder(true, null, null, null, null, null);
 
     // Couleurs d'alerte
@@ -253,7 +254,8 @@ function ecrireVentes_(crm, inv, maj) {
         .setBackground('#D4EDDA').setRanges([sh.getRange(5, 1, n, ent.length)]).build()
     ]);
     // Compteur
-    sh.getRange('H2').setFormula('="Pointées : "&COUNTIF(A5:A' + (4 + n) + ',TRUE)&" / ' + n + '"')
+    const nbPointees = vals.filter(v => v[0] === true).length;
+    sh.getRange('H2').setValue('Pointées : ' + nbPointees + ' / ' + n + ' (à la MAJ)')
       .setFontWeight('bold').setFontColor(LI.BLEU_NUIT);
   } else {
     sh.getRange(5, 2).setValue('Aucune vente pour le moment.');
