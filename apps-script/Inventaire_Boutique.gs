@@ -1186,7 +1186,7 @@ function sepEcrire_(ss, sh, plan) {
 // Restent masqués : 🔄 MAJ auto (CRM) (trace anti-doublon), 📦 PRÉPARATION STOCK et 🏁 APRÈS MATCH
 // (saisie arrêtée, remplacée par la page Gestion), l'ancien 📖 MODE D'EMPLOI (obsolète).
 // Le matériel club (Panneautique, gilets…) n'est pas touché.
-const INV_PILOTAGE = ['🔄 STOCK LIVE', '🔄 VENTES LIVE', '🔄 MOUVEMENTS LIVE'];
+const INV_PILOTAGE = ['🔄 STOCK LIVE', '🔄 VENTES PAR ARTICLE', '🔄 VENTES LIVE', '🔄 MOUVEMENTS LIVE'];
 
 function afficherOngletsPilotage() {
   const ss = invSS_();

@@ -13,6 +13,7 @@
  *      l'autre, avec l'écart calculé automatiquement.
  *   2. Onglet « 🔄 VENTES LIVE »    : dernières ventes (tablettes + Tickie + web).
  *   3. Onglet « 🔄 MOUVEMENTS LIVE »: transferts, dotations, casse, réceptions.
+ *   4. Onglet « 🔄 VENTES PAR ARTICLE » : résumé de la saison article par article (lieux, offerts, CA, matchs).
  *  Les onglets existants d'Élise (Stock Total, En boutique, Dépot, Journal
  *  ventes…) ne sont JAMAIS modifiés (ils sont archivés par archiverAnciensTableaux).
  *  Fonction utilitaire renommée li_feuille_ : feuille_ existe aussi dans
@@ -28,6 +29,7 @@ const LI = {
   TAB_STOCK: '🔄 STOCK LIVE',
   TAB_VENTES: '🔄 VENTES LIVE',
   TAB_MVT: '🔄 MOUVEMENTS LIVE',
+  TAB_RESUME: '🔄 VENTES PAR ARTICLE',
   NB_VENTES: 300,
   NB_MVT: 300,
   FREQ_MIN: 15,
@@ -69,6 +71,7 @@ function majInventaireElise() {
     ecrireStock_(crm, inv, maj);
     ecrireVentes_(crm, inv, maj);
     ecrireMouvements_(crm, inv, maj);
+    ecrireResume_(crm, inv, maj);
   } catch (e) {
     try { journal_(SpreadsheetApp.openById(LI.CRM_ID), 'ERREUR', String(e && e.stack || e)); } catch (_) {}
     throw e;
@@ -266,6 +269,81 @@ function ecrireVentes_(crm, inv, maj) {
   sh.setColumnWidth(1, 80); sh.setColumnWidth(12, 220);
   sh.hideColumns(11);
   proteger_(sh, null, ['A5:A', 'L5:L']);
+}
+
+/* ---------------------------------------------------- VENTES PAR ARTICLE -- */
+
+/**
+ * Onglet « 🔄 VENTES PAR ARTICLE » : résumé de la saison en cours (juillet → juin), une ligne par
+ * article et taille : quantités par lieu de vente, offerts, CA TTC, puis une colonne par match.
+ * Les « Offert » sont comptés en quantité mais exclus du CA. Lecture seule, recalculé à chaque MAJ.
+ */
+function ecrireResume_(crm, inv, maj) {
+  const t = lireTable_(crm, '01_VENTES');
+  if (!t) return;
+  const c = {
+    date: col_(t.h, ['date']), source: col_(t.h, ['source']), produit: col_(t.h, ['produit']),
+    qte: col_(t.h, ['quantite']), ca: col_(t.h, ['ca']), match: col_(t.h, ['match']),
+    boutique: col_(t.h, ['boutique']), mode: col_(t.h, ['mode_p']), saison: col_(t.h, ['saison'])
+  };
+  const now = new Date();
+  const debut = new Date(now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1, 6, 1);
+  const art = {}, matchs = {};
+  t.rows.forEach(r => {
+    const produit = String(v_(r, c.produit)).trim();
+    if (!produit) return;
+    const d = dateObj_(r[c.date]);
+    if (d instanceof Date && d < debut) return;
+    const q = num_(r[c.qte]);
+    const offert = norm_(v_(r, c.mode)).indexOf('offert') === 0;
+    const lieu = libBoutique_(v_(r, c.boutique), v_(r, c.source));
+    const a = art[produit] = art[produit] || { produit, q: 0, gp: 0, vip: 0, web: 0, hm: 0, off: 0, ca: 0, m: {} };
+    a.q += q;
+    if (offert) a.off += q;
+    else a.ca += num_(r[c.ca]);
+    if (lieu === 'Boutique GP') a.gp += q;
+    else if (lieu === 'Boutique VIP') a.vip += q;
+    else if (lieu.indexOf('Hors match') === 0) a.hm += q;
+    else a.web += q;
+    const m = String(v_(r, c.match)).trim();
+    if (m && lieu.indexOf('Boutique') === 0) {
+      a.m[m] = (a.m[m] || 0) + q;
+      if (!matchs[m] || (d instanceof Date && d < matchs[m])) matchs[m] = d instanceof Date ? d : new Date(0);
+    }
+  });
+  const listeMatchs = Object.keys(matchs).sort((x, y) => matchs[y] - matchs[x]);   // plus récent d'abord
+  const lignes = Object.keys(art).map(k => art[k])
+    .sort((x, y) => x.produit.localeCompare(y.produit, 'fr', { numeric: true }));
+
+  const sh = li_feuille_(inv, LI.TAB_RESUME);
+  sh.clear(); sh.clearConditionalFormatRules();
+  sh.getRange('A1').setValue('VENTES PAR ARTICLE — saison ' + debut.getFullYear() + '-' + (debut.getFullYear() + 1))
+    .setFontSize(14).setFontWeight('bold').setFontColor(LI.BLEU_NUIT);
+  sh.getRange('A2').setValue('Dernière MAJ : ' + maj + '  •  Une ligne par article et taille (tablettes, Tickie, site, hors match). '
+    + 'Les offerts sont comptés en quantité mais pas dans le CA. Colonnes de droite : quantités vendues en boutique par match. Lecture seule.')
+    .setFontColor('#555555').setFontStyle('italic');
+  const ent = ['Article', 'Qté totale', 'Boutique GP', 'Boutique VIP', 'Web / site', 'Hors match', 'dont offerts', 'CA TTC']
+    .concat(listeMatchs);
+  sh.getRange(4, 1, 1, ent.length).setValues([ent])
+    .setBackground(LI.BLEU_NUIT).setFontColor('#FFFFFF').setFontWeight('bold').setHorizontalAlignment('center').setWrap(true);
+  if (!lignes.length) { sh.getRange(5, 1).setValue('Aucune vente cette saison.'); sh.setFrozenRows(4); proteger_(sh, null); return; }
+
+  const arr = x => Math.round(x * 100) / 100;
+  const vals = lignes.map(l => [l.produit, l.q, l.gp, l.vip, l.web, l.hm, l.off, arr(l.ca)]
+    .concat(listeMatchs.map(m => l.m[m] || '')));
+  const n = vals.length;
+  const tot = ['TOTAL'].concat(ent.slice(1).map((_, k) => arr(vals.reduce((x, v) => x + (Number(v[k + 1]) || 0), 0))));
+  sh.getRange(5, 1, n, ent.length).setValues(vals);
+  sh.getRange(5 + n, 1, 1, ent.length).setValues([tot]).setFontWeight('bold').setBackground(LI.BLEU_CIEL);
+  sh.getRange(5, 2, n + 1, ent.length - 1).setHorizontalAlignment('center');
+  sh.getRange(5, 8, n + 1, 1).setNumberFormat('#,##0.00 €');
+  sh.getRange(5, 2, n + 1, 1).setFontWeight('bold');
+  for (let i = 0; i < n; i += 2) sh.getRange(5 + i, 1, 1, 8).setBackground('#F4F8FC');
+  sh.setFrozenRows(4); sh.setFrozenColumns(1);
+  sh.setColumnWidth(1, 300); sh.setColumnWidths(2, 7, 95);
+  if (listeMatchs.length) sh.setColumnWidths(9, listeMatchs.length, 120);
+  sh.setRowHeight(4, 42);
+  proteger_(sh, null);
 }
 
 /* ------------------------------------------------------------ MOUVEMENTS -- */
