@@ -78,8 +78,8 @@ function fmt(d, z, motif) {
 }
 
 function creerContexte() {
-  const crm = new SS('SPACERS_BOUTIQUE_CRM_V2', 'CRM');
-  const fichiers = { CRM: crm };
+  const crm = new SS('SPACERS_BOUTIQUE_CRM_V2', '1mE9gSCtetFgnWEt0kA6cS2lcgJDe7oPRLDiXdGhH2EQ');
+  const fichiers = { CRM: crm, '1mE9gSCtetFgnWEt0kA6cS2lcgJDe7oPRLDiXdGhH2EQ': crm };
   const props = {}, cache = {}, triggers = [], mails = [];
   let nid = 0;
   const builder = h => {
@@ -90,7 +90,8 @@ function creerContexte() {
   const ctx = {
     console, Math, Date, JSON, Number, String, Array, Object, isNaN, RegExp, Error, Set,
     SpreadsheetApp: {
-      getActive: () => crm,
+      getActive: () => ctx.__actif || crm,
+      setActiveSpreadsheet: x => { ctx.__actif = x; },
       openById: id => { if (!fichiers[id]) throw new Error('introuvable ' + id); return fichiers[id]; },
       create: n => { const s = new SS(n, 'F' + (++nid)); s.insertSheet('Feuille 1'); fichiers[s.id] = s; return s; },
       newDataValidation: () => { const v = { requireNumberGreaterThanOrEqualTo: () => v, requireValueInList: () => v, setAllowInvalid: () => v, setHelpText: () => v, build: () => ({}) }; return v; },

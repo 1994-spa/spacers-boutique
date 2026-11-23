@@ -92,6 +92,15 @@ ctx.__verrouOccupe = false;
 C.getRange('H4').setValue(true); run('fb_traiterDemandes()');
 check(stock('MAI-BNU-L').R === 11 && C.get(lm, 12) === '', 'recoché ensuite : +1 enregistré une seule fois');
 
+// ---------- 2 bis. Traitement lancé depuis le classeur d'Élise (cas réel du 23/11) ----------
+console.log('2 bis. Classeur actif = celui d\'Élise');
+ctx.__actif = F;                       // getActive() renvoie le classeur d'Élise, pas le CRM
+C.getRange('E4').setValue('Test'); C.getRange('J4').setValue('T2'); C.getRange(lm, 12).setValue(1); C.getRange('H4').setValue(true);
+run('fb_traiterDemandes()');
+check(!/introuvable/.test(C.get(5, 1)) && stock('MAI-BNU-L').R === 12 && C.get(lm, 12) === '', 'le CRM est désigné explicitement : réception enregistrée (+1, dépôt 12)');
+check(ctx.__actif === crm, 'classeur actif rétabli sur le CRM');
+ctx.__actif = null;
+
 // ---------- 3. Préparation des boutiques ----------
 console.log('3. Préparation (2_BOUTIQUE)');
 B.getRange('B4').setValue('Élise');
@@ -105,7 +114,7 @@ run('fb_traiterDemandes()');
 let s = stock('ECH-TU');
 check(s.B1 === 20 && s.B2 === 5 && s.R === 167, 'écharpe : GP 20, VIP 5, dépôt 169 − 4 + 2 = 167');
 s = stock('MAI-BNU-L');
-check(s.B1 === 3 && s.R === 9, 'maillot L : comptage GP 3 → 1 puis +2 du dépôt (11 → 9)');
+check(s.B1 === 3 && s.R === 10, 'maillot L : comptage GP 3 → 1 puis +2 du dépôt (12 → 10)');
 check(MV.row(MV.getLastRow() - 0, 3)[1] === 'TRANSFERT', 'mouvements TRANSFERT tracés');
 const types = []; for (let r = 2; r <= MV.getLastRow(); r++) types.push(MV.get(r, 2));
 check(types.indexOf('AJUSTEMENT_INVENTAIRE') !== -1, 'écart de comptage tracé (AJUSTEMENT_INVENTAIRE)');

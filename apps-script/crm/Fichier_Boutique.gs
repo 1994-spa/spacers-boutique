@@ -45,6 +45,7 @@
 const FB = {
   NOM_FICHIER: "Boutique Spacer's — stock et ventes 2026-2027",
   PROP_ID: 'FICHIER_BOUTIQUE_ID',
+  CRM_ID: '1mE9gSCtetFgnWEt0kA6cS2lcgJDe7oPRLDiXdGhH2EQ',   // SPACERS_BOUTIQUE_CRM_V2 (propriété CRM_BOUTIQUE_ID si différent)
   DUREE_MAX_MS: 4 * 60 * 1000,              // au-delà, on s'arrête proprement (limite Apps Script : 6 min)
   PROP_ALERTE: 'FB_ALERTE_EMAIL',
   PROP_ALERTE_FAITE: 'FB_ALERTE_DERNIER_MATCH',
@@ -82,6 +83,7 @@ const FB = {
 
 /** Crée le classeur (une seule fois), ses onglets et les déclencheurs. Relançable sans risque. */
 function installerFichierBoutique() {
+  fb_activerCRM_();
   const props = PropertiesService.getScriptProperties();
   let id = props.getProperty(FB.PROP_ID);
   let ss = null;
@@ -135,6 +137,7 @@ function arreterAncienInventaire() {
 
 /** Toutes les 10 min : traite les validations en attente puis rafraîchit les données du CRM. */
 function majFichierBoutique() {
+  fb_activerCRM_();
   const ss = fb_fichier_();
   if (!fb_prendreJeton_()) return;
   try {
@@ -175,6 +178,7 @@ function fb_surModification(e) {
 /** Traitement immédiat (déclencheur ponctuel posé par fb_surModification). */
 function fb_traiterDemandes() {
   fb_retirerDeclencheurs_(h => h === 'fb_traiterDemandes');
+  fb_activerCRM_();
   const ss = fb_fichier_();
   if (!fb_prendreJeton_()) { fb_programmer_(); return; }
   try {
@@ -998,6 +1002,20 @@ function fb_alerteReassort_(D) {
 }
 
 /* ==================================== OUTILS ==================================== */
+
+/**
+ * Le CRM doit être le classeur « actif » : les fonctions de Stock_Boutique.gs le lisent par getActive().
+ * Lancé depuis un déclencheur posé par une modification du classeur d'Élise, getActive() ne renvoie pas
+ * le CRM (constaté le 23/11 : « Onglet 03… introuvable ») : on le désigne explicitement.
+ */
+function fb_activerCRM_() {
+  const id = PropertiesService.getScriptProperties().getProperty('CRM_BOUTIQUE_ID') || FB.CRM_ID;
+  const actif = SpreadsheetApp.getActive();
+  if (actif && actif.getId() === id) return actif;
+  const crm = SpreadsheetApp.openById(id);
+  SpreadsheetApp.setActiveSpreadsheet(crm);
+  return crm;
+}
 
 function fb_fichier_() {
   const id = PropertiesService.getScriptProperties().getProperty(FB.PROP_ID);
