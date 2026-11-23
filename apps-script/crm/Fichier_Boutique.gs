@@ -3,23 +3,29 @@
  *  FICHIER BOUTIQUE D'ÉLISE  <->  CRM BOUTIQUE  <->  TABLETTES
  *  Spacer's Toulouse Volley — saison 2026-2027
  * ----------------------------------------------------------------------------
- *  Remplace le classeur « Inventaire 2026 2027 ». Organisation décidée le 19/11 :
+ *  Travaille À CÔTÉ du classeur « Inventaire 2026 2027 » (décision de Clément du
+ *  09/11, maintenue le 23/11) : l'onglet « En boutique » de l'Inventaire FAIT FOI
+ *  pour le stock GP et VIP ; il est recopié dans le CRM par eb_simuler / eb_appliquer.
  *    1_COMMANDE        réceptions de commandes → dépôt (avec facture et prix d'achat)
- *    2_BOUTIQUE        répartition GP / VIP avant le match, comptage, réassort
+ *    2_BOUTIQUE        comptage du DÉPÔT, sorties du dépôt vers GP / VIP (réassort)
  *    3_JOURNAL_VENTES  ventes des tablettes (GP / VIP) et add-ons Tickie remis
  *    4_TOP_VENTES      classement des articles, bilan par match
  *    5_APRES_MATCH     contrôle de caisse (TPE, espèces) par boutique
  *
- *  RÈGLE : le CRM reste la seule source du stock. Le fichier est l'écran d'Élise.
- *   - Cases JAUNES : Élise saisit. À la validation, chaque saisie devient un
- *     mouvement du CRM (fonctions de Stock_Boutique.gs : réception, répartition,
- *     transfert, inventaire), signé de son prénom, puis la case se vide.
- *   - Cases GRISES : écrites par ce script depuis le CRM (toutes les 10 min et
- *     après chaque validation). Jamais saisies à la main.
- *   - Les tablettes lisent le stock du CRM à « Charger le match » et lui renvoient
- *     les ventes à « Synchroniser tout » : le fichier les affiche au passage suivant.
- *  Aucune valeur absolue n'est recopiée du fichier vers le CRM : pas d'écrasement
- *  des ventes, des retraits ou des réceptions.
+ *  MODE « EN BOUTIQUE » (décision du 24/11, option 1) :
+ *   - Le fichier n'écrit JAMAIS de valeur absolue en GP ou VIP (pas de comptage
+ *     GP/VIP, pas de « niveau voulu ») : ces chiffres viennent d'« En boutique ».
+ *   - Il écrit seulement ce qu'eb_appliquer ne sait pas faire : le dépôt.
+ *     Réception (dépôt +n), comptage du dépôt, et sortie du dépôt vers GP / VIP
+ *     (TRANSFERT réel : dépôt −n, boutique +n). Après une sortie, Élise ajoute les
+ *     mêmes pièces dans « En boutique » : eb_simuler doit alors afficher 0 écart.
+ *   - Ordre après chaque match : « Synchroniser tout » sur les deux tablettes →
+ *     comptage d'Élise dans « En boutique » → eb_simuler → eb_appliquer.
+ *     Aucun recalage pendant un match.
+ *   - Cases JAUNES : Élise saisit ; chaque saisie validée devient un mouvement du
+ *     CRM signé de son prénom, puis la case se vide. Cases GRISES : relues du CRM.
+ *   - Les tablettes prennent le stock du CRM à « Mettre à jour le catalogue » (puis
+ *     « Charger le match ») et renvoient les ventes à « Synchroniser tout ».
  *
  *  Dépendances (même projet Apps Script, fichiers existants inchangés) :
  *   Stock_Boutique.gs : enregistrerReception, enregistrerRepartition,
@@ -37,8 +43,8 @@
  *      (FB.ALERTE_DEFAUT) ; pour une autre adresse : Propriétés du script › FB_ALERTE_EMAIL.
  *  Aucun nouveau déploiement Web App : les tablettes ne changent pas.
  *
- *  Fin de la période en parallèle : ▶ arreterAncienInventaire (retire les
- *  déclencheurs qui écrivent dans l'ancien classeur ; rien n'est supprimé).
+ *  Les déclencheurs de l'Inventaire (majInventaire, majInventaireElise…) doivent
+ *  rester actifs : majInventaire décompte les ventes dans « En boutique ».
  * ============================================================================
  */
 
@@ -63,12 +69,12 @@ const FB = {
              'Reçu (saison)', 'Vendu + remis (saison)', 'Prix d\'achat HT (CRM)', 'Alerte',
              '➕ Reçu (quantité)', 'Prix d\'achat HT (si différent)', 'Résultat'],
   CDE_GRIS: 11, CDE_JAUNE: 2,
-  // 2_BOUTIQUE : 11 colonnes grises, 5 jaunes, 1 résultat
+  // 2_BOUTIQUE (mode « En boutique ») : 11 colonnes grises, 3 jaunes, 1 résultat
   BTQ_COLS: ['Réf.', 'Article', 'Taille', 'Dépôt', 'Boutique GP', 'Boutique VIP',
              'Vendu GP (dernier match)', 'Vendu VIP (dernier match)', 'Add-ons remis GP (dernier match)',
              'Réassort conseillé', 'Prix de vente TTC',
-             'Compté GP', 'Compté VIP', 'Compté dépôt', '🎯 Mettre en GP (total)', '🎯 Mettre en VIP (total)', 'Résultat'],
-  BTQ_GRIS: 11, BTQ_JAUNE: 5,
+             'Compté dépôt', '➡️ Sortir du dépôt vers GP (ajout)', '➡️ Sortir du dépôt vers VIP (ajout)', 'Résultat'],
+  BTQ_GRIS: 11, BTQ_JAUNE: 3,
   JRN_COLS: ['Date', 'Match', 'Boutique', 'Type', 'Réf.', 'Article', 'Taille', 'Qté', 'PU TTC', 'CA TTC', 'Paiement', 'Remise', 'Remarque'],
   CONTROLES: '25_CONTROLES_CAISSE',
   ENTETES_CONTROLES: ['horodatage', 'match', 'boutique', 'CA_tablette_TTC', 'CB_tablette', 'CB_TPE', 'ecart_CB',
@@ -76,7 +82,7 @@ const FB = {
   ORDRE_TAILLES: ['116', '128', '140', '152', '164', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', '3XL', 'TU', ''],
   SORTIES_MATCH: ['VENTE_COMPTOIR', 'OFFERT_CAISSE'],
   JAUNE: '#fff2cc', GRIS: '#eef1f5', NUIT: '#0b1f3a', BLEU: '#1f5fbf', ROUGE: '#b3261e', VERT: '#15803d',
-  NOTICE_VERSION: 'fb-notice-v1'
+  NOTICE_VERSION: 'fb-notice-v2-en-boutique'
 };
 
 /* ================================ INSTALLATION ================================ */
@@ -101,7 +107,7 @@ function installerFichierBoutique() {
   ScriptApp.newTrigger('majFichierBoutique').timeBased().everyMinutes(FB.FREQ_MIN).create();
 
   if (!props.getProperty(FB.PROP_ALERTE) && FB.ALERTE_DEFAUT) props.setProperty(FB.PROP_ALERTE, FB.ALERTE_DEFAUT);
-  const retires = fb_retirerDeclencheurs_(h => /^eb_/.test(h));   // « En boutique fait foi » : plus jamais de recopie absolue
+  // « En boutique » fait foi (09/11) : aucun déclencheur de l'Inventaire ni d'eb_* n'est touché ici.
   fb_construireTout_(ss, true);
   const feuille1 = ss.getSheetByName('Feuille 1') || ss.getSheetByName('Sheet1');
   if (feuille1 && ss.getSheets().length > 1) ss.deleteSheet(feuille1);
@@ -109,7 +115,6 @@ function installerFichierBoutique() {
   Logger.log('Classeur : ' + ss.getUrl());
   Logger.log('Déclencheurs du projet : ' + ScriptApp.getProjectTriggers().map(t => t.getHandlerFunction()).join(', '));
   Logger.log('Déclencheurs posés : modification du classeur + mise à jour toutes les ' + FB.FREQ_MIN + ' min.');
-  if (retires.length) Logger.log('Déclencheurs « En boutique → CRM » retirés : ' + retires.join(', '));
   Logger.log('Alerte de réassort envoyée à : ' + props.getProperty(FB.PROP_ALERTE) + ' (propriété ' + FB.PROP_ALERTE + ').');
   Logger.log('Étape suivante : partager le classeur avec Élise (éditeur).');
   return ss.getUrl();
@@ -121,18 +126,14 @@ function desinstallerFichierBoutique() {
 }
 
 /**
- * Fin de la période en parallèle : l'ancien « Inventaire 2026 2027 » n'est plus alimenté.
- * Retire les déclencheurs de Lien_Inventaire, Saisie_Inventaire, Inventaire_Boutique et Sync_EnBoutique.
- * Aucun onglet ni aucune donnée n'est supprimé.
+ * NEUTRALISÉE le 24/11 : « En boutique » fait foi. Retirer majInventaire arrêterait le décompte des ventes
+ * dans « En boutique », et le eb_appliquer suivant annulerait toutes les ventes du match dans le CRM.
+ * Elle ne retire plus rien ; elle est gardée pour qu'un ancien lien ou une ancienne consigne ne casse rien.
  */
 function arreterAncienInventaire() {
-  // Liste fermée : Lien_Inventaire, Saisie_Inventaire, Inventaire_Boutique (projet du CRM) et Sync_EnBoutique (eb_*).
-  // Le projet Apps Script propre au fichier d'Élise (déclencheurs Topventes) n'est pas touché.
-  const anciens = ['majInventaireElise', 'majSaisieInventaire', 'si_surModification', 'si_traiterDemandes', 'majInventaire'];
-  const r = fb_retirerDeclencheurs_(h => anciens.indexOf(h) !== -1 || /^eb_/.test(h));
-  Logger.log(r.length ? 'Déclencheurs retirés : ' + r.join(', ') : 'Aucun déclencheur de l\'ancien inventaire trouvé.');
-  Logger.log('Déclencheurs restants : ' + ScriptApp.getProjectTriggers().map(t => t.getHandlerFunction()).join(', '));
-  return r;
+  Logger.log('Rien n\'a été fait : « En boutique » fait foi (décision du 09/11, maintenue le 23/11). ' +
+             'Les déclencheurs de l\'Inventaire (dont majInventaire) doivent rester actifs.');
+  return [];
 }
 
 /** Toutes les 10 min : traite les validations en attente puis rafraîchit les données du CRM. */
@@ -282,7 +283,7 @@ function fb_planCommande(saisies, produits, aFacture) {
   return { ok: ok, resultats: resultats };
 }
 
-/** 2_BOUTIQUE : comptages (écarts) puis niveaux voulus en GP / VIP (mouvements depuis / vers le dépôt). */
+/** 2_BOUTIQUE : comptage du dépôt, puis sorties du dépôt vers GP / VIP (« En boutique » fait foi pour GP / VIP). */
 function fb_validerBoutique_(sh) {
   const auteur = String(sh.getRange('B4').getValue()).trim();
   if (!auteur) throw new Error('Indiquez votre prénom en B4, puis cochez à nouveau « Valider ».');
@@ -292,7 +293,7 @@ function fb_validerBoutique_(sh) {
   const data = sh.getRange(FB.HDR + 1, 1, n, nbC).getValues();
   const P = sb_lireProduits_();                       // stock du CRM au moment de la validation
   const g = FB.BTQ_GRIS;
-  const saisies = data.map(r => ({ ref: String(r[0]).trim(), cGP: r[g], cVIP: r[g + 1], cR: r[g + 2], tGP: r[g + 3], tVIP: r[g + 4] }));
+  const saisies = data.map(r => ({ ref: String(r[0]).trim(), cR: r[g], aGP: r[g + 1], aVIP: r[g + 2] }));
   const plan = fb_planBoutique(saisies, P.rows);
   if (!plan.ok.length) {
     fb_ecrireResultats_(sh, plan.resultats, nbC);
@@ -302,7 +303,7 @@ function fb_validerBoutique_(sh) {
   const heure = sb_fmt_(new Date(), 'dd/MM HH:mm');
   const match = fb_matchTablettes_();
   const t0 = Date.now();
-  let nb = 0, arret = '';
+  let nb = 0, arret = '', aReporter = 0;
   fb_sansSynthese_(() => {
     plan.ok.forEach(o => {
       const ligne = FB.HDR + 1 + o.i;
@@ -311,14 +312,14 @@ function fb_validerBoutique_(sh) {
       for (const op of o.ops) {
         try {
           if (op.type === 'rien') {
-            /* niveau déjà atteint : on vide seulement la case */
-          } else if (op.type === 'inventaire') {
-            fb_appel_(enregistrerInventaire, { lignes: [{ ref: o.ref, R: op.R, B1: op.B1, B2: op.B2 }],
-              commentaire: 'Comptage ' + auteur }, auteur, match, o.ref);
-          } else if (op.type === 'repartition') {
+            /* 0 pièce à sortir : on vide seulement la case */
+          } else if (op.type === 'inventaire') {   // comptage du DÉPÔT seulement (B1 / B2 laissés vides)
+            fb_appel_(enregistrerInventaire, { lignes: [{ ref: o.ref, R: op.R, B1: '', B2: '' }],
+              commentaire: 'Comptage dépôt ' + auteur }, auteur, match, o.ref);
+          } else if (op.type === 'repartition') {  // TRANSFERT dépôt → GP / VIP
             fb_appel_(enregistrerRepartition, { lignes: [{ ref: o.ref, B1: op.B1, B2: op.B2 }] }, auteur, match, o.ref);
           } else {
-            fb_appel_(enregistrerTransfert, { ref: o.ref, quantite: op.q, de: op.de, vers: op.vers }, auteur, match, o.ref);
+            throw new Error('opération inconnue');
           }
         } catch (err) {
           if (fb_estVerrou_(err)) arret = 'verrou';
@@ -331,23 +332,26 @@ function fb_validerBoutique_(sh) {
         sh.getRange(ligne, g + 1 + op.colonne, 1, op.nbCols || 1).clearContent();   // case appliquée = case vidée
         faits.push(op.libelle);
       }
-      plan.resultats[o.i] = '✅ ' + heure + ' · ' + faits.join(', ') + ' · maintenant dépôt ' + o.apres.R + ' / GP ' + o.apres.B1 + ' / VIP ' + o.apres.B2;
+      plan.resultats[o.i] = '✅ ' + heure + ' · ' + faits.join(', ') + ' · maintenant dépôt ' + o.apres.R +
+                            (o.rappel ? ' · 👉 ' + o.rappel : '');
       fb_resultat_(sh, ligne, nbC, plan.resultats[o.i]);
       nb++;
+      if (o.rappel) aReporter++;
     });
   });
   const pb = plan.resultats.filter(r => r && String(r).indexOf('❌') === 0).length;
-  return (nb ? '✅ ' : '⚠ ') + heure + ' — ' + nb + ' article(s) mis à jour dans le CRM par ' + auteur +
+  return (nb ? '✅ ' : '⚠ ') + heure + ' — ' + nb + ' article(s) enregistré(s) dans le CRM par ' + auteur +
          (pb ? ' · ⚠ ' + pb + ' ligne(s) refusée(s) : voir la colonne Résultat.' : '.') +
          (arret ? ' · ⏸ CRM occupé ou traitement long : recocher « Valider » dans 2 minutes pour finir.' : '') +
-         (nb ? ' Tablettes : « 🎫 Charger le match » pour prendre ce stock.' : '');
+         (aReporter ? ' 👉 Ajouter maintenant les mêmes pièces dans « En boutique » (classeur Inventaire), puis prévenir Clément (eb_simuler doit afficher 0 écart).' : '');
 }
 
 /**
  * Plan d'une ligne de 2_BOUTIQUE (sans écriture). Exporté pour les tests.
- *  1. Comptés (GP, VIP, dépôt) : corrigent le stock du CRM (AJUSTEMENT_INVENTAIRE).
- *  2. Niveaux voulus « Mettre en GP / VIP » (totaux) : on rapporte d'abord au dépôt
- *     ce qui est en trop, puis on sort du dépôt ce qui manque. Le dépôt doit suffire.
+ * Mode « En boutique » : GP et VIP ne sont jamais fixés ici (c'est « En boutique » qui fait foi).
+ *  1. « Compté dépôt » : corrige le dépôt du CRM (AJUSTEMENT_INVENTAIRE sur le dépôt seulement).
+ *  2. « Sortir du dépôt vers GP / VIP » = nombre de pièces AJOUTÉES en boutique : TRANSFERT réel
+ *     dépôt → boutique. Le dépôt (compté s'il vient d'être compté) doit suffire.
  *  La ligne est refusée entière si un contrôle échoue : rien n'est appliqué à moitié.
  */
 function fb_planBoutique(saisies, produits) {
@@ -358,58 +362,47 @@ function fb_planBoutique(saisies, produits) {
     return (q >= 0 && Math.round(q) === q) ? { vide: false, q: q } : { vide: false, invalide: true };
   };
   saisies.forEach((s, i) => {
-    const c = { B1: lire(s.cGP), B2: lire(s.cVIP), R: lire(s.cR) };
-    const t = { B1: lire(s.tGP), B2: lire(s.tVIP) };
-    const toutes = [c.B1, c.B2, c.R, t.B1, t.B2];
+    const c = lire(s.cR), a1 = lire(s.aGP), a2 = lire(s.aVIP);
+    const toutes = [c, a1, a2];
     if (toutes.every(v => v.vide)) { resultats.push(null); return; }
     const x = produits.find(p => p.ref === s.ref);
     if (!x) { resultats.push('❌ référence inconnue du CRM'); return; }
     if (toutes.some(v => v.invalide)) { resultats.push('❌ nombres entiers positifs uniquement'); return; }
 
     const ops = [];
-    let R = x.R, B1 = x.B1, B2 = x.B2;
-    if (!c.B1.vide || !c.B2.vide || !c.R.vide) {
-      const inv = { type: 'inventaire', R: c.R.vide ? '' : c.R.q, B1: c.B1.vide ? '' : c.B1.q, B2: c.B2.vide ? '' : c.B2.q,
-                    colonne: 0, nbCols: 3 };
-      const lib = [];
-      if (!c.B1.vide) { lib.push('compté GP ' + c.B1.q + (c.B1.q !== B1 ? ' (' + fb_signe_(c.B1.q - B1) + ')' : '')); B1 = c.B1.q; }
-      if (!c.B2.vide) { lib.push('compté VIP ' + c.B2.q + (c.B2.q !== B2 ? ' (' + fb_signe_(c.B2.q - B2) + ')' : '')); B2 = c.B2.q; }
-      if (!c.R.vide)  { lib.push('compté dépôt ' + c.R.q + (c.R.q !== R ? ' (' + fb_signe_(c.R.q - R) + ')' : '')); R = c.R.q; }
-      inv.libelle = lib.join(', ');
-      ops.push(inv);
+    let R = x.R;
+    if (!c.vide) {
+      ops.push({ type: 'inventaire', R: c.q, colonne: 0, nbCols: 1,
+                 libelle: 'compté dépôt ' + c.q + (c.q !== R ? ' (' + fb_signe_(c.q - R) + ')' : '') });
+      R = c.q;
     }
-    const d1 = t.B1.vide ? 0 : t.B1.q - B1;
-    const d2 = t.B2.vide ? 0 : t.B2.q - B2;
-    // retours au dépôt d'abord
-    if (d1 < 0) { ops.push({ type: 'transfert', q: -d1, de: 'B1', vers: 'R', colonne: 3, libelle: (-d1) + ' GP → dépôt' }); R += -d1; B1 += d1; }
-    if (d2 < 0) { ops.push({ type: 'transfert', q: -d2, de: 'B2', vers: 'R', colonne: 4, libelle: (-d2) + ' VIP → dépôt' }); R += -d2; B2 += d2; }
-    const besoin = Math.max(0, d1) + Math.max(0, d2);
-    if (besoin > R) {
-      resultats.push('❌ il faut ' + besoin + ' au dépôt, il y en a ' + R + (c.R.vide ? '' : ' (compté)') +
-                     ' : baisser le niveau voulu ou enregistrer la réception — rien n\'a été enregistré');
+    const g = a1.vide ? 0 : a1.q, v = a2.vide ? 0 : a2.q;
+    if (g + v > R) {
+      resultats.push('❌ il faut ' + (g + v) + ' au dépôt, il y en a ' + R + (c.vide ? '' : ' (compté)') +
+                     ' : baisser la quantité ou enregistrer la réception — rien n\'a été enregistré');
       return;
     }
-    if (d1 > 0 || d2 > 0) {
+    let rappel = '';
+    if (g > 0 || v > 0) {
       const lib = [];
-      if (d1 > 0) lib.push(d1 + ' dépôt → GP');
-      if (d2 > 0) lib.push(d2 + ' dépôt → VIP');
-      ops.push({ type: 'repartition', B1: Math.max(0, d1), B2: Math.max(0, d2), colonne: 3, nbCols: 2, libelle: lib.join(', ') });
-      R -= besoin; B1 += Math.max(0, d1); B2 += Math.max(0, d2);
+      if (g > 0) lib.push(g + ' dépôt → GP');
+      if (v > 0) lib.push(v + ' dépôt → VIP');
+      ops.push({ type: 'repartition', B1: g, B2: v, colonne: g > 0 ? 1 : 2, nbCols: g > 0 && v > 0 ? 2 : 1, libelle: lib.join(', ') });
+      R -= g + v;
+      rappel = 'ajouter dans « En boutique » : ' + [g > 0 ? '+' + g + ' GP' : '', v > 0 ? '+' + v + ' VIP' : ''].filter(Boolean).join(' · ');
     }
-    // niveau voulu déjà atteint : on vide la case sans mouvement
-    if (!t.B1.vide && d1 === 0) ops.push({ type: 'rien', colonne: 3, libelle: 'GP déjà à ' + t.B1.q });
-    if (!t.B2.vide && d2 === 0) ops.push({ type: 'rien', colonne: 4, libelle: 'VIP déjà à ' + t.B2.q });
-    // l'ordre des cases vidées : une répartition vide GP et VIP ; si une seule cible a bougé, ne vider que la sienne
-    ops.forEach(op => {
-      if (op.type === 'repartition' && !(d1 > 0 && d2 > 0)) { op.nbCols = 1; op.colonne = d1 > 0 ? 3 : 4; }
-    });
-    ok.push({ i: i, ref: x.ref, x: x, ops: ops, apres: { R: R, B1: B1, B2: B2 } });
+    // case à 0 : rien à sortir, on la vide simplement
+    const zeros = [];
+    if (!a1.vide && g === 0) zeros.push(1);
+    if (!a2.vide && v === 0) zeros.push(2);
+    zeros.forEach(col => ops.push({ type: 'rien', colonne: col, nbCols: 1, libelle: '0 à sortir' }));
+    ok.push({ i: i, ref: x.ref, x: x, ops: ops, rappel: rappel, apres: { R: R, B1: x.B1 + g, B2: x.B2 + v } });
     resultats.push('');
   });
   return { ok: ok, resultats: resultats };
 }
 
-/** Case « 📝 Proposer le réassort » : pré-remplit les niveaux voulus (rien n'est enregistré). */
+/** Case « 📝 Proposer le réassort » : pré-remplit les sorties du dépôt (rien n'est enregistré). */
 function fb_proposerReassort_(sh) {
   const n = sh.getLastRow() - FB.HDR;
   if (n < 1) return 'Aucune ligne.';
@@ -420,11 +413,11 @@ function fb_proposerReassort_(sh) {
   refs.forEach((ref, i) => {
     const s = D.reassort[ref];
     if (!s) return;
-    if (s.gp > 0) { sh.getRange(FB.HDR + 1 + i, g + 4).setValue(s.cibleGP); pieces += s.gp; }
-    if (s.vip > 0) { sh.getRange(FB.HDR + 1 + i, g + 5).setValue(s.cibleVIP); pieces += s.vip; }
+    if (s.gp > 0) { sh.getRange(FB.HDR + 1 + i, g + 2).setValue(s.gp); pieces += s.gp; }
+    if (s.vip > 0) { sh.getRange(FB.HDR + 1 + i, g + 3).setValue(s.vip); pieces += s.vip; }
     if (s.gp > 0 || s.vip > 0) lignes++;
   });
-  return lignes ? '📝 Réassort proposé sur ' + lignes + ' article(s) (' + pieces + ' pièce(s)) dans « 🎯 Mettre en GP / VIP ». Vérifier, corriger si besoin, puis cocher « ✅ Valider ».'
+  return lignes ? '📝 Réassort proposé sur ' + lignes + ' article(s) (' + pieces + ' pièce(s)) dans « ➡️ Sortir du dépôt ». Vérifier, corriger si besoin, cocher « ✅ Valider », puis ajouter les mêmes pièces dans « En boutique ».'
                 : 'Rien à réassortir : les boutiques sont au niveau du dernier match (ou le dépôt est vide).';
 }
 
@@ -686,8 +679,14 @@ function fb_ordre_(produits) {
 /** Tableau à saisie : les colonnes grises sont réécrites, les saisies jaunes sont conservées par référence. */
 function fb_tableauSaisie_(ss, nom, titre, consigne, cols, nbGris, nbJaune, lignesGrises, entete) {
   let sh = ss.getSheetByName(nom);
-  const neuf = !sh;
   const nbC = cols.length;
+  // changement de colonnes (version précédente du fichier) : l'onglet est refait à neuf
+  if (sh) {
+    const lu = sh.getRange(FB.HDR, 1, 1, Math.max(nbC, sh.getLastColumn())).getValues()[0].map(x => String(x).trim());
+    const attendu = cols.concat(new Array(Math.max(0, lu.length - nbC)).fill(''));
+    if (lu.some((x, i) => x !== attendu[i])) { ss.deleteSheet(sh); sh = null; }
+  }
+  const neuf = !sh;
   if (neuf) {
     sh = ss.insertSheet(nom);
     sh.getRange('A1').setValue(titre).setFontSize(14).setFontWeight('bold').setFontColor(FB.NUIT);
@@ -751,7 +750,7 @@ function fb_construireCommande_(ss, D, ordre) {
     return [x.ref, x.modele || x.produit, x.taille || 'TU', x.R, x.B1, x.B2, total, s.recu, s.sorti, x.cout || '', alerte];
   });
   const sh = fb_tableauSaisie_(ss, FB.T.CDE, '1 · COMMANDES ET STOCK — réceptions au dépôt',
-    'Livraison reçue : prénom en B4 · fournisseur en E4 · n° de facture en J4 · quantité reçue (et prix d\'achat HT s\'il a changé) dans les cases JAUNES · cocher « ✅ Valider ». Tout entre au DÉPÔT.',
+    'Livraison reçue : prénom en B4 · fournisseur en E4 · n° de facture en J4 · quantité reçue (et prix d\'achat HT s\'il a changé) dans les cases JAUNES · cocher « ✅ Valider ». Tout entre au DÉPÔT (pas dans « En boutique ») ; pour mettre en boutique : onglet 2_BOUTIQUE.',
     FB.CDE_COLS, FB.CDE_GRIS, FB.CDE_JAUNE, lignes, sh => {
       sh.getRange('D4').setValue('Fournisseur :').setFontWeight('bold').setHorizontalAlignment('right');
       sh.getRange('E4:F4').merge().setBackground(FB.JAUNE);
@@ -780,15 +779,15 @@ function fb_construireBoutique_(ss, D, ordre) {
     else if (r && r.manque) conseil = '❌ manque ' + r.manque + ' : dépôt vide';
     return [x.ref, x.modele || x.produit, x.taille || 'TU', x.R, x.B1, x.B2, o.B1 || '', o.B2 || '', o.addon || '', conseil, x.prix_vente || ''];
   });
-  const sh = fb_tableauSaisie_(ss, FB.T.BTQ, '2 · BOUTIQUES GP ET VIP — préparation du match',
-    'Avant le match : prénom en B4 · « 🎯 Mettre en GP / VIP » = combien tu veux en boutique (TOTAL, pas l\'ajout) · « Compté » = ce que tu comptes · cocher « ✅ Valider ». Le dépôt est ajusté tout seul.',
+  const sh = fb_tableauSaisie_(ss, FB.T.BTQ, '2 · DÉPÔT ET RÉASSORT GP / VIP — préparation du match',
+    '« En boutique » (classeur Inventaire) fait foi pour GP et VIP : on les compte et on les corrige LÀ-BAS. Ici : prénom en B4 · « Compté dépôt » = ce que tu comptes au dépôt · « ➡️ Sortir du dépôt » = nombre de pièces que tu AJOUTES en GP / VIP · cocher « ✅ Valider », puis ajouter les mêmes pièces dans « En boutique ».',
     FB.BTQ_COLS, FB.BTQ_GRIS, FB.BTQ_JAUNE, lignes, sh => {
       sh.getRange('I4').setValue('📝 Proposer le réassort →').setFontWeight('bold').setHorizontalAlignment('right');
       sh.getRange('I4:K4').merge();
       sh.getRange('L4').insertCheckboxes().setBackground(FB.JAUNE);
-      [110, 200, 60, 70, 85, 85, 85, 85, 95, 200, 80, 75, 75, 75, 95, 95, 380].forEach((w, i) => sh.setColumnWidth(i + 1, w));
+      [110, 200, 60, 70, 85, 85, 85, 85, 95, 200, 80, 85, 110, 110, 420].forEach((w, i) => sh.setColumnWidth(i + 1, w));
       sh.getRange(FB.HDR, 5).setBackground(FB.BLEU); sh.getRange(FB.HDR, 6).setBackground(FB.ROUGE);
-      sh.getRange(FB.HDR, 15).setBackground(FB.BLEU); sh.getRange(FB.HDR, 16).setBackground(FB.ROUGE);
+      sh.getRange(FB.HDR, 13).setBackground(FB.BLEU); sh.getRange(FB.HDR, 14).setBackground(FB.ROUGE);
     });
   sh.getRange(FB.HDR + 1, 11, Math.max(lignes.length, 1), 1).setNumberFormat('#,##0.00 €');
   const mt = fb_matchTablettes_();
@@ -867,7 +866,6 @@ function fb_construireApres_(ss, D) {
   if (!sh) {
     sh = ss.insertSheet(FB.T.APR);
     sh.getRange('A1').setValue('5 · APRÈS LE MATCH — contrôle de caisse').setFontSize(14).setFontWeight('bold').setFontColor(FB.NUIT);
-    sh.getRange('A2').setValue('1. Match en B4 · 2. « CB relevé TPE » = ticket de fin de journée du terminal · « Espèces comptées » = espèces dans la caisse MOINS le fond de caisse (30 € par boutique) · 3. Prénom en E4 · 4. Cocher « ✅ Valider le contrôle ». Le comptage du stock se fait dans 2_BOUTIQUE.').setFontColor('#555555');
     sh.getRange('A4').setValue('Match :').setFontWeight('bold').setHorizontalAlignment('right');
     sh.getRange('B4:C4').merge().setBackground(FB.JAUNE).setFontWeight('bold');
     sh.getRange('D4').setValue('Contrôlé par :').setFontWeight('bold').setHorizontalAlignment('right');
@@ -882,6 +880,7 @@ function fb_construireApres_(ss, D) {
     [130, 80, 120, 100, 100, 100, 120, 120, 100, 110].forEach((w, i) => sh.setColumnWidth(i + 1, w));
     sh.setHiddenGridlines(true);
   }
+  sh.getRange('A2').setValue('1. Match en B4 · 2. « CB relevé TPE » = ticket de fin de journée du terminal · « Espèces comptées » = espèces dans la caisse MOINS le fond de caisse (30 € par boutique) · 3. Prénom en E4 · 4. Cocher « ✅ Valider le contrôle ». Le stock GP / VIP se compte dans « En boutique » (classeur Inventaire). Ne pas faire aussi le contrôle de caisse de l\'ancien onglet « APRÈS MATCH ».').setFontColor('#555555');
   const liste = D.matchs.map(m => m.match);
   if (liste.length) sh.getRange('B4').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(liste.slice(0, 50), true).setAllowInvalid(true).build());
   let match = String(sh.getRange('B4').getValue()).trim();
@@ -916,43 +915,46 @@ function fb_construireNotice_(ss) {
   if (sh) sh.clear(); else sh = ss.insertSheet(FB.T.LIRE, 0);
   const L = [
     ["📖 BOUTIQUE SPACER'S — mode d'emploi", 'T'],
-    ['Ce classeur remplace « Inventaire 2026 2027 ». Il est relié au CRM du club et donc aux deux tablettes : ce que tu valides ici part dans le CRM en 1 à 2 minutes ; les ventes des tablettes reviennent ici toutes seules.', 'I'],
+    ['Ce classeur travaille À CÔTÉ de « Inventaire 2026 2027 ». Pour le stock des boutiques GP et VIP, c\'est l\'onglet « En boutique » de l\'Inventaire qui fait foi : on y compte, on y corrige. Ici, tu gères le DÉPÔT (réceptions, comptage, sorties vers les boutiques), tu suis les ventes et tu fais le contrôle de caisse.', 'I'],
     ['', 'V'],
-    ['LES 3 RÈGLES', 'S'],
+    ['LES 4 RÈGLES', 'S'],
     ['🟨 Cases JAUNES = c\'est toi qui les remplis.   ⬜ Cases GRISES = elles viennent du CRM, on n\'y touche jamais (Google avertit si on essaie).', 'E'],
     ['☑️ Rien n\'est enregistré tant que tu n\'as pas coché « ✅ Valider ». Ton prénom est obligatoire.', 'E'],
     ['✅ Après validation, la colonne « Résultat » dit ce qui a été fait et les cases jaunes appliquées se vident : impossible de compter deux fois.', 'E'],
+    ['🏪 Les chiffres GP et VIP se comptent et se corrigent UNIQUEMENT dans « En boutique ». Les ventes des tablettes y sont retirées toutes seules : ne les retire pas à la main (sauf une ligne « ⚠ article non reconnu »).', 'A'],
     ['', 'V'],
     ['① UNE COMMANDE ARRIVE — onglet 1_COMMANDE', 'S'],
     ['1. Prénom en B4. Fournisseur en E4 et n° de facture en J4 (obligatoires : ils partent en comptabilité).', 'E'],
     ['2. Sur la ligne de l\'article et de la taille : quantité reçue dans « ➕ Reçu ». Si le prix d\'achat HT a changé, l\'écrire à côté (sinon le prix connu du CRM est pris).', 'E'],
-    ['3. Cocher « ✅ Valider ». Tout entre au DÉPÔT. Le prix d\'achat sert au calcul de la marge et à la comptabilité.', 'E'],
+    ['3. Cocher « ✅ Valider ». Tout entre au DÉPÔT. Ne rien ajouter dans « En boutique » à ce moment-là : les pièces sont au dépôt, pas en boutique.', 'E'],
     ['EXEMPLE : 50 écharpes reçues, facture FA26081234 → E4 « Fournisseur X », J4 « FA26081234 », ligne ECH-TU « ➕ Reçu » = 50, Valider.', 'X'],
     ['', 'V'],
-    ['② AVANT LE MATCH — onglet 2_BOUTIQUE', 'S'],
+    ['② AVANT LE MATCH — onglet 2_BOUTIQUE (dépôt et réassort)', 'S'],
     ['1. Prénom en B4.', 'E'],
-    ['2. Si tu as compté : « Compté GP », « Compté VIP », « Compté dépôt » (case vide = pas compté). Le CRM est corrigé de l\'écart.', 'E'],
-    ['3. Dans « 🎯 Mettre en GP » et « 🎯 Mettre en VIP », écris le NOMBRE TOTAL que tu veux dans chaque boutique (pas l\'ajout). Le dépôt est ajusté tout seul : ce qui manque sort du dépôt, ce qui est en trop y retourne.', 'E'],
-    ['   Raccourci : coche « 📝 Proposer le réassort » : on remet le niveau de départ du dernier match, et au moins le seuil d\'alerte en GP, dans la limite du dépôt. Ce qui est déjà réassorti n\'est jamais reproposé. Vérifie, corrige, puis Valider.', 'I'],
+    ['2. Si tu as compté le dépôt : « Compté dépôt » (case vide = pas compté). Le CRM est corrigé de l\'écart.', 'E'],
+    ['3. Pour mettre des pièces en boutique : « ➡️ Sortir du dépôt vers GP » ou « … vers VIP » = le NOMBRE DE PIÈCES QUE TU AJOUTES (pas le total). Cocher « ✅ Valider » : elles quittent le dépôt et entrent en boutique dans le CRM.', 'E'],
+    ['4. TOUT DE SUITE APRÈS : dans « En boutique » (classeur Inventaire), ajoute les mêmes pièces sur la même ligne. La colonne Résultat te rappelle quoi ajouter (👉). Sans ça, le recalage suivant les retirerait de la boutique.', 'A'],
+    ['   Raccourci : coche « 📝 Proposer le réassort » : les quantités conseillées (retour au niveau du dernier match, dans la limite du dépôt) sont pré-remplies. Vérifie, corrige, puis Valider.', 'I'],
     ['   La ligne 🎁 en haut de l\'onglet donne les add-ons Tickie encore à remettre : garde-les en boutique GP.', 'I'],
-    ['4. Cocher « ✅ Valider ». Puis, sur CHAQUE tablette, en wifi : Synchronisation → « 🎫 Charger le match ». C\'est ce qui envoie ton stock aux tablettes.', 'E'],
-    ['EXEMPLE : il reste 2 écharpes en GP, tu en veux 20 → « 🎯 Mettre en GP » = 20. Résultat : « 18 dépôt → GP · maintenant dépôt 101 / GP 20 / VIP 7 ».', 'X'],
+    ['5. Prévenir Clément : il lance eb_simuler (0 écart attendu), puis eb_appliquer. Ensuite, sur CHAQUE tablette, en wifi : « Mettre à jour le catalogue » (c\'est ce qui charge le stock), puis « 🎫 Charger le match ».', 'E'],
+    ['EXEMPLE : il reste 2 écharpes en GP, tu veux en avoir 20 → « Sortir du dépôt vers GP » = 18, Valider ; puis dans « En boutique », écharpe GP : 2 → 20.', 'X'],
     ['', 'V'],
     ['③ PENDANT LE MATCH — les tablettes', 'S'],
     ['Les bénévoles vendent sur les tablettes, même sans internet. Les add-ons Tickie (écharpe, maillot achetés avec le billet) se remettent uniquement à la boutique GP, en scannant le billet : ils sortent du stock GP tout seuls.', 'I'],
-    ['À la fermeture : clôturer la caisse puis « Synchroniser tout » sur chaque tablette dès qu\'il y a du réseau. Sans ça, les ventes ne sont pas déduites du stock.', 'A'],
+    ['Pendant le match : aucun recalage, aucune saisie de stock, ni ici ni dans « En boutique ».', 'A'],
+    ['À la fermeture : clôturer la caisse puis « Synchroniser tout » sur CHAQUE tablette dès qu\'il y a du réseau. Sans ça, les ventes ne sont pas déduites du stock.', 'A'],
     ['', 'V'],
-    ['④ APRÈS LE MATCH', 'S'],
-    ['3_JOURNAL_VENTES et 4_TOP_VENTES se remplissent tout seuls (ventes GP / VIP, add-ons remis). Un bandeau rouge signale une tablette qui n\'a pas fait « Synchroniser tout ».', 'I'],
-    ['2_BOUTIQUE montre ce qui s\'est vendu au dernier match et le « Réassort conseillé ». Si une adresse d\'alerte est réglée, tu reçois aussi un mail de réassort une fois par match.', 'I'],
-    ['5_APRES_MATCH : saisir le relevé TPE et les espèces comptées (sans le fond de caisse de 30 €) de chaque boutique, ton prénom, puis « ✅ Valider le contrôle ». Le rapport part par mail.', 'E'],
+    ['④ APRÈS LE MATCH — dans cet ordre', 'S'],
+    ['1. « Synchroniser tout » fait sur les deux tablettes (plus de bandeau rouge ici).  2. Tu comptes les boutiques et tu corriges « En boutique ».  3. Clément lance eb_simuler puis eb_appliquer.', 'E'],
+    ['3_JOURNAL_VENTES et 4_TOP_VENTES se remplissent tout seuls (ventes GP / VIP, add-ons remis). 2_BOUTIQUE montre ce qui s\'est vendu au dernier match et le « Réassort conseillé ».', 'I'],
+    ['5_APRES_MATCH : saisir le relevé TPE et les espèces comptées (sans le fond de caisse de 30 €) de chaque boutique, ton prénom, puis « ✅ Valider le contrôle ». Le rapport part par mail. C\'est le seul contrôle de caisse à faire.', 'E'],
     ['', 'V'],
     ['CE QUI NE SE FAIT PAS ICI', 'S'],
-    ['Dons, cadeaux partenaires, casse, vente en dehors d\'un match : page Gestion (spacers-boutique.spacersytb.workers.dev/gestion.html). Nouvel article ou prix de vente : prévenir Clément.', 'I'],
+    ['Comptage et correction des boutiques GP / VIP : « En boutique ». Dons, cadeaux partenaires, casse, vente en dehors d\'un match : page Gestion (spacers-boutique.spacersytb.workers.dev/gestion.html). Nouvel article ou prix de vente : prévenir Clément.', 'I'],
     ['EN CAS DE SOUCI', 'S'],
     ['❌ dans « Résultat » : la ligne n\'a PAS été enregistrée (le message dit pourquoi). Corriger puis recocher « Valider ».', 'E'],
     ['⏸ dans « Résultat » : le CRM était occupé (une tablette synchronisait) : rien n\'est perdu, recocher « Valider » 2 minutes plus tard.', 'E'],
-    ['Rien ne bouge après 5 minutes : recocher « Valider » ; si ça continue, prévenir Clément.', 'E'],
+    ['Rien ne bouge après 5 minutes, ou un message que tu ne comprends pas : ne recoche pas, envoie une photo à Clément.', 'E'],
   ];
   sh.getRange(1, 1, L.length, 1).setValues(L.map(l => [l[0]]));
   sh.setColumnWidth(1, 1000);
@@ -994,7 +996,7 @@ function fb_alerteReassort_(D) {
     h += '</table>';
   } else h += '<p>Rien à réassortir.</p>';
   if (vides.length) h += '<p><b>En rupture totale :</b> ' + vides.map(x => (x.modele || x.produit) + ' ' + (x.taille || '')).join(', ') + '.</p>';
-  h += '<p>Dans le fichier boutique, onglet 2_BOUTIQUE : cocher « 📝 Proposer le réassort », vérifier, puis « ✅ Valider ».</p>';
+  h += '<p>Avant tout : « Synchroniser tout » fait sur les deux tablettes.<br>Puis, dans le fichier boutique, onglet 2_BOUTIQUE : cocher « 📝 Proposer le réassort », vérifier, « ✅ Valider » (les pièces quittent le dépôt), et ajouter les mêmes pièces dans « En boutique » (classeur Inventaire), qui fait foi. Prévenir Clément pour eb_simuler / eb_appliquer.</p>';
   try {
     MailApp.sendEmail({ to: dest, subject: '🔁 Boutique — réassort après ' + D.dernierMatch, htmlBody: h });
     props.setProperty(FB.PROP_ALERTE_FAITE, D.dernierMatch);
@@ -1111,10 +1113,15 @@ function fb_matchTablettes_() {
     const sh = SpreadsheetApp.getActive().getSheetByName('04b_CALENDRIER');
     if (!sh || sh.getLastRow() < 2) return '';
     const c = sb_cols_(sh);
+    const entetes = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(x => String(x).trim());
+    const cAdv = entetes.findIndex(x => /^adversaire/i.test(x));        // « Adversaire Spacer's »
     const auj = Utilities.formatDate(new Date(), 'Europe/Paris', 'yyyy-MM-dd');
     const L = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getValues().map(r => {
       const d = r[c['Date'] - 1] instanceof Date ? r[c['Date'] - 1] : new Date(r[c['Date'] - 1]);
-      return { nom: String(r[c['Match'] - 1]).trim(), jour: isNaN(d) ? '' : Utilities.formatDate(d, 'Europe/Paris', 'yyyy-MM-dd'),
+      const adv = cAdv === -1 ? '' : String(r[cAdv] || '').trim();
+      // même libellé que les tablettes (« Spacer's vs Paris »), y compris les soirs de double affiche
+      return { nom: adv ? "Spacer's vs " + adv : String(r[c['Match'] - 1]).trim(),
+               jour: isNaN(d) ? '' : Utilities.formatDate(d, 'Europe/Paris', 'yyyy-MM-dd'),
                tab: String(r[c['Tablettes'] - 1] || '').indexOf('✅') === 0 };
     }).filter(m => m.nom && m.jour >= auj);
     const m = L.find(x => x.tab) || L[0];

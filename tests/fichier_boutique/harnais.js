@@ -1,7 +1,7 @@
 // Maquette Apps Script : SpreadsheetApp en mémoire + vrai Stock_Boutique.gs + Fichier_Boutique.gs
 const fs = require('fs');
 const vm = require('vm');
-const DIR = process.argv[2];
+const DIR = process.argv[2] || require('path').join(__dirname, '../../apps-script/crm');
 
 function colNum(l) { let n = 0; for (const ch of l) n = n * 26 + ch.charCodeAt(0) - 64; return n; }
 function parseA1(a) {

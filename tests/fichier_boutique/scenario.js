@@ -28,7 +28,7 @@ const L = crm.insertSheet('21_LIGNES_LIVE');
 L.appendRow(['ID vente', 'Horodatage', 'ID événement Tickie', 'Boutique', 'Réf.', 'Produit', 'Catégorie', 'Qté', 'PU TTC', 'CA TTC', 'Mode']);
 const CAL = crm.insertSheet('04b_CALENDRIER');
 CAL.appendRow(['ID événement Tickie', 'Date', 'Heure', 'Match', "Adversaire Spacer's", 'Statut', 'Tablettes', 'Jauge']);
-CAL.appendRow(['ev1', new Date(2099, 10, 28), '18:00', "Spacer's vs Paris", 'Paris', '', '✅ tablettes', 4300]);
+CAL.appendRow(['ev1', new Date(2099, 10, 28), '18:00', "France Avenir vs Cannes & Spacer's vs Paris", 'Paris', '', '✅ tablettes', 4300]);   // double affiche
 const RT = crm.insertSheet('17_RETRAITS');
 RT.appendRow(['cle', 'transaction_id', 'evenement', 'date_evenement', 'date_achat', 'prenom', 'nom', 'email', 'produit', 'variant_id', 'quantite',
   'taille_requise', 'codes_billets', 'qte_remise', 'tailles_remises', 'refs_remises', 'statut']);
@@ -101,32 +101,50 @@ check(!/introuvable/.test(C.get(5, 1)) && stock('MAI-BNU-L').R === 12 && C.get(l
 check(ctx.__actif === crm, 'classeur actif rétabli sur le CRM');
 ctx.__actif = null;
 
-// ---------- 3. Préparation des boutiques ----------
-console.log('3. Préparation (2_BOUTIQUE)');
+// ---------- 3. Préparation des boutiques (mode « En boutique ») ----------
+console.log('3. Préparation (2_BOUTIQUE, mode « En boutique »)');
+check(B.get(8, 12) === 'Compté dépôt' && /Sortir du dépôt vers GP/.test(B.get(8, 13)) && /vers VIP/.test(B.get(8, 14)) && B.get(8, 15) === 'Résultat' && B.get(8, 16) === '',
+      'plus de « Compté GP/VIP » ni de « Mettre en » : seulement compté dépôt et sorties du dépôt');
 B.getRange('B4').setValue('Élise');
 const be = B.find(1, 'ECH-TU', 9), bm = B.find(1, 'MAI-BNU-L', 9), bg = B.find(1, 'GRD-TU', 9), b152 = B.find(1, 'MAI-BNU-152', 9);
-B.getRange(be, 15).setValue(20); B.getRange(be, 16).setValue(5);          // GP 16 → 20 ; VIP 7 → 5
-B.getRange(bm, 12).setValue(1); B.getRange(bm, 15).setValue(3);           // compté GP 1 (CRM 3), puis 3 en GP
-B.getRange(bg, 15).setValue(5);                                            // dépôt 0 : refus
-B.getRange(b152, 15).setValue(1);                                          // déjà 1 : rien
+const totalEch0 = stock('ECH-TU').R + stock('ECH-TU').B1 + stock('ECH-TU').B2;
+B.getRange(be, 13).setValue(4); B.getRange(be, 14).setValue(0);            // +4 en GP, 0 en VIP
+B.getRange(bm, 12).setValue(10); B.getRange(bm, 13).setValue(2);           // dépôt compté 10 (CRM 12), puis +2 en GP
+B.getRange(bg, 13).setValue(5);                                            // dépôt 0 : refus
 B.getRange('H4').setValue(true);
 run('fb_traiterDemandes()');
 let s = stock('ECH-TU');
-check(s.B1 === 20 && s.B2 === 5 && s.R === 167, 'écharpe : GP 20, VIP 5, dépôt 169 − 4 + 2 = 167');
+check(s.B1 === 20 && s.B2 === 7 && s.R === 165, 'écharpe : 4 dépôt → GP (GP 16 → 20, VIP 7 inchangé, dépôt 169 → 165)');
+check(s.R + s.B1 + s.B2 === totalEch0, 'sortie du dépôt : aucune pièce créée ni perdue');
+check(/👉 ajouter dans « En boutique » : \+4 GP/.test(B.get(be, 15)) && !/VIP/.test(String(B.get(be, 15)).split('👉')[1]), 'résultat : rappel « ajouter +4 GP dans En boutique »');
 s = stock('MAI-BNU-L');
-check(s.B1 === 3 && s.R === 10, 'maillot L : comptage GP 3 → 1 puis +2 du dépôt (12 → 10)');
-check(MV.row(MV.getLastRow() - 0, 3)[1] === 'TRANSFERT', 'mouvements TRANSFERT tracés');
-const types = []; for (let r = 2; r <= MV.getLastRow(); r++) types.push(MV.get(r, 2));
-check(types.indexOf('AJUSTEMENT_INVENTAIRE') !== -1, 'écart de comptage tracé (AJUSTEMENT_INVENTAIRE)');
-check(stock('GRD-TU').B1 === 1 && String(B.get(bg, 17)).indexOf('❌') === 0 && B.get(bg, 15) === 5, 'gourde : dépôt vide → ligne refusée, saisie conservée');
-check(B.get(b152, 15) === '' && String(B.get(b152, 17)).indexOf('déjà à 1') !== -1, 'niveau déjà atteint : case vidée, aucun mouvement');
-check(B.get(be, 15) === '' && B.get(be, 16) === '' && B.get(bm, 12) === '', 'cases appliquées vidées');
+check(s.R === 8 && s.B1 === 5, 'maillot L : dépôt compté 10 puis 2 dépôt → GP (dépôt 8, GP 5)');
+const ajust = []; for (let r = 2; r <= MV.getLastRow(); r++) if (MV.get(r, 2) === 'AJUSTEMENT_INVENTAIRE') ajust.push(MV.get(r, 5));
+check(ajust.length === 1 && ajust[0] === 'R', 'seul ajustement : le dépôt (jamais GP ni VIP depuis le fichier)');
+check(MV.get(MV.getLastRow(), 2) === 'TRANSFERT', 'sorties tracées en TRANSFERT');
+check(stock('GRD-TU').B1 === 1 && String(B.get(bg, 15)).indexOf('❌') === 0 && B.get(bg, 13) === 5, 'gourde : dépôt vide → ligne refusée, saisie conservée');
+check(B.get(be, 13) === '' && B.get(be, 14) === '' && B.get(bm, 12) === '' && B.get(bm, 13) === '', 'cases appliquées vidées (y compris la case à 0)');
+check(/En boutique/.test(B.get(5, 1)) && /eb_simuler/.test(B.get(5, 1)), 'message général : ajouter dans « En boutique » puis eb_simuler');
 check(B.get(be, 11) === 15, 'prix de vente TTC affiché (15 €)');
-check(B.get(be, 5) === 20 && B.get(be, 6) === 5, 'tableau relu : GP 20 / VIP 5');
+check(B.get(be, 5) === 20 && B.get(be, 6) === 7, 'tableau relu : GP 20 / VIP 7');
 const mvB = MV.getLastRow();
-check(MV.get(mvB, 11) === "Spacer's vs Paris" && /Élise/.test(MV.get(mvB, 14)), 'mouvements signés Élise, match des tablettes recopié');
-B.getRange(bg, 15).setValue('');
+check(MV.get(mvB, 11) === "Spacer's vs Paris" && /Élise/.test(MV.get(mvB, 14)), 'double affiche : mouvements signés « Spacer\'s vs Paris » (comme les tablettes), par Élise');
+check(/Match des tablettes : Spacer's vs Paris/.test(B.get(6, 1)), 'bandeau : match des tablettes « Spacer\'s vs Paris »');
+B.getRange(bg, 13).setValue('');
 check(/🎁 .*3 Écharpe.*1 Maillot Blanc \(dont 1 de matchs passés/.test(B.get(7, 1)) && !/Echarpe/.test(B.get(7, 1)), 'bandeau add-ons : « Echarpe » et « Écharpe » regroupées (3), 1 maillot Blanc d\'un match passé');
+
+// recalage « En boutique » (maquette d'eb_appliquer : B1 / B2 := En boutique, dépôt jamais touché)
+const ebAppliquer = enBoutique => {
+  const n = []; Object.keys(enBoutique).forEach(ref => {
+    const r = P.find(8, ref, 2);
+    [['B1', 5], ['B2', 6]].forEach(([pt, col]) => {
+      const v = enBoutique[ref][pt]; if (v === undefined || v === P.get(r, col)) return;
+      n.push(ref + ' ' + pt + ' ' + (v - P.get(r, col))); P.set(r, col, v);
+    });
+  }); return n;
+};
+check(ebAppliquer({ 'ECH-TU': { B1: 20, B2: 7 }, 'MAI-BNU-L': { B1: 5, B2: 0 } }).length === 0 && stock('ECH-TU').R + stock('ECH-TU').B1 + stock('ECH-TU').B2 === totalEch0,
+      'Élise a reporté dans « En boutique » : eb_appliquer ne change rien (0 écart), stock conservé');
 pause(5);
 
 // ---------- 4. Match : ventes tablettes + add-on ----------
@@ -163,7 +181,7 @@ const Tp = F.getSheetByName('4_TOP_VENTES');
 check(Tp.get(6, 2) === 'Écharpe' && Tp.get(6, 3) === 8 && Tp.get(6, 4) === 6 && Tp.get(6, 5) === 2 && Tp.get(6, 6) === 3, 'top 1 : écharpe 8 vendues (6 GP, 2 VIP) + 3 add-ons');
 const be2 = B.find(1, 'ECH-TU', 9);
 check(B.get(be2, 7) === 6 && B.get(be2, 8) === 2 && B.get(be2, 9) === 3, 'boutique : vendu GP 6, VIP 2, add-ons 3 au dernier match');
-check(String(B.get(be2, 10)).indexOf('+9 GP') !== -1 && String(B.get(be2, 10)).indexOf('+2 VIP') !== -1, 'réassort conseillé : +9 GP, +2 VIP');
+check(String(B.get(be2, 10)).indexOf('+9 GP') !== -1 && String(B.get(be2, 10)).indexOf('+2 VIP') !== -1, 'réassort conseillé : +9 GP, +2 VIP (vente VIP pas encore synchronisée)');
 const bm2 = B.find(1, 'MAI-BNU-L', 9), b1522 = B.find(1, 'MAI-BNU-152', 9), bmap = B.find(1, 'MAP-BNU-M', 9), bbon = B.find(1, 'BON-BLE-TU', 9);
 check(String(B.get(bm2, 10)).indexOf('+1 GP') !== -1, 'maillot L : 1 vendu → +1 GP');
 check(B.get(b1522, 10) === '', 'maillot 152 non vendu, dépôt vide : pas d\'alerte rouge due au seul seuil');
@@ -184,18 +202,22 @@ check(T.mails.length === 1, '…et pas deux fois pour le même match');
 // ---------- 5. Proposer puis valider le réassort ----------
 console.log('5. Réassort');
 B.getRange('L4').setValue(true); run('fb_traiterDemandes()');
-check(B.get(be2, 15) === 20 && B.get(be2, 16) === 5, 'proposé : écharpe GP 11 → 20, VIP 2 → 5');
+check(B.get(be2, 13) === 9 && B.get(be2, 14) === 3, 'proposé en quantités à sortir : écharpe +9 GP, +3 VIP');
 const bg2 = B.find(1, 'GRD-TU', 9);
-check(B.get(bg2, 15) === '', 'gourde : dépôt vide → rien proposé');
-check(B.get(bm2, 15) === 3, 'maillot L proposé : GP 2 → 3');
+check(B.get(bg2, 13) === '', 'gourde : dépôt vide → rien proposé');
+check(B.get(bm2, 13) === 1, 'maillot L proposé : +1 GP');
 check(stock('ECH-TU').B1 === 11, 'proposer n\'enregistre rien');
 B.getRange('B4').setValue('Élise'); B.getRange('H4').setValue(true); run('fb_traiterDemandes()');
 s = stock('ECH-TU');
-check(s.B1 === 20 && s.B2 === 5 && s.R === 155, 'réassort validé : GP 20, VIP 5, dépôt 167 − 12 = 155');
+check(s.B1 === 20 && s.B2 === 7 && s.R === 153, 'réassort validé : GP 20, VIP 7, dépôt 165 − 12 = 153');
+check(/\+9 GP · \+3 VIP/.test(B.get(be2, 15)), 'rappel : ajouter +9 GP · +3 VIP dans « En boutique »');
 check(String(B.get(be2, 10)).indexOf('🔁') === -1, 'après réassort : plus rien de conseillé pour l\'écharpe');
 B.getRange('L4').setValue(true); run('fb_traiterDemandes()');
-check(B.get(be2, 15) === '' && B.get(be2, 16) === '', 'recocher « Proposer » : écharpe pas reproposée (pas de double réassort)');
+check(B.get(be2, 13) === '' && B.get(be2, 14) === '', 'recocher « Proposer » : écharpe pas reproposée (pas de double réassort)');
 check(stock('ECH-TU').B1 === 20, 'stock écharpe inchangé');
+// oubli du report dans « En boutique » : le recalage montre l'écart (c'est ce qu'eb_simuler doit faire voir à Clément)
+check(ebAppliquer({ 'ECH-TU': { B1: 11, B2: 4 } }).join() === 'ECH-TU B1 -9,ECH-TU B2 -3', 'report oublié : eb fait apparaître −9 GP / −3 VIP (à voir dans eb_simuler avant d\'appliquer)');
+{ const r = P.find(8, 'ECH-TU', 2); P.set(r, 5, 20); P.set(r, 6, 7); }   // remis pour la suite
 
 // ---------- 6. Contrôle de caisse ----------
 console.log('6. Caisse (5_APRES_MATCH)');
@@ -214,12 +236,20 @@ check(CC && CC.getLastRow() === 3 && CC.get(2, 7) === -4.4 && CC.get(3, 10) === 
 check(T.mails.some(m => /caisse/.test(m.subject)), 'rapport de caisse envoyé par mail');
 check(Ap.get(9, 7) === '' && Ap.get(9, 8) === '', 'saisies de caisse vidées');
 
-// ---------- 7. Arrêt de l'ancien Inventaire ----------
-console.log('7. Arrêt de l\'ancien inventaire');
-['majInventaireElise', 'majSaisieInventaire', 'si_surModification', 'majInventaire', 'eb_executer', 'synchroRetraitsHoraire', 'Topventes'].forEach(h => run(`ScriptApp.newTrigger('${h}').create()`));
+// ---------- 7. Ancien Inventaire : rien n'est arrêté ----------
+console.log('7. « En boutique » fait foi : déclencheurs de l\'Inventaire conservés');
+['majInventaireElise', 'majSaisieInventaire', 'si_surModification', 'majInventaire', 'Topventes'].forEach(h => run(`ScriptApp.newTrigger('${h}').create()`));
+const avant = T.triggers.map(t => t.h).sort().join();
 const r = run('arreterAncienInventaire()');
-const restants = T.triggers.map(t => t.h).sort().join();
-check(r.length === 5, '5 déclencheurs de l\'ancien inventaire retirés');
-check(restants === 'Topventes,fb_surModification,majFichierBoutique,synchroRetraitsHoraire', 'retraits horaires, Topventes et fichier boutique conservés');
+check(r.length === 0 && T.triggers.map(t => t.h).sort().join() === avant, 'arreterAncienInventaire neutralisée : majInventaire et les autres restent actifs');
+run('installerFichierBoutique()');
+check(T.triggers.some(t => t.h === 'majInventaire'), 'réinstallation : aucun déclencheur de l\'Inventaire retiré');
+
+// ---------- 8. Passage de l'ancienne disposition de 2_BOUTIQUE à la nouvelle ----------
+console.log('8. Mise à jour d\'un onglet 2_BOUTIQUE de l\'ancienne version');
+F.getSheetByName('2_BOUTIQUE').getRange(8, 12).setValue('Compté GP'); F.getSheetByName('2_BOUTIQUE').getRange(8, 17).setValue('Résultat');
+run('majFichierBoutique()');
+const B2n = F.getSheetByName('2_BOUTIQUE');
+check(B2n.get(8, 12) === 'Compté dépôt' && B2n.get(8, 17) === '' && B2n.find(1, 'ECH-TU', 9) > 0, 'ancien onglet refait automatiquement avec les nouvelles colonnes');
 
 console.log('\n' + ok + ' contrôles OK');
