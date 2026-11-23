@@ -34,6 +34,7 @@ RT.appendRow(['cle', 'transaction_id', 'evenement', 'date_evenement', 'date_acha
   'taille_requise', 'codes_billets', 'qte_remise', 'tailles_remises', 'refs_remises', 'statut']);
 RT.appendRow(['k1', 't1', 'Paris', new Date(2099, 10, 28), '', '', '', '', 'Écharpe', '', 2, '', '', 0, '', '', 'À remettre']);
 RT.appendRow(['k2', 't2', 'Sète', new Date(2026, 9, 17), '', '', '', '', 'Maillot Blanc', '', 1, 'O', '', 0, '', '', 'À remettre']);
+RT.appendRow(['k4', 't4', 'Paris', new Date(2099, 10, 28), '', '', '', '', 'Echarpe', '', 1, '', '', 0, '', '', 'À remettre']);
 RT.appendRow(['k3', 't3', 'Tours', new Date(2026, 10, 21), '', '', '', '', 'Écharpe', '', 3, '', '', 3, '', '', 'Remis']);
 
 const stock = ref => { const r = P.find(8, ref, 2); return { R: P.get(r, 12), B1: P.get(r, 5), B2: P.get(r, 6), cout: P.get(r, 4) }; };
@@ -116,7 +117,7 @@ check(B.get(be, 5) === 20 && B.get(be, 6) === 5, 'tableau relu : GP 20 / VIP 5')
 const mvB = MV.getLastRow();
 check(MV.get(mvB, 11) === "Spacer's vs Paris" && /Élise/.test(MV.get(mvB, 14)), 'mouvements signés Élise, match des tablettes recopié');
 B.getRange(bg, 15).setValue('');
-check(/🎁 .*2 Écharpe.*1 Maillot Blanc \(dont 1 de matchs passés/.test(B.get(7, 1)), 'bandeau add-ons à remettre : 2 écharpes, 1 maillot Blanc d\'un match passé');
+check(/🎁 .*3 Écharpe.*1 Maillot Blanc \(dont 1 de matchs passés/.test(B.get(7, 1)) && !/Echarpe/.test(B.get(7, 1)), 'bandeau add-ons : « Echarpe » et « Écharpe » regroupées (3), 1 maillot Blanc d\'un match passé');
 pause(5);
 
 // ---------- 4. Match : ventes tablettes + add-on ----------
@@ -156,7 +157,9 @@ check(B.get(be2, 7) === 6 && B.get(be2, 8) === 2 && B.get(be2, 9) === 3, 'boutiq
 check(String(B.get(be2, 10)).indexOf('+9 GP') !== -1 && String(B.get(be2, 10)).indexOf('+2 VIP') !== -1, 'réassort conseillé : +9 GP, +2 VIP');
 const bm2 = B.find(1, 'MAI-BNU-L', 9), b1522 = B.find(1, 'MAI-BNU-152', 9), bmap = B.find(1, 'MAP-BNU-M', 9), bbon = B.find(1, 'BON-BLE-TU', 9);
 check(String(B.get(bm2, 10)).indexOf('+1 GP') !== -1, 'maillot L : 1 vendu → +1 GP');
-check(String(B.get(b1522, 10)).indexOf('manque 2') !== -1, 'maillot 152 : seuil 3 en GP, dépôt vide → « manque 2 »');
+check(B.get(b1522, 10) === '', 'maillot 152 non vendu, dépôt vide : pas d\'alerte rouge due au seul seuil');
+const bg3 = B.find(1, 'GRD-TU', 9);
+check(/❌ manque 1 : dépôt vide/.test(B.get(bg3, 10)), 'gourde offerte au match, dépôt vide → « manque 1 »');
 check(B.get(bmap, 10) === '', 'maillot partenaire (VIP seulement) : jamais proposé en GP');
 check(String(B.get(bbon, 10)).indexOf('🔁') === -1, 'bonnet jamais en boutique : rien proposé');
 check(T.props.FB_ALERTE_EMAIL === 'carpreau.elise@gmail.com', 'adresse d\'alerte d\'Élise réglée à l\'installation');

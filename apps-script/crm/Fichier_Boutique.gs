@@ -579,7 +579,10 @@ function fb_calculer(produits, tousProduits, mvts, ventes, live, debut, retraits
     let dispo = Math.max(0, x.R);
     const gp = Math.min(veutGP, dispo); dispo -= gp;
     const vip = Math.min(veutVIP, dispo);
-    reassort[x.ref] = { gp: gp, vip: vip, cibleGP: x.B1 + gp, cibleVIP: x.B2 + vip, manque: (veutGP - gp) + (veutVIP - vip) };
+    const manqueGP = Math.max(0, Math.max(0, departGP - x.B1) - gp);    // le seuil seul ne crée pas d'alerte « manque »
+    const manque = manqueGP + (veutVIP - vip);
+    if (!gp && !vip && !manque) return;
+    reassort[x.ref] = { gp: gp, vip: vip, cibleGP: x.B1 + gp, cibleVIP: x.B2 + vip, manque: manque };
   });
 
   // --- add-ons Tickie encore à remettre (boutique GP), par produit
@@ -590,8 +593,10 @@ function fb_calculer(produits, tousProduits, mvts, ventes, live, debut, retraits
     if (st !== 'À remettre' && st !== 'Partiel') return;
     const reste = num(r.quantite) - num(r.qte_remise);
     if (reste <= 0) return;
-    const nom = String(r.produit || '').replace(/\s*-\s*(XS|S|M|L|XL|XXL|2XL|3XL|\d{3})$/i, '').trim() || 'Article';
-    const o = aRemettre[nom] = aRemettre[nom] || { q: 0, passes: 0 };
+    const brut = String(r.produit || '').replace(/\s*[-–—]\s*(XS|S|M|L|XL|XXL|2XL|3XL|\d{3})$/i, '').trim() || 'Article';
+    const cle = norm(brut);
+    const o = aRemettre[cle] = aRemettre[cle] || { nom: brut, q: 0, passes: 0 };
+    if (/[^\x00-\x7f]/.test(brut) && !/[^\x00-\x7f]/.test(o.nom)) o.nom = brut;   // garder l'orthographe accentuée
     o.q += reste;
     const de = date(r.date_evenement);
     if (de && de < auj) o.passes += reste;
@@ -788,8 +793,8 @@ function fb_construireBoutique_(ss, D, ordre) {
   const ar = Object.keys(D.aRemettre);
   sh.getRange('A7').setValue(ar.length
     ? '🎁 Add-ons Tickie à remettre en boutique GP (payés en ligne, à garder en stock GP) : ' +
-      ar.map(k => D.aRemettre[k].q + ' ' + k + (D.aRemettre[k].passes ? ' (dont ' + D.aRemettre[k].passes + ' de matchs passés : à vérifier)' : '')).join(' · ') +
-      (ar.some(k => /maillot/i.test(k)) ? ' — maillots : taille choisie au retrait' : '')
+      ar.map(k => D.aRemettre[k].q + ' ' + D.aRemettre[k].nom + (D.aRemettre[k].passes ? ' (dont ' + D.aRemettre[k].passes + ' de matchs passés : à vérifier)' : '')).join(' · ') +
+      (ar.some(k => /maillot/.test(k)) ? ' — maillots : taille choisie au retrait' : '')
     : '🎁 Aucun add-on Tickie en attente de retrait.').setFontSize(9).setFontWeight('bold').setFontColor(ar.length ? '#8a6d00' : '#555555');
   fb_couleursAlertes_(sh, 10, lignes.length);
 }
@@ -890,7 +895,9 @@ function fb_construireApres_(ss, D) {
   sh.getRange(9, 1, 2, 6).setBackground(FB.GRIS);
   sh.getRange(9, 7, 2, 2).setBackground(FB.JAUNE);
   sh.getRange(9, 9, 2, 2).setBackground(FB.GRIS);
-  sh.getRange(9, 3, 2, 6).setNumberFormat('#,##0.00 €');
+  sh.getRange(9, 3, 2, 3).setNumberFormat('#,##0.00 €');
+  sh.getRange(9, 6, 2, 1).setNumberFormat('0');
+  sh.getRange(9, 7, 2, 2).setNumberFormat('#,##0.00 €');
   sh.getRange(9, 9, 2, 2).setNumberFormat('#,##0.00 €;[Red]-#,##0.00 €');
   sh.getRange('B4').setNote(m ? match : '');
   sh.getRange('A11').setValue('Écart positif = plus en caisse que prévu ; négatif = manque. Le relevé TPE doit couvrir uniquement le terminal de cette boutique.')
