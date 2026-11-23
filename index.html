@@ -608,6 +608,7 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
           <button class="pb pb-off" onclick="payer('Offert')">🎁 Offert (motif demandé)</button>
         </div>
         <div class="minor">
+          <button onclick="articleLibre()">➕ Article hors catalogue</button>
           <button onclick="confirmerVider()">🗑 Vider le panier</button>
           <button onclick="showHistorique()">🕐 Dernières ventes</button>
           <button id="btn-retraits" onclick="ouvrirRetraits()" style="grid-column:1/-1;color:var(--ok);background:var(--ok-bg)">🎁 Retrait commande web (déjà payé)</button>
@@ -1283,6 +1284,7 @@ function openNM(){
 function closeNM(){$('ov-nm').classList.remove('on');}
 async function createSess(){
   const adv=$('mAdv').value.trim();if(!adv){toast('Entre le nom de l\'adversaire');return;}
+  if(!$('mBen').value.trim()){toast('Entre le prénom du ou des bénévoles de la caisse');$('mBen').focus();return;}   // 23/11/2026 : obligatoire
   const date=$('mDat').value;
   const s={id:uid(),boutique_id:CFG.boutique_id,boutique_nom:CFG.boutique_nom,saison:CFG.saison,
     match_label:'Spacer\'s vs '+adv,date,heure:$('mHeu').value,
@@ -1396,6 +1398,17 @@ function ajoutPan(p,src){
   if(!src)p.ss=(stockOf(p)||0)-1;
   if(navigator.vibrate)navigator.vibrate(30);
   rGrid();rPan();
+}
+// 23/11/2026 : article absent du catalogue (ex. bonnet pas encore créé, prix d'étiquette différent).
+// La vente part au CRM comme les autres (chiffre d'affaires, paiement) ; le stock n'est pas touché :
+// le CRM la signale dans 99_DIAGNOSTIC (« Produits inconnus ») pour régularisation.
+function articleLibre(){
+  const nom=(prompt('Article hors catalogue : nom, couleur, taille (ex. Bonnet bleu)')||'').trim();if(!nom)return;
+  const px=Number(String(prompt('Prix encaissé (€) pour « '+nom+' »')||'').replace(',','.').replace(/[^0-9.]/g,''));
+  if(!(px>0)){toast('Prix invalide');return;}
+  const id='DIVERS-'+uid();
+  pan[id]={id,ref_boutique:'DIVERS',nom:'Divers – '+nom,categorie:'Divers',prix_vente:Math.round(px*100)/100,qty:1,k:id,src:''};
+  rPan();
 }
 function chQty(k,d){
   const it=pan[k];if(!it)return;const p=prods.find(x=>x.id===it.id);
@@ -1848,7 +1861,10 @@ async function pilEnvoyer(force){
         lignes:ls.map(x=>({ref:x.produit_ref||x.produit_id,nom:x.produit_nom,cat:x.categorie||'',qte:x.quantite,pu:x.prix_unitaire})),
         ticket:(v0.ticket_id||v0.barcode)?{ticket_id:v0.ticket_id||'',barcode:v0.barcode||'',tarif:v0.client_tarif||''}:null};});
     // text/plain : pas de pré-vérification CORS, accepté par Apps Script
-    const r=await fetch(PIL.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'ventes',token:PIL.token,boutique:CFG.boutique_id,ventes})});
+    // 23/11/2026 : délai maximum de 20 s, sinon une requête bloquée (wifi saturé) gelait tous les envois suivants
+    const ctl=new AbortController(),tmo=setTimeout(()=>ctl.abort(),20000);
+    let r;try{r=await fetch(PIL.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'ventes',token:PIL.token,boutique:CFG.boutique_id,ventes}),signal:ctl.signal});}
+    finally{clearTimeout(tmo);}
     const res=await r.json();
     if(res.status!=='ok')throw new Error(res.message||'refus');
     const recus=new Set(res.recus||[]);
@@ -1985,12 +2001,14 @@ async function envoyerRemises(silencieux){
   const lot=RET.attente.slice(),body=JSON.stringify({action:'remises_retraits',remises:lot});
   let ok=false;
   try{
-    const r=await fetch(url,{method:'POST',body});const d=await r.json();
+    const ctl=new AbortController(),tmo=setTimeout(()=>ctl.abort(),20000);
+    let r;try{r=await fetch(url,{method:'POST',body,signal:ctl.signal});}finally{clearTimeout(tmo);}
+    const d=await r.json();
     if(d.status!=='ok')throw new Error(d.message||'refusé par le CRM');
     ok=true;if(d.stock_negatif&&d.stock_negatif.length)synL('⚠ Stock négatif dans le CRM après remise : '+d.stock_negatif.join(', '));
   }catch(e){
-    // Réponse illisible (navigateur) mais réseau présent : envoi sans réponse ; le CRM ignore les doublons (id unique)
-    if(e instanceof TypeError){try{await fetch(url,{method:'POST',mode:'no-cors',body});ok=true;}catch(e2){}}
+    // 23/11/2026 : plus d'envoi « à l'aveugle » (no-cors) : une remise refusée par le CRM restait perdue.
+    // On garde la remise sur la tablette ; nouvel essai dans 60 s (le CRM ignore les doublons grâce à l'id unique).
     if(!ok){console.error('Retraits : envoi',e);if(!silencieux)toast('Remises non envoyées : elles restent sur la tablette');}
   }
   if(ok){const ids=new Set(lot.map(x=>x.id));RET.attente=RET.attente.filter(x=>!ids.has(x.id));await dPut('config',RET);try{synL('Remises web envoyées : '+lot.length);}catch(e){}}
@@ -2000,6 +2018,8 @@ window.addEventListener('online',()=>envoyerRemises(true));
 setInterval(async()=>{try{if(navigator.onLine===false||!CFG.apps_script_url||$('ov-ret').classList.contains('on'))return;
   await envoyerRemises(true);await chargerRetraits();}catch(e){}},600000);
 setInterval(()=>envoyerRemises(true),60000);
+// 23/11/2026 : à la sortie de veille (écran rallumé, appli rouverte), envoyer tout de suite ce qui attend
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){try{pilEnvoyer();}catch(e){}try{envoyerRemises(true);}catch(e){}}});
 
 function htmlBandeauRetrait(){
   const r=_retCour;
