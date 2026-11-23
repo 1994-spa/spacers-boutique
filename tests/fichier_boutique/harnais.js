@@ -99,7 +99,7 @@ function creerContexte() {
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k] || null, setProperty: (k, v) => { props[k] = v; } }) },
     CacheService: { getScriptCache: () => ({ get: k => cache[k] || null, put: (k, v) => { cache[k] = v; }, remove: k => { delete cache[k]; } }) },
     ScriptApp: { getProjectTriggers: () => triggers.slice(), deleteTrigger: t => { triggers.splice(triggers.indexOf(t), 1); }, newTrigger: builder },
-    LockService: { getScriptLock: () => ({ waitLock() {}, tryLock: () => true, releaseLock() {} }) },
+    LockService: { getScriptLock: () => ({ waitLock() { if (ctx.__verrouOccupe) throw new Error('Lock timeout: another process was holding the lock for too long.'); }, tryLock: () => true, releaseLock() {} }), getDocumentLock: () => ({ tryLock: () => true, releaseLock() {} }) },
     Utilities: { formatDate: fmt },
     Session: { getActiveUser: () => ({ getEmail: () => 'clement@club' }), getEffectiveUser: () => ({ getEmail: () => 'clement@club' }) },
     MailApp: { sendEmail: m => mails.push(m) },

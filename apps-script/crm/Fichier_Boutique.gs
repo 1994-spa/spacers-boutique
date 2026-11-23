@@ -33,8 +33,8 @@
  *   2. Sélectionner installerFichierBoutique → ▶ Exécuter → autoriser.
  *      Le journal d'exécution affiche le lien du nouveau classeur.
  *   3. Partager ce classeur avec Élise (éditeur).
- *   4. Facultatif : Propriétés du script › FB_ALERTE_EMAIL = adresse d'Élise
- *      (alerte de réassort envoyée une fois par match).
+ *   4. L'alerte de réassort (une fois par match) part à l'adresse d'Élise
+ *      (FB.ALERTE_DEFAUT) ; pour une autre adresse : Propriétés du script › FB_ALERTE_EMAIL.
  *  Aucun nouveau déploiement Web App : les tablettes ne changent pas.
  *
  *  Fin de la période en parallèle : ▶ arreterAncienInventaire (retire les
@@ -45,26 +45,29 @@
 const FB = {
   NOM_FICHIER: "Boutique Spacer's — stock et ventes 2026-2027",
   PROP_ID: 'FICHIER_BOUTIQUE_ID',
+  DUREE_MAX_MS: 4 * 60 * 1000,              // au-delà, on s'arrête proprement (limite Apps Script : 6 min)
   PROP_ALERTE: 'FB_ALERTE_EMAIL',
   PROP_ALERTE_FAITE: 'FB_ALERTE_DERNIER_MATCH',
+  ALERTE_DEFAUT: 'carpreau.elise@gmail.com',   // adresse d'Élise pour l'alerte de réassort (propriété FB_ALERTE_EMAIL si différente)
+  VIP_SEULEMENT: /^MAP-/,                       // maillots partenaires : vendus uniquement en VIP, jamais proposés en GP
   DEBUT_SAISON: new Date(2026, 6, 1),
   FREQ_MIN: 10,
   T: {
     LIRE: '📖 LISEZ-MOI', CDE: '1_COMMANDE', BTQ: '2_BOUTIQUE', JRN: '3_JOURNAL_VENTES',
     TOP: '4_TOP_VENTES', APR: '5_APRES_MATCH'
   },
-  HDR: 7,                     // ligne des en-têtes des tableaux 1 et 2
+  HDR: 8,                     // ligne des en-têtes des tableaux 1 et 2 (lignes 6-7 : bandeaux d'information)
   // 1_COMMANDE : 11 colonnes grises, 2 jaunes, 1 résultat
   CDE_COLS: ['Réf.', 'Article', 'Taille', 'Dépôt', 'Boutique GP', 'Boutique VIP', 'TOTAL',
              'Reçu (saison)', 'Vendu + remis (saison)', 'Prix d\'achat HT (CRM)', 'Alerte',
              '➕ Reçu (quantité)', 'Prix d\'achat HT (si différent)', 'Résultat'],
   CDE_GRIS: 11, CDE_JAUNE: 2,
-  // 2_BOUTIQUE : 10 colonnes grises, 5 jaunes, 1 résultat
+  // 2_BOUTIQUE : 11 colonnes grises, 5 jaunes, 1 résultat
   BTQ_COLS: ['Réf.', 'Article', 'Taille', 'Dépôt', 'Boutique GP', 'Boutique VIP',
              'Vendu GP (dernier match)', 'Vendu VIP (dernier match)', 'Add-ons remis GP (dernier match)',
-             'Réassort conseillé',
+             'Réassort conseillé', 'Prix de vente TTC',
              'Compté GP', 'Compté VIP', 'Compté dépôt', '🎯 Mettre en GP (total)', '🎯 Mettre en VIP (total)', 'Résultat'],
-  BTQ_GRIS: 10, BTQ_JAUNE: 5,
+  BTQ_GRIS: 11, BTQ_JAUNE: 5,
   JRN_COLS: ['Date', 'Match', 'Boutique', 'Type', 'Réf.', 'Article', 'Taille', 'Qté', 'PU TTC', 'CA TTC', 'Paiement', 'Remise', 'Remarque'],
   CONTROLES: '25_CONTROLES_CAISSE',
   ENTETES_CONTROLES: ['horodatage', 'match', 'boutique', 'CA_tablette_TTC', 'CB_tablette', 'CB_TPE', 'ecart_CB',
@@ -95,14 +98,17 @@ function installerFichierBoutique() {
   ScriptApp.newTrigger('fb_surModification').forSpreadsheet(id).onEdit().create();
   ScriptApp.newTrigger('majFichierBoutique').timeBased().everyMinutes(FB.FREQ_MIN).create();
 
+  if (!props.getProperty(FB.PROP_ALERTE) && FB.ALERTE_DEFAUT) props.setProperty(FB.PROP_ALERTE, FB.ALERTE_DEFAUT);
   const retires = fb_retirerDeclencheurs_(h => /^eb_/.test(h));   // « En boutique fait foi » : plus jamais de recopie absolue
   fb_construireTout_(ss, true);
   const feuille1 = ss.getSheetByName('Feuille 1') || ss.getSheetByName('Sheet1');
   if (feuille1 && ss.getSheets().length > 1) ss.deleteSheet(feuille1);
 
   Logger.log('Classeur : ' + ss.getUrl());
+  Logger.log('Déclencheurs du projet : ' + ScriptApp.getProjectTriggers().map(t => t.getHandlerFunction()).join(', '));
   Logger.log('Déclencheurs posés : modification du classeur + mise à jour toutes les ' + FB.FREQ_MIN + ' min.');
   if (retires.length) Logger.log('Déclencheurs « En boutique → CRM » retirés : ' + retires.join(', '));
+  Logger.log('Alerte de réassort envoyée à : ' + props.getProperty(FB.PROP_ALERTE) + ' (propriété ' + FB.PROP_ALERTE + ').');
   Logger.log('Étape suivante : partager le classeur avec Élise (éditeur).');
   return ss.getUrl();
 }
@@ -133,8 +139,7 @@ function majFichierBoutique() {
   if (!fb_prendreJeton_()) return;
   try {
     fb_traiterDemandes_(ss);
-    fb_construireTout_(ss, false);
-    fb_alerteReassort_();
+    fb_alerteReassort_(fb_construireTout_(ss, false));
   } finally { fb_rendreJeton_(); }
 }
 
@@ -173,9 +178,8 @@ function fb_traiterDemandes() {
   const ss = fb_fichier_();
   if (!fb_prendreJeton_()) { fb_programmer_(); return; }
   try {
-    const fait = fb_traiterDemandes_(ss);
-    fb_construireTout_(ss, false);
-    if (fait) fb_alerteReassort_();
+    fb_traiterDemandes_(ss);
+    fb_alerteReassort_(fb_construireTout_(ss, false));
   } finally { fb_rendreJeton_(); }
 }
 
@@ -209,39 +213,45 @@ function fb_traiterDemandes_(ss) {
 function fb_validerCommande_(sh) {
   const auteur = String(sh.getRange('B4').getValue()).trim();
   if (!auteur) throw new Error('Indiquez votre prénom en B4, puis cochez à nouveau « Valider ».');
-  const facture = String(sh.getRange('E4').getValue()).trim();
+  const fournisseur = String(sh.getRange('E4').getValue()).trim();
+  const facture = String(sh.getRange('J4').getValue()).trim();
   const n = sh.getLastRow() - FB.HDR;
   if (n < 1) return 'Aucune ligne.';
   const nbC = FB.CDE_COLS.length;
   const data = sh.getRange(FB.HDR + 1, 1, n, nbC).getValues();
   const P = sb_lireProduits_();
   const saisies = data.map(r => ({ ref: String(r[0]).trim(), q: r[FB.CDE_GRIS], prix: r[FB.CDE_GRIS + 1] }));
-  const plan = fb_planCommande(saisies, P.rows, !!facture);
+  const plan = fb_planCommande(saisies, P.rows, !!(fournisseur && facture));
   if (!plan.ok.length) {
     fb_ecrireResultats_(sh, plan.resultats, nbC);
     return plan.resultats.some(r => r) ? '⚠ Rien n\'a été enregistré : voir la colonne Résultat.' : 'Aucune quantité saisie.';
   }
+  fb_ecrireResultats_(sh, plan.resultats, nbC);            // refus de contrôle affichés tout de suite
   const heure = sb_fmt_(new Date(), 'dd/MM HH:mm');
-  let nb = 0;
+  const t0 = Date.now();
+  let nb = 0, arret = '';
   fb_sansSynthese_(() => {
-    plan.ok.forEach(o => {
+    for (const o of plan.ok) {
       const ligne = FB.HDR + 1 + o.i;
+      if (arret || Date.now() - t0 > FB.DUREE_MAX_MS) { arret = arret || 'temps'; fb_resultat_(sh, ligne, nbC, '⏸ pas encore traité : recocher « Valider » dans 2 minutes'); continue; }
       try {
         fb_appel_(enregistrerReception, { lignes: [{ ref: o.ref, R: o.q }], prix_achat: o.prix,
-          fournisseur: facture, reference: facture }, auteur, '');
-        sh.getRange(ligne, FB.CDE_GRIS + 1, 1, 2).clearContent();
-        plan.resultats[o.i] = '✅ ' + heure + ' · +' + o.q + ' au dépôt à ' + fb_eur_(o.prix) + ' HT · dépôt ' + (o.x.R + o.q);
-        nb++;
+          fournisseur: fournisseur, reference: facture }, auteur, '', o.ref);
       } catch (err) {
-        plan.resultats[o.i] = '❌ ' + err.message + ' — rien n\'a été enregistré pour cette ligne';
+        if (fb_estVerrou_(err)) { arret = 'verrou'; fb_resultat_(sh, ligne, nbC, '⏸ CRM occupé par une tablette : rien n\'a été enregistré, recocher « Valider » dans 2 minutes'); continue; }
+        fb_resultat_(sh, ligne, nbC, '❌ ' + err.message + ' — rien n\'a été enregistré pour cette ligne');
+        continue;
       }
-    });
+      sh.getRange(ligne, FB.CDE_GRIS + 1, 1, 2).clearContent();   // appliqué = vidé, avant toute autre écriture
+      fb_resultat_(sh, ligne, nbC, '✅ ' + heure + ' · +' + o.q + ' au dépôt à ' + fb_eur_(o.prix) + ' HT · facture ' + facture);
+      nb++;
+    }
   });
-  fb_ecrireResultats_(sh, plan.resultats, nbC);
-  if (nb && plan.resultats.every(r => !r || String(r).indexOf('❌') !== 0)) sh.getRange('E4').clearContent();
   const pb = plan.resultats.filter(r => r && String(r).indexOf('❌') === 0).length;
+  if (nb && !pb && !arret) { sh.getRange('E4').clearContent(); sh.getRange('J4').clearContent(); }
   return (nb ? '✅ ' : '⚠ ') + heure + ' — ' + nb + ' réception(s) enregistrée(s) dans le CRM par ' + auteur +
-         (pb ? ' · ⚠ ' + pb + ' ligne(s) refusée(s) : voir la colonne Résultat.' : '.');
+         (pb ? ' · ⚠ ' + pb + ' ligne(s) refusée(s) : voir la colonne Résultat.' : '') +
+         (arret ? ' · ⏸ CRM occupé ou traitement long : recocher « Valider » dans 2 minutes pour finir.' : '.');
 }
 
 /**
@@ -261,7 +271,7 @@ function fb_planCommande(saisies, produits, aFacture) {
     if (prixSaisi !== null && !(prixSaisi > 0)) { resultats.push('❌ prix d\'achat HT invalide'); return; }
     const prix = prixSaisi !== null ? prixSaisi : x.cout;
     if (!(prix > 0)) { resultats.push('❌ prix d\'achat inconnu : l\'écrire dans « Prix d\'achat HT »'); return; }
-    if (!aFacture) { resultats.push('❌ écrire le fournisseur et le n° de facture en E4'); return; }
+    if (!aFacture) { resultats.push('❌ écrire le fournisseur (E4) et le n° de facture (J4)'); return; }
     ok.push({ i: i, ref: x.ref, x: x, q: q, prix: Math.round(prix * 100) / 100 });
     resultats.push('');
   });
@@ -284,41 +294,48 @@ function fb_validerBoutique_(sh) {
     fb_ecrireResultats_(sh, plan.resultats, nbC);
     return plan.resultats.some(r => r) ? '⚠ Rien n\'a été enregistré : voir la colonne Résultat.' : 'Aucune saisie.';
   }
+  fb_ecrireResultats_(sh, plan.resultats, nbC);
   const heure = sb_fmt_(new Date(), 'dd/MM HH:mm');
   const match = fb_matchTablettes_();
-  let nb = 0;
+  const t0 = Date.now();
+  let nb = 0, arret = '';
   fb_sansSynthese_(() => {
     plan.ok.forEach(o => {
       const ligne = FB.HDR + 1 + o.i;
       const faits = [];
+      if (arret || Date.now() - t0 > FB.DUREE_MAX_MS) { arret = arret || 'temps'; plan.resultats[o.i] = '⏸ pas encore traité : recocher « Valider » dans 2 minutes'; fb_resultat_(sh, ligne, nbC, plan.resultats[o.i]); return; }
       for (const op of o.ops) {
         try {
           if (op.type === 'rien') {
             /* niveau déjà atteint : on vide seulement la case */
           } else if (op.type === 'inventaire') {
             fb_appel_(enregistrerInventaire, { lignes: [{ ref: o.ref, R: op.R, B1: op.B1, B2: op.B2 }],
-              commentaire: 'Comptage ' + auteur }, auteur, match);
+              commentaire: 'Comptage ' + auteur }, auteur, match, o.ref);
           } else if (op.type === 'repartition') {
-            fb_appel_(enregistrerRepartition, { lignes: [{ ref: o.ref, B1: op.B1, B2: op.B2 }] }, auteur, match);
+            fb_appel_(enregistrerRepartition, { lignes: [{ ref: o.ref, B1: op.B1, B2: op.B2 }] }, auteur, match, o.ref);
           } else {
-            fb_appel_(enregistrerTransfert, { ref: o.ref, quantite: op.q, de: op.de, vers: op.vers }, auteur, match);
+            fb_appel_(enregistrerTransfert, { ref: o.ref, quantite: op.q, de: op.de, vers: op.vers }, auteur, match, o.ref);
           }
         } catch (err) {
-          plan.resultats[o.i] = '❌ ' + err.message + (faits.length ? ' — déjà enregistré : ' + faits.join(', ') : '') +
+          if (fb_estVerrou_(err)) arret = 'verrou';
+          plan.resultats[o.i] = (fb_estVerrou_(err) ? '⏸ CRM occupé par une tablette' : '❌ ' + err.message) +
+                                (faits.length ? ' — déjà enregistré : ' + faits.join(', ') : ' — rien n\'a été enregistré') +
                                 ' — vérifier puis revalider';
+          fb_resultat_(sh, ligne, nbC, plan.resultats[o.i]);
           return;
         }
         sh.getRange(ligne, g + 1 + op.colonne, 1, op.nbCols || 1).clearContent();   // case appliquée = case vidée
         faits.push(op.libelle);
       }
       plan.resultats[o.i] = '✅ ' + heure + ' · ' + faits.join(', ') + ' · maintenant dépôt ' + o.apres.R + ' / GP ' + o.apres.B1 + ' / VIP ' + o.apres.B2;
+      fb_resultat_(sh, ligne, nbC, plan.resultats[o.i]);
       nb++;
     });
   });
-  fb_ecrireResultats_(sh, plan.resultats, nbC);
   const pb = plan.resultats.filter(r => r && String(r).indexOf('❌') === 0).length;
   return (nb ? '✅ ' : '⚠ ') + heure + ' — ' + nb + ' article(s) mis à jour dans le CRM par ' + auteur +
          (pb ? ' · ⚠ ' + pb + ' ligne(s) refusée(s) : voir la colonne Résultat.' : '.') +
+         (arret ? ' · ⏸ CRM occupé ou traitement long : recocher « Valider » dans 2 minutes pour finir.' : '') +
          (nb ? ' Tablettes : « 🎫 Charger le match » pour prendre ce stock.' : '');
 }
 
@@ -455,7 +472,8 @@ function fb_donnees_() {
   const mvts = fb_lireOnglet_(crm, SB.ONGLET_MOUVEMENTS);
   const ventes = fb_lireOnglet_(crm, '01_VENTES');
   const live = fb_lireOnglet_(crm, '21_LIGNES_LIVE');
-  return fb_calculer(produits, P.rows, mvts, ventes, live, FB.DEBUT_SAISON);
+  const retraits = fb_lireOnglet_(crm, '17_RETRAITS');
+  return fb_calculer(produits, P.rows, mvts, ventes, live, FB.DEBUT_SAISON, retraits);
 }
 
 /**
@@ -463,7 +481,7 @@ function fb_donnees_() {
  * produits : articles actifs avec réf. ; tousProduits : tout 03_PRODUITS (pour relier un nom vendu à sa réf.)
  * mvts / ventes / live : tableaux d'objets { en-tête: valeur }.
  */
-function fb_calculer(produits, tousProduits, mvts, ventes, live, debut) {
+function fb_calculer(produits, tousProduits, mvts, ventes, live, debut, retraits) {
   const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
   const num = v => { const n = Number(String(v === null || v === undefined ? '' : v).replace(/\s/g, '').replace(',', '.')); return isNaN(n) ? 0 : n; };
   const date = v => v instanceof Date ? v : (v ? new Date(v) : null);
@@ -483,28 +501,14 @@ function fb_calculer(produits, tousProduits, mvts, ventes, live, debut) {
     if (!ref) return;
     const s = saison[ref] = saison[ref] || { recu: 0, sorti: 0 };
     if (type === 'ENTREE_ACHAT') s.recu += q;
-    if (['VENTE_COMPTOIR', 'OFFERT_CAISSE', 'RETRAIT_ADDON', 'VENTE_HORS_MATCH'].indexOf(type) !== -1) s.sorti += -q;
+    if (['VENTE_COMPTOIR', 'OFFERT_CAISSE', 'RETRAIT_ADDON', 'VENTE_HORS_MATCH', 'VENTE_TICKIE', 'VENTE_WEB'].indexOf(type) !== -1) s.sorti += -q;
     if ((FB.SORTIES_MATCH.indexOf(type) !== -1 || type === 'RETRAIT_ADDON') && match) {
-      recentes.push({ d: d || new Date(0), match: match });
+      recentes.push({ d: d || new Date(0), match: match, retrait: type === 'RETRAIT_ADDON' });
       const k = match + '|' + ref;
       const o = sortiesMatch[k] = sortiesMatch[k] || { B1: 0, B2: 0, addon: 0 };
       if (type === 'RETRAIT_ADDON') o.addon += -q;
       else if (m.point === 'B2') o.B2 += -q; else o.B1 += -q;
     }
-  });
-  recentes.sort((a, b) => b.d - a.d);
-  const dernierMatch = recentes.length ? recentes[0].match : '';
-
-  // --- réassort conseillé : remettre le niveau de départ du dernier match, dans la limite du dépôt
-  const reassort = {};
-  produits.forEach(x => {
-    const o = sortiesMatch[dernierMatch + '|' + x.ref];
-    if (!o) return;
-    const sortGP = o.B1 + o.addon, sortVIP = o.B2;
-    let dispo = x.R;
-    const gp = Math.min(sortGP, dispo); dispo -= gp;
-    const vip = Math.min(sortVIP, dispo);
-    reassort[x.ref] = { gp: gp, vip: vip, cibleGP: x.B1 + gp, cibleVIP: x.B2 + vip, manque: (sortGP - gp) + (sortVIP - vip) };
   });
 
   // --- journal : ventes tablette et hors match + retraits add-ons
@@ -541,6 +545,58 @@ function fb_calculer(produits, tousProduits, mvts, ventes, live, debut) {
   });
   journal.sort((a, b) => b.d - a.d);
 
+  // --- dernier match = celui de la vente de caisse la plus récente (heure de vente, pas heure de synchro)
+  const ventesMatch = journal.filter(j => (j.type === 'Vente' || j.type === 'Offert') && j.match && (j.boutique === 'GP' || j.boutique === 'VIP'));
+  const plusRecente = ventesMatch.reduce((m, j) => (!m || j.d > m.d ? j : m), null);
+  const dernierMatch = plusRecente ? plusRecente.match : '';
+
+  // --- réassort conseillé
+  //  Niveau de départ du dernier match = stock actuel − tous les mouvements de la boutique depuis le début
+  //  du match (ventes, offerts, retraits, comptages, réassorts déjà faits) : ce qui est déjà remis n'est
+  //  jamais reproposé. En GP, on vise au moins le seuil d'alerte (sauf articles réservés au VIP).
+  //  Le dépôt limite tout ; la GP est servie en premier.
+  // début du match = première vente de caisse ou premier retrait d'add-on de ce match
+  const debutMatch = ventesMatch.filter(j => j.match === dernierMatch).map(j => j.d)
+    .concat(recentes.filter(r => r.match === dernierMatch && r.retrait).map(r => r.d))
+    .reduce((m, d) => (!m || d < m ? d : m), null);
+  const net = {};
+  if (debutMatch) mvts.forEach(m => {
+    const d = date(m.horodatage);
+    const ref = String(m.ref_boutique || '').trim();
+    const pt = String(m.point || '').trim();
+    if (!d || d < debutMatch || !ref || (pt !== 'B1' && pt !== 'B2')) return;
+    const o = net[ref] = net[ref] || { B1: 0, B2: 0 };
+    o[pt] += num(m.quantite);
+  });
+  const reassort = {};
+  produits.forEach(x => {
+    const n = net[x.ref] || { B1: 0, B2: 0 };
+    const departGP = x.B1 - n.B1, departVIP = x.B2 - n.B2;
+    const seuil = FB.VIP_SEULEMENT.test(x.ref) ? 0 : (Number(x.seuil) || 0);
+    const veutGP = Math.max(0, Math.max(departGP, (departGP > 0 || x.B1 > 0 || sortiesMatch[dernierMatch + '|' + x.ref]) ? seuil : 0) - x.B1);
+    const veutVIP = Math.max(0, departVIP - x.B2);
+    if (!veutGP && !veutVIP) return;
+    let dispo = Math.max(0, x.R);
+    const gp = Math.min(veutGP, dispo); dispo -= gp;
+    const vip = Math.min(veutVIP, dispo);
+    reassort[x.ref] = { gp: gp, vip: vip, cibleGP: x.B1 + gp, cibleVIP: x.B2 + vip, manque: (veutGP - gp) + (veutVIP - vip) };
+  });
+
+  // --- add-ons Tickie encore à remettre (boutique GP), par produit
+  const aRemettre = {};
+  const auj = new Date(); auj.setHours(0, 0, 0, 0);
+  (retraits || []).forEach(r => {
+    const st = String(r.statut || '').trim();
+    if (st !== 'À remettre' && st !== 'Partiel') return;
+    const reste = num(r.quantite) - num(r.qte_remise);
+    if (reste <= 0) return;
+    const nom = String(r.produit || '').replace(/\s*-\s*(XS|S|M|L|XL|XXL|2XL|3XL|\d{3})$/i, '').trim() || 'Article';
+    const o = aRemettre[nom] = aRemettre[nom] || { q: 0, passes: 0 };
+    o.q += reste;
+    const de = date(r.date_evenement);
+    if (de && de < auj) o.passes += reste;
+  });
+
   // --- top ventes par article (modèle), saison et dernier match
   const top = {};
   journal.forEach(j => {
@@ -567,21 +623,29 @@ function fb_calculer(produits, tousProduits, mvts, ventes, live, debut) {
   });
   const matchs = Object.keys(parMatch).map(k => parMatch[k]).sort((a, b) => b.d - a.d);
 
-  // --- ventes reçues en direct mais pas encore synchronisées (« Synchroniser tout » pas fait)
-  const cles = ventes.map(v => String(v.commande || ''));
-  const nonSync = {};
+  // --- ventes reçues en direct (21_LIGNES_LIVE) mais pas encore synchronisées (« Synchroniser tout » pas fait) :
+  //     comparaison des quantités par jour et par boutique, indépendante du format des identifiants.
+  const jour = d => d ? d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate() : '';
+  const recu = {}, synchro = {};
   live.forEach(l => {
-    const id = String(l['ID vente'] || '').trim();
-    if (!id) return;
     const d = date(l['Horodatage']);
-    if (d && d < debut) return;
-    if (cles.some(c => c.indexOf(id) !== -1)) return;
-    const b = String(l['Boutique']).trim() === 'B2' ? 'VIP' : 'GP';
-    nonSync[b] = (nonSync[b] || 0) + num(l['Qté']);
+    if (!d || d < debut || /^divers/i.test(String(l['Réf.'] || l['Produit'] || ''))) return;
+    const k = jour(d) + '|' + (String(l['Boutique']).trim() === 'B2' ? 'VIP' : 'GP');
+    recu[k] = (recu[k] || 0) + num(l['Qté']);
+  });
+  journal.forEach(j => {
+    if ((j.type !== 'Vente' && j.type !== 'Offert') || j.ref === 'DIVERS') return;
+    const k = jour(j.d) + '|' + j.boutique;
+    synchro[k] = (synchro[k] || 0) + j.q;
+  });
+  const nonSync = {};
+  Object.keys(recu).forEach(k => {
+    const manque = recu[k] - (synchro[k] || 0);
+    if (manque > 0) { const b = k.split('|')[1]; nonSync[b] = (nonSync[b] || 0) + manque; }
   });
 
   return { produits: produits, saison: saison, dernierMatch: dernierMatch, sortiesMatch: sortiesMatch,
-           reassort: reassort, journal: journal, top: topListe, matchs: matchs, nonSync: nonSync };
+           reassort: reassort, journal: journal, top: topListe, matchs: matchs, nonSync: nonSync, aRemettre: aRemettre };
 }
 
 /* ============================ ÉCRITURE DU FICHIER ============================ */
@@ -601,6 +665,7 @@ function fb_construireTout_(ss, complet) {
       if (sh) { ss.setActiveSheet(sh); ss.moveActiveSheet(i + 1); }
     });
   }
+  return D;
 }
 
 function fb_ordre_(produits) {
@@ -677,15 +742,22 @@ function fb_construireCommande_(ss, D, ordre) {
     return [x.ref, x.modele || x.produit, x.taille || 'TU', x.R, x.B1, x.B2, total, s.recu, s.sorti, x.cout || '', alerte];
   });
   const sh = fb_tableauSaisie_(ss, FB.T.CDE, '1 · COMMANDES ET STOCK — réceptions au dépôt',
-    'Livraison reçue : prénom en B4 · fournisseur et n° de facture en E4 · quantité reçue (et prix d\'achat HT s\'il a changé) dans les cases JAUNES · cocher « ✅ Valider ». Tout entre au DÉPÔT.',
+    'Livraison reçue : prénom en B4 · fournisseur en E4 · n° de facture en J4 · quantité reçue (et prix d\'achat HT s\'il a changé) dans les cases JAUNES · cocher « ✅ Valider ». Tout entre au DÉPÔT.',
     FB.CDE_COLS, FB.CDE_GRIS, FB.CDE_JAUNE, lignes, sh => {
-      sh.getRange('D4').setValue('Fournisseur / n° facture :').setFontWeight('bold').setHorizontalAlignment('right');
+      sh.getRange('D4').setValue('Fournisseur :').setFontWeight('bold').setHorizontalAlignment('right');
       sh.getRange('E4:F4').merge().setBackground(FB.JAUNE);
+      sh.getRange('I4').setValue('N° de facture :').setFontWeight('bold').setHorizontalAlignment('right');
+      sh.getRange('J4:K4').merge().setBackground(FB.JAUNE);
       [110, 200, 60, 70, 85, 85, 70, 80, 95, 90, 130, 95, 110, 360].forEach((w, i) => sh.setColumnWidth(i + 1, w));
       sh.getRange(FB.HDR, 7).setBackground('#000000');
     });
   sh.getRange(FB.HDR + 1, 10, Math.max(lignes.length, 1), 1).setNumberFormat('#,##0.00 €');
   fb_couleursAlertes_(sh, 11, lignes.length);
+  const val = { R: 0, B1: 0, B2: 0 }, sansCout = [];
+  D.produits.forEach(x => { ['R', 'B1', 'B2'].forEach(p => { val[p] += Math.max(0, x[p]) * (x.cout || 0); }); if (!(x.cout > 0) && x.R + x.B1 + x.B2 > 0) sansCout.push(x.ref); });
+  sh.getRange('A6').setValue('Valeur du stock au coût d\'achat HT : dépôt ' + fb_eur_(val.R) + ' · GP ' + fb_eur_(val.B1) + ' · VIP ' + fb_eur_(val.B2) +
+    ' · total ' + fb_eur_(val.R + val.B1 + val.B2) + (sansCout.length ? '   ·   ⚠ prix d\'achat inconnu : ' + sansCout.join(', ') : ''))
+    .setFontSize(9).setFontWeight('bold').setFontColor(sansCout.length ? FB.ROUGE : '#555555');
 }
 
 function fb_construireBoutique_(ss, D, ordre) {
@@ -697,7 +769,7 @@ function fb_construireBoutique_(ss, D, ordre) {
     else if (x.B1 + x.B2 + x.R <= 0) conseil = '❌ rupture totale';
     if (r && (r.gp || r.vip)) conseil = '🔁 ' + [r.gp ? '+' + r.gp + ' GP' : '', r.vip ? '+' + r.vip + ' VIP' : ''].filter(Boolean).join(' · ') + (r.manque ? ' (manque ' + r.manque + ')' : '');
     else if (r && r.manque) conseil = '❌ manque ' + r.manque + ' : dépôt vide';
-    return [x.ref, x.modele || x.produit, x.taille || 'TU', x.R, x.B1, x.B2, o.B1 || '', o.B2 || '', o.addon || '', conseil];
+    return [x.ref, x.modele || x.produit, x.taille || 'TU', x.R, x.B1, x.B2, o.B1 || '', o.B2 || '', o.addon || '', conseil, x.prix_vente || ''];
   });
   const sh = fb_tableauSaisie_(ss, FB.T.BTQ, '2 · BOUTIQUES GP ET VIP — préparation du match',
     'Avant le match : prénom en B4 · « 🎯 Mettre en GP / VIP » = combien tu veux en boutique (TOTAL, pas l\'ajout) · « Compté » = ce que tu comptes · cocher « ✅ Valider ». Le dépôt est ajusté tout seul.',
@@ -705,13 +777,20 @@ function fb_construireBoutique_(ss, D, ordre) {
       sh.getRange('I4').setValue('📝 Proposer le réassort →').setFontWeight('bold').setHorizontalAlignment('right');
       sh.getRange('I4:K4').merge();
       sh.getRange('L4').insertCheckboxes().setBackground(FB.JAUNE);
-      [110, 200, 60, 70, 85, 85, 85, 85, 95, 200, 75, 75, 75, 95, 95, 380].forEach((w, i) => sh.setColumnWidth(i + 1, w));
+      [110, 200, 60, 70, 85, 85, 85, 85, 95, 200, 80, 75, 75, 75, 95, 95, 380].forEach((w, i) => sh.setColumnWidth(i + 1, w));
       sh.getRange(FB.HDR, 5).setBackground(FB.BLEU); sh.getRange(FB.HDR, 6).setBackground(FB.ROUGE);
-      sh.getRange(FB.HDR, 14).setBackground(FB.BLEU); sh.getRange(FB.HDR, 15).setBackground(FB.ROUGE);
+      sh.getRange(FB.HDR, 15).setBackground(FB.BLEU); sh.getRange(FB.HDR, 16).setBackground(FB.ROUGE);
     });
+  sh.getRange(FB.HDR + 1, 11, Math.max(lignes.length, 1), 1).setNumberFormat('#,##0.00 €');
   const mt = fb_matchTablettes_();
   sh.getRange('A6').setValue('Dernier match vendu : ' + (D.dernierMatch || '—') + '   ·   Match des tablettes : ' + (mt || '—') +
     fb_texteNonSync_(D)).setFontColor(Object.keys(D.nonSync).length ? FB.ROUGE : '#555555').setFontSize(9).setFontWeight('bold');
+  const ar = Object.keys(D.aRemettre);
+  sh.getRange('A7').setValue(ar.length
+    ? '🎁 Add-ons Tickie à remettre en boutique GP (payés en ligne, à garder en stock GP) : ' +
+      ar.map(k => D.aRemettre[k].q + ' ' + k + (D.aRemettre[k].passes ? ' (dont ' + D.aRemettre[k].passes + ' de matchs passés : à vérifier)' : '')).join(' · ') +
+      (ar.some(k => /maillot/i.test(k)) ? ' — maillots : taille choisie au retrait' : '')
+    : '🎁 Aucun add-on Tickie en attente de retrait.').setFontSize(9).setFontWeight('bold').setFontColor(ar.length ? '#8a6d00' : '#555555');
   fb_couleursAlertes_(sh, 10, lignes.length);
 }
 
@@ -729,15 +808,15 @@ function fb_construireJournal_(ss, D) {
   }
   const lignes = D.journal.map(j => [j.d, j.match, j.boutique, j.type, j.ref, j.article, j.taille, j.q, j.pu, j.ca, j.paiement, j.remise, j.remarque]);
   const n0 = Math.max(0, sh.getLastRow() - 5);
-  if (n0 > 0) sh.getRange(6, 1, n0, nbC).clearContent().setBackground(null);
+  if (n0 > 0) sh.getRange(6, 1, n0, nbC).clearContent();
   if (lignes.length) {
     sh.getRange(6, 1, lignes.length, nbC).setValues(lignes).setFontFamily('Arial').setFontSize(9);
     sh.getRange(6, 1, lignes.length, 1).setNumberFormat('dd/MM/yyyy HH:mm');
     sh.getRange(6, 9, lignes.length, 2).setNumberFormat('#,##0.00 €');
-    lignes.forEach((l, i) => {
-      if (l[3] === 'Retrait add-on') sh.getRange(6 + i, 1, 1, nbC).setBackground('#e8f1fb');
-      else if (String(l[12]).indexOf('⚠') === 0) sh.getRange(6 + i, 1, 1, nbC).setBackground('#fde2e1');
-    });
+    sh.getRange(6, 1, lignes.length, nbC).setBackgrounds(lignes.map(l => {
+      const c = l[3] === 'Retrait add-on' ? '#e8f1fb' : (String(l[12]).indexOf('⚠') === 0 ? '#fde2e1' : null);
+      return new Array(nbC).fill(c);
+    }));
   }
   const tot = D.journal.reduce((s, j) => s + (j.type === 'Retrait add-on' ? 0 : Number(j.ca) || 0), 0);
   const inconnus = D.journal.filter(j => String(j.remarque).indexOf('⚠') === 0).length;
@@ -806,7 +885,8 @@ function fb_construireApres_(ss, D) {
     return [b === 'GP' ? 'Boutique GP' : 'Boutique VIP', c.articles, fb_r2_(c.ca), fb_r2_(c.cb), fb_r2_(c.esp), c.offerts,
             tpe, esp, tpe === '' ? '' : fb_r2_(tpe - c.cb), esp === '' ? '' : fb_r2_(esp - c.esp)];
   });
-  sh.getRange(9, 1, 2, 10).setValues(lignes).setFontFamily('Arial');
+  sh.getRange(9, 1, 2, 6).setValues(lignes.map(l => l.slice(0, 6))).setFontFamily('Arial');
+  sh.getRange(9, 9, 2, 2).setValues(lignes.map(l => l.slice(8, 10)));
   sh.getRange(9, 1, 2, 6).setBackground(FB.GRIS);
   sh.getRange(9, 7, 2, 2).setBackground(FB.JAUNE);
   sh.getRange(9, 9, 2, 2).setBackground(FB.GRIS);
@@ -833,16 +913,17 @@ function fb_construireNotice_(ss) {
     ['✅ Après validation, la colonne « Résultat » dit ce qui a été fait et les cases jaunes appliquées se vident : impossible de compter deux fois.', 'E'],
     ['', 'V'],
     ['① UNE COMMANDE ARRIVE — onglet 1_COMMANDE', 'S'],
-    ['1. Prénom en B4. Fournisseur et n° de facture en E4 (obligatoire).', 'E'],
+    ['1. Prénom en B4. Fournisseur en E4 et n° de facture en J4 (obligatoires : ils partent en comptabilité).', 'E'],
     ['2. Sur la ligne de l\'article et de la taille : quantité reçue dans « ➕ Reçu ». Si le prix d\'achat HT a changé, l\'écrire à côté (sinon le prix connu du CRM est pris).', 'E'],
     ['3. Cocher « ✅ Valider ». Tout entre au DÉPÔT. Le prix d\'achat sert au calcul de la marge et à la comptabilité.', 'E'],
-    ['EXEMPLE : 50 écharpes reçues, facture FA26081234 → E4 « Fournisseur X FA26081234 », ligne ECH-TU « ➕ Reçu » = 50, Valider.', 'X'],
+    ['EXEMPLE : 50 écharpes reçues, facture FA26081234 → E4 « Fournisseur X », J4 « FA26081234 », ligne ECH-TU « ➕ Reçu » = 50, Valider.', 'X'],
     ['', 'V'],
     ['② AVANT LE MATCH — onglet 2_BOUTIQUE', 'S'],
     ['1. Prénom en B4.', 'E'],
     ['2. Si tu as compté : « Compté GP », « Compté VIP », « Compté dépôt » (case vide = pas compté). Le CRM est corrigé de l\'écart.', 'E'],
     ['3. Dans « 🎯 Mettre en GP » et « 🎯 Mettre en VIP », écris le NOMBRE TOTAL que tu veux dans chaque boutique (pas l\'ajout). Le dépôt est ajusté tout seul : ce qui manque sort du dépôt, ce qui est en trop y retourne.', 'E'],
-    ['   Raccourci : coche « 📝 Proposer le réassort » : les niveaux du dernier match sont pré-remplis (dans la limite du dépôt). Vérifie, corrige, puis Valider.', 'I'],
+    ['   Raccourci : coche « 📝 Proposer le réassort » : on remet le niveau de départ du dernier match, et au moins le seuil d\'alerte en GP, dans la limite du dépôt. Ce qui est déjà réassorti n\'est jamais reproposé. Vérifie, corrige, puis Valider.', 'I'],
+    ['   La ligne 🎁 en haut de l\'onglet donne les add-ons Tickie encore à remettre : garde-les en boutique GP.', 'I'],
     ['4. Cocher « ✅ Valider ». Puis, sur CHAQUE tablette, en wifi : Synchronisation → « 🎫 Charger le match ». C\'est ce qui envoie ton stock aux tablettes.', 'E'],
     ['EXEMPLE : il reste 2 écharpes en GP, tu en veux 20 → « 🎯 Mettre en GP » = 20. Résultat : « 18 dépôt → GP · maintenant dépôt 101 / GP 20 / VIP 7 ».', 'X'],
     ['', 'V'],
@@ -859,6 +940,7 @@ function fb_construireNotice_(ss) {
     ['Dons, cadeaux partenaires, casse, vente en dehors d\'un match : page Gestion (spacers-boutique.spacersytb.workers.dev/gestion.html). Nouvel article ou prix de vente : prévenir Clément.', 'I'],
     ['EN CAS DE SOUCI', 'S'],
     ['❌ dans « Résultat » : la ligne n\'a PAS été enregistrée (le message dit pourquoi). Corriger puis recocher « Valider ».', 'E'],
+    ['⏸ dans « Résultat » : le CRM était occupé (une tablette synchronisait) : rien n\'est perdu, recocher « Valider » 2 minutes plus tard.', 'E'],
     ['Rien ne bouge après 5 minutes : recocher « Valider » ; si ça continue, prévenir Clément.', 'E'],
   ];
   sh.getRange(1, 1, L.length, 1).setValues(L.map(l => [l[0]]));
@@ -880,12 +962,12 @@ function fb_construireNotice_(ss) {
 /* ================================ ALERTE RÉASSORT ================================ */
 
 /** Une fois par match, dès que ses ventes sont arrivées : mail à FB_ALERTE_EMAIL avec le réassort conseillé. */
-function fb_alerteReassort_() {
+function fb_alerteReassort_(D) {
   const props = PropertiesService.getScriptProperties();
   const dest = props.getProperty(FB.PROP_ALERTE);
-  if (!dest || !/@/.test(dest)) return;
-  const D = fb_donnees_();
+  if (!dest || !/@/.test(dest) || !D) return;
   if (!D.dernierMatch || props.getProperty(FB.PROP_ALERTE_FAITE) === D.dernierMatch) return;
+  if (Object.keys(D.nonSync).length) return;      // une tablette n'a pas encore fait « Synchroniser tout » : on attend
   const lignes = D.produits.filter(x => D.reassort[x.ref] && (D.reassort[x.ref].gp || D.reassort[x.ref].vip || D.reassort[x.ref].manque));
   const vides = D.produits.filter(x => x.B1 + x.B2 + x.R <= 0);
   let h = '<h2 style="color:#0b1f3a">Boutique — réassort après ' + D.dernierMatch + '</h2>';
@@ -930,33 +1012,54 @@ function fb_retirerDeclencheurs_(filtre) {
   return r;
 }
 
-/** Évite deux traitements simultanés du fichier (le verrou du script reste aux fonctions de stock et aux tablettes). */
+/**
+ * Évite deux traitements simultanés du fichier. Verrou du DOCUMENT (CRM), distinct du verrou du script
+ * que prennent les fonctions de stock et l'import des tablettes. Libéré automatiquement en fin d'exécution.
+ */
+let FB_JETON_ = null;
 function fb_prendreJeton_() {
-  const c = CacheService.getScriptCache();
-  if (c.get('fb_en_cours')) return false;
-  c.put('fb_en_cours', '1', 300);
-  return true;
+  FB_JETON_ = LockService.getDocumentLock();
+  return !!FB_JETON_ && FB_JETON_.tryLock(1000);
 }
-function fb_rendreJeton_() { CacheService.getScriptCache().remove('fb_en_cours'); }
+function fb_rendreJeton_() { try { if (FB_JETON_) FB_JETON_.releaseLock(); } catch (e) { /* déjà libéré */ } }
 
-/** Appelle une fonction de Stock_Boutique.gs et signe les mouvements créés (auteur, match). */
-function fb_appel_(fn, p, auteur, match) {
+/**
+ * Appelle une fonction de Stock_Boutique.gs, puis signe SES mouvements (auteur, match).
+ * Seules les lignes de la même réf. et d'un type écrit par le fichier sont signées : une vente de tablette
+ * importée au même moment n'est jamais attribuée à Élise. Un échec de signature ne remet pas en cause l'opération.
+ */
+function fb_appel_(fn, p, auteur, match, ref) {
+  const signature = 'Fichier boutique · ' + auteur;
   const ss = SpreadsheetApp.getActive();
   const sh0 = ss.getSheetByName(SB.ONGLET_MOUVEMENTS);
   const avant = sh0 ? sh0.getLastRow() : 1;
-  const msg = fn(p);
-  const sh = ss.getSheetByName(SB.ONGLET_MOUVEMENTS);
-  if (sh && sh.getLastRow() > avant) {
-    const c = sb_cols_(sh);
-    const nb = sh.getLastRow() - avant;
-    if (c.auteur) sh.getRange(avant + 1, c.auteur, nb, 1).setValue('Fichier boutique · ' + auteur);
-    if (c.match && match) {
-      const rg = sh.getRange(avant + 1, c.match, nb, 1);
-      rg.setValues(rg.getValues().map(v => [v[0] || match]));
+  const avecGestion = typeof GESTION_AUTEUR_ !== 'undefined';
+  if (avecGestion) GESTION_AUTEUR_ = signature;           // repris par sb_mouvement_ pendant l'opération
+  let msg;
+  try { msg = fn(p); } finally { if (avecGestion) GESTION_AUTEUR_ = ''; }
+  try {
+    const sh = ss.getSheetByName(SB.ONGLET_MOUVEMENTS);
+    if (sh && sh.getLastRow() > avant) {
+      const c = sb_cols_(sh);
+      const nb = sh.getLastRow() - avant;
+      const v = sh.getRange(avant + 1, 1, nb, sh.getLastColumn()).getValues();
+      const types = ['ENTREE_ACHAT', 'TRANSFERT', 'AJUSTEMENT_INVENTAIRE'];
+      v.forEach((r, i) => {
+        if (String(r[c.ref_boutique - 1]).trim() !== ref || types.indexOf(String(r[c.type - 1]).trim()) === -1) return;
+        if (c.auteur) sh.getRange(avant + 1 + i, c.auteur).setValue(signature);
+        if (c.match && match && !r[c.match - 1]) sh.getRange(avant + 1 + i, c.match).setValue(match);
+      });
     }
-  }
+  } catch (e) { console.warn('Signature des mouvements : ' + e.message); }
   return msg;
 }
+
+/** Erreur de verrou (CRM occupé par l'import d'une tablette) : on s'arrête et on demande de recocher. */
+function fb_estVerrou_(err) {
+  return /lock|verrou|timed out|délai|trop de temps/i.test(String(err && err.message || err));
+}
+
+function fb_resultat_(sh, ligne, col, texte) { sh.getRange(ligne, col).setValue(texte); }
 
 /** Suspend le recalcul de 12_SYNTHESE_STOCK pendant une série d'opérations ; une seule synthèse à la fin. */
 function fb_sansSynthese_(fn) {
