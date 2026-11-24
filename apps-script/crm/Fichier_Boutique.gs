@@ -78,7 +78,9 @@ const FB = {
   JRN_COLS: ['Date', 'Match', 'Boutique', 'Type', 'Réf.', 'Article', 'Taille', 'Qté', 'PU TTC', 'CA TTC', 'Paiement', 'Remise', 'Remarque'],
   CONTROLES: '25_CONTROLES_CAISSE',
   ENTETES_CONTROLES: ['horodatage', 'match', 'boutique', 'CA_tablette_TTC', 'CB_tablette', 'CB_TPE', 'ecart_CB',
-                      'especes_tablette', 'especes_comptees', 'ecart_especes', 'offerts_articles', 'controle_par', 'commentaire'],
+                      'especes_tablette', 'especes_comptees', 'ecart_especes', 'offerts_articles', 'controle_par', 'commentaire', 'statut'],
+  // 25/11/2026 : tolérances de clôture (au-delà : « écart à expliquer »). CB : paiement électronique, 0 toléré.
+  TOL_CB_EUR: 0, TOL_ESP_EUR: 1,
   ORDRE_TAILLES: ['116', '128', '140', '152', '164', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', '3XL', 'TU', ''],
   SORTIES_MATCH: ['VENTE_COMPTOIR', 'OFFERT_CAISSE'],
   JAUNE: '#fff2cc', GRIS: '#eef1f5', NUIT: '#0b1f3a', BLEU: '#1f5fbf', ROUGE: '#b3261e', VERT: '#15803d',
@@ -431,15 +433,37 @@ function fb_validerCaisse_(sh) {
   const commentaire = String(sh.getRange('B5').getValue()).trim();
   const lignes = sh.getRange(9, 1, 2, 10).getValues();
   if (lignes.every(r => r[6] === '' && r[7] === '')) throw new Error('Saisir au moins le relevé TPE ou les espèces comptées.');
+  // 25/11/2026 : pas de contrôle de caisse sur un CA incomplet — toutes les ventes du jour du match doivent être synchronisées
+  const D = fb_donnees_();
+  const mD = D.matchs.find(x => x.match === match);
+  if (mD && mD.d) {
+    const j = mD.d.getFullYear() + '-' + (mD.d.getMonth() + 1) + '-' + mD.d.getDate();
+    const manque = ['GP', 'VIP'].filter(b => (D.nonSyncJours || {})[j + '|' + b] > 0);
+    if (manque.length) throw new Error('Ventes du ' + sb_fmt_(mD.d, 'dd/MM') + ' pas encore synchronisées (' + manque.map(b => D.nonSyncJours[j + '|' + b] + ' article(s) ' + b).join(', ') +
+      ') : « Synchroniser tout » sur la tablette ' + manque.join(' et ') + ', attendre la mise à jour (10 min) puis recocher.');
+  }
   const shC = sb_ongletOuCree_(FB.CONTROLES, FB.ENTETES_CONTROLES);
   const cC = sb_assurerColonnes_(shC, FB.ENTETES_CONTROLES);
+  // 25/11/2026 : un seul contrôle par match et par boutique, sauf correction motivée (trace gardée : les lignes s'ajoutent)
+  if (!/^\s*correction/i.test(commentaire) && shC.getLastRow() > 1) {
+    const ex = shC.getRange(2, 1, shC.getLastRow() - 1, shC.getLastColumn()).getValues();
+    const deja = lignes.filter(r => !(r[6] === '' && r[7] === '')).map(r => r[0])
+      .filter(b => ex.some(e => String(e[cC.match - 1]).trim() === match && String(e[cC.boutique - 1]).trim() === b));
+    if (deja.length) throw new Error('Contrôle déjà validé pour ' + match + ' (' + deja.join(', ') + '). Pour le refaire, écrire en commentaire « Correction : motif », puis recocher.');
+  }
+  const statut = r => {
+    const eC = r[6] === '' ? null : Math.abs(fb_r2_(r[6] - r[3])), eE = r[7] === '' ? null : Math.abs(fb_r2_(r[7] - r[4]));
+    if ((eC !== null && eC > FB.TOL_CB_EUR) || (eE !== null && eE > FB.TOL_ESP_EUR)) return '❌ écart à expliquer';
+    return (eC === null || eE === null) ? '⏳ incomplet' : '✅ dans la tolérance';
+  };
   lignes.forEach(r => {
+    if (r[6] === '' && r[7] === '') return;   // boutique sans aucune saisie : pas de ligne (le rapport de clôture la montre « non contrôlée »)
     const row = new Array(shC.getLastColumn()).fill('');
     const set = (k, v) => { if (cC[k]) row[cC[k] - 1] = v; };
     set('horodatage', new Date()); set('match', match); set('boutique', r[0]); set('CA_tablette_TTC', r[2]);
     set('CB_tablette', r[3]); set('CB_TPE', r[6]); set('ecart_CB', r[6] === '' ? '' : fb_r2_(r[6] - r[3]));
     set('especes_tablette', r[4]); set('especes_comptees', r[7]); set('ecart_especes', r[7] === '' ? '' : fb_r2_(r[7] - r[4]));
-    set('offerts_articles', r[5]); set('controle_par', auteur); set('commentaire', commentaire);
+    set('offerts_articles', r[5]); set('controle_par', auteur); set('commentaire', commentaire); set('statut', statut(r));
     shC.appendRow(row);
   });
   const heure = sb_fmt_(new Date(), 'dd/MM HH:mm');
@@ -640,14 +664,14 @@ function fb_calculer(produits, tousProduits, mvts, ventes, live, debut, retraits
     const k = jour(j.d) + '|' + j.boutique;
     synchro[k] = (synchro[k] || 0) + j.q;
   });
-  const nonSync = {};
+  const nonSync = {}, nonSyncJours = {};
   Object.keys(recu).forEach(k => {
     const manque = recu[k] - (synchro[k] || 0);
-    if (manque > 0) { const b = k.split('|')[1]; nonSync[b] = (nonSync[b] || 0) + manque; }
+    if (manque > 0) { const b = k.split('|')[1]; nonSync[b] = (nonSync[b] || 0) + manque; nonSyncJours[k] = manque; }
   });
 
   return { produits: produits, saison: saison, dernierMatch: dernierMatch, sortiesMatch: sortiesMatch,
-           reassort: reassort, journal: journal, top: topListe, matchs: matchs, nonSync: nonSync, aRemettre: aRemettre };
+           reassort: reassort, journal: journal, top: topListe, matchs: matchs, nonSync: nonSync, nonSyncJours: nonSyncJours, aRemettre: aRemettre };
 }
 
 /* ============================ ÉCRITURE DU FICHIER ============================ */
@@ -880,7 +904,7 @@ function fb_construireApres_(ss, D) {
     [130, 80, 120, 100, 100, 100, 120, 120, 100, 110].forEach((w, i) => sh.setColumnWidth(i + 1, w));
     sh.setHiddenGridlines(true);
   }
-  sh.getRange('A2').setValue('1. Match en B4 · 2. « CB relevé TPE » = ticket de fin de journée du terminal · « Espèces comptées » = espèces dans la caisse MOINS le fond de caisse (30 € par boutique) · 3. Prénom en E4 · 4. Cocher « ✅ Valider le contrôle ». Le stock GP / VIP se compte dans « En boutique » (classeur Inventaire). Ne pas faire aussi le contrôle de caisse de l\'ancien onglet « APRÈS MATCH ».').setFontColor('#555555');
+  sh.getRange('A2').setValue('1. Match en B4 · 2. « CB relevé TPE » = ticket de fin de journée du terminal · « Espèces comptées » = espèces dans la caisse MOINS le fond de caisse (30 € par boutique) · 3. Prénom en E4 · 4. Cocher « ✅ Valider le contrôle ». Le stock GP / VIP se compte dans « En boutique » (classeur Inventaire). Ne pas faire aussi le contrôle de caisse de l\'ancien onglet « APRÈS MATCH ». Refusé tant qu\'une tablette n\'a pas fait « Synchroniser tout ». Un seul contrôle par match : pour corriger, commentaire « Correction : motif ». Tolérance : CB 0 €, espèces ±1 €.').setFontColor('#555555');
   const liste = D.matchs.map(m => m.match);
   if (liste.length) sh.getRange('B4').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(liste.slice(0, 50), true).setAllowInvalid(true).build());
   let match = String(sh.getRange('B4').getValue()).trim();

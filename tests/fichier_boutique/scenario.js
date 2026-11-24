@@ -236,6 +236,23 @@ check(CC && CC.getLastRow() === 3 && CC.get(2, 7) === -4.4 && CC.get(3, 10) === 
 check(T.mails.some(m => /caisse/.test(m.subject)), 'rapport de caisse envoyé par mail');
 check(Ap.get(9, 7) === '' && Ap.get(9, 8) === '', 'saisies de caisse vidées');
 
+// 25/11/2026 : statut / tolérance, pas de double contrôle, pas de contrôle tant qu'une vente n'est pas synchronisée
+{
+  const cSt = CC.row(1, CC.getLastColumn()).map(String).indexOf('statut') + 1;
+  check(cSt > 0 && CC.get(2, cSt) === '❌ écart à expliquer' && CC.get(3, cSt) === '⏳ incomplet', 'statut : GP −4,40 € « à expliquer », VIP sans relevé TPE « incomplet »');
+  Ap.getRange('E4').setValue('Élise'); Ap.getRange(9, 7).setValue(144.4); Ap.getRange(9, 8).setValue(5);
+  Ap.getRange('H4').setValue(true); run('fb_traiterDemandes()');
+  check(/déjà validé/.test(String(Ap.get(6, 1))) && CC.getLastRow() === 3, 'second contrôle du même match sans « Correction » : refusé, rien ajouté');
+  Ap.getRange(9, 7).setValue(144.4); Ap.getRange(9, 8).setValue(5); Ap.getRange('B5').setValue('Correction : ticket TPE relu');
+  Ap.getRange('H4').setValue(true); run('fb_traiterDemandes()');
+  check(CC.getLastRow() === 4 && CC.get(4, 7) === 0 && CC.get(4, cSt) === '✅ dans la tolérance', 'correction motivée : ligne ajoutée (historique gardé), écart 0 → dans la tolérance');
+  L.appendRow(['v10', d, 'ev1', 'B1', 'ECH-TU', 'Écharpe', '', 2, 15, 30, 'CB']);   // vente encore dans la tablette GP
+  run('majFichierBoutique()');
+  Ap.getRange('E4').setValue('Élise'); Ap.getRange(9, 7).setValue(174.4); Ap.getRange('B5').setValue('Correction : après vente oubliée');
+  Ap.getRange('H4').setValue(true); run('fb_traiterDemandes()');
+  check(/pas encore synchronisées \(2 article\(s\) GP\)/.test(String(Ap.get(6, 1))) && CC.getLastRow() === 4, 'vente GP pas encore synchronisée : contrôle refusé (CA incomplet), rien ajouté');
+}
+
 // ---------- 7. Ancien Inventaire : rien n'est arrêté ----------
 console.log('7. « En boutique » fait foi : déclencheurs de l\'Inventaire conservés');
 ['majInventaireElise', 'majSaisieInventaire', 'si_surModification', 'majInventaire', 'Topventes'].forEach(h => run(`ScriptApp.newTrigger('${h}').create()`));
