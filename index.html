@@ -1204,11 +1204,10 @@ async function rHome(){
   $('heroStock').textContent=prods.length?stock:'—';
   $('heroBillets').textContent=m?Object.keys(PIL.billets||{}).length:'—';
   if(m){
-    const nom=String(m.nom||'').replace(/\s*-\s*(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche).*$/i,'');
-    const adv=(nom.match(/vs\.?\s+(.+)$/i)||[])[1];
+    const im=infoMatchTickie(m.nom,m.date),nom=String(m.nom||''),adv=im.adv;
     ht.textContent=adv?'VS '+adv:nom;ht.className='hero-t'+((adv||nom).length>18?' small':'');
     const d=m.date?new Date(m.date):null;
-    $('heroSub').textContent=d&&!isNaN(d)?d.toLocaleString('fr-FR',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'}):(m.dateMatch||'');
+    $('heroSub').textContent=d&&!isNaN(d)?d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})+' à '+im.heure.replace(':','h'):(m.dateMatch||'');
     $('heroK').textContent=m.dateMatch===new Date().toISOString().slice(0,10)?'Match ce soir':'Prochain match';
   }else if(ouverte){
     ht.textContent=ouverte.match_label.replace(/^Spacer's\s+/i,'');ht.className='hero-t';
@@ -1269,14 +1268,30 @@ function rPilChip(){
   if(!PIL.match){set('wait','Match à charger','Synchronisation → Charger le match');return;}
   set('ok','Connecté',Object.keys(PIL.billets||{}).length+' billets · scan hors ligne');
 }
+// [match-tickie] 24/11/2026 : soirs de double affiche (« France Avenir vs Cannes & Spacer's vs Paris »),
+// on prend le segment qui contient « Spacer » et non le premier « vs ». L'heure de début Tickie est celle
+// du premier match (14:00 France Avenir) : en double affiche, avant 16:00 → 18:00 par défaut (modifiable).
+function infoMatchTickie(nom,dateIso){
+  const brut=String(nom||'').replace(/\s+-\s+(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b.*$/i,'').trim();
+  const segs=brut.split(/\s+[&\/]\s+/).map(x=>x.trim()).filter(Boolean);
+  const double=segs.length>1;
+  const seg=(double&&segs.find(x=>/spacer[’'`]?s?\b/i.test(x)))||segs[0]||brut;
+  const m=seg.match(/\bvs\.?\s+(.+)$/i);
+  const adv=m?m[1].split(/\s+-\s+|\s*·/)[0].trim():'';
+  let heure='';
+  const d=dateIso?new Date(dateIso):null;
+  if(d&&!isNaN(d)){heure=d.toTimeString().slice(0,5);if(double&&heure<'16:00')heure='18:00';}
+  return{adv,double,heure,label:adv?'Spacer\'s vs '+adv:''};
+}
+// [/match-tickie]
 function openNM(){
   $('mDat').value=new Date().toISOString().slice(0,10);$('mAdv').value='';$('mBen').value='';
   const m=PIL.match,box=$('nmPil');
   if(m){
-    const a=String(m.nom||'').match(/vs\.?\s+([^-&·]+?)(\s+-|\s*&|$)/i);
-    if(a)$('mAdv').value=a[1].trim();
+    const im=infoMatchTickie(m.nom,m.date);
+    if(im.adv)$('mAdv').value=im.adv;
     if(m.dateMatch)$('mDat').value=m.dateMatch;
-    if(m.date){const d=new Date(m.date);if(!isNaN(d))$('mHeu').value=d.toTimeString().slice(0,5);}
+    if(im.heure)$('mHeu').value=im.heure;
     box.className='state-line ok';box.textContent='🎫 Match Tickie chargé : '+m.nom;box.style.display='block';
   }else box.style.display='none';
   $('ov-nm').classList.add('on');setTimeout(()=>$('mAdv').focus(),300);
