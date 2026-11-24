@@ -1907,6 +1907,9 @@ function guardCatalogSourceBoutique(data){
 }
 async function syncCat(){
   const url=CFG.apps_script_url;if(!url){toast('URL Apps Script non configurée');return;}
+  // 25/11/2026 : recharger le stock pendant une caisse ouverte peut décompter deux fois les ventes déjà faites
+  // (si le CRM a été recalé entre-temps). Règle du 24/11 : aucun recalage pendant un match.
+  if((await dAll('sessions')).some(x=>x.statut==='ouvert')&&!confirm('Une caisse est OUVERTE sur cette tablette.\n\nRecharger le catalogue pendant le match peut fausser le stock affiché. À faire seulement si le responsable le demande.\n\nRecharger quand même ?'))return;
   synL('Récupération catalogue…');
   await envoyerRemises(true); // sinon le stock d'un maillot remis mais pas encore envoyé serait écrasé
   try{const data=await fetchJSON(url+'?action=get_catalogue&boutique='+CFG.boutique_id+'&saison='+encodeURIComponent(CFG.saison),{},30000);
@@ -2227,7 +2230,11 @@ function retChercherNom(t){
 async function validerRetrait(){
   const r=_retCour;if(!r||!retPret().ok)return;
   const now=new Date().toISOString(),nouv=[];
-  const base={horodatage:now,stand:CFG.boutique_id||'B1',benevole:(sess&&sess.benevole)||'',match:(sess&&sess.match_label)||''};
+  // 25/11/2026 : traçabilité — une remise faite hors caisse ouverte demande le prénom et prend le match chargé
+  let ben=(sess&&sess.benevole)||'';
+  if(!ben){ben=(prompt('Ton prénom (obligatoire : qui remet l\'article)')||'').trim();if(!ben){toast('Prénom obligatoire pour remettre un article');return;}}
+  const mt=(sess&&sess.match_label)||(PIL.match?infoMatchTickie(PIL.match.nom,PIL.match.date).label:'');
+  const base={horodatage:now,stand:CFG.boutique_id||'B1',benevole:ben,match:mt};
   r.items.forEach(it=>{const s=_retSel[it.cle],n=it.q-it.qr;if(!s||!s.coche||n<=0)return;
     if(it.taille){const o=retOptions(it),par={};s.tailles.forEach(ref=>{par[ref]=(par[ref]||0)+1;});
       Object.keys(par).forEach(ref=>nouv.push(Object.assign({id:'R'+(CFG.boutique_id||'')+'-'+uid(),cle:it.cle,produit:it.produit,quantite:par[ref],ref,taille:(o.find(x=>x.ref===ref)||{}).taille||''},base)));}
