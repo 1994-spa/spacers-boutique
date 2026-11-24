@@ -990,6 +990,8 @@ function initDB(){return new Promise((res,rej)=>{
 const dPut=(s,v)=>new Promise((ok,no)=>{const t=DB.transaction(s,'readwrite');t.objectStore(s).put(v);t.oncomplete=ok;t.onerror=no});
 const dGet=(s,k)=>new Promise((ok,no)=>{const t=DB.transaction(s,'readonly');const r=t.objectStore(s).get(k);r.onsuccess=()=>ok(r.result);r.onerror=no});
 const dAll=(s)=>new Promise((ok,no)=>{const t=DB.transaction(s,'readonly');const r=t.objectStore(s).getAll();r.onsuccess=()=>ok(r.result);r.onerror=no});
+// 25/11/2026 : toutes les lignes d'une vente dans UNE transaction (tout ou rien : jamais de vente à moitié écrite)
+const dPutMany=(s,arr)=>new Promise((ok,no)=>{const t=DB.transaction(s,'readwrite');const st=t.objectStore(s);arr.forEach(v=>st.put(v));t.oncomplete=ok;t.onerror=()=>no(t.error||new Error('écriture refusée'));t.onabort=()=>no(t.error||new Error('écriture annulée'));});
 const dDel=(s,k)=>new Promise((ok,no)=>{const t=DB.transaction(s,'readwrite');t.objectStore(s).delete(k);t.oncomplete=ok;t.onerror=no});
 const dClr=(s)=>new Promise((ok,no)=>{const t=DB.transaction(s,'readwrite');t.objectStore(s).clear();t.oncomplete=ok;t.onerror=no});
 
@@ -1014,6 +1016,8 @@ let RET={id:'retraits',retraits:[],tailles:{},maj:null,attente:[]};
 // configuré, au fil de l'eau (24_TRANSFERTS_LIVE) : l'inventaire et 03_PRODUITS passent l'article
 // d'une boutique à l'autre ; la vente, elle, reste une vente du stand qui a encaissé.
 let TRF={id:'transferts',liste:[]};
+// Date du jour en heure locale (toISOString donnait la date UTC : veille entre minuit et 1 h)
+const jourLocal=d=>{d=d||new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const fmt=n=>(Number(n)||0).toFixed(2).replace('.',',')+' €';
 const fmtS=n=>(Number(n)||0).toFixed(0)+' €';
@@ -1035,6 +1039,8 @@ let _tt;const toast=(m,d=2800)=>{const e=$('toast');e.textContent=m;e.classList.
 // ── DÉMARRAGE ─────────────────────────────────
 async function startup(){
   rSW();
+  // 25/11/2026 : demande au navigateur de ne jamais effacer les données de la caisse (stockage plein)
+  try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});}catch(e){}
   try{if(screen.orientation&&screen.orientation.lock)screen.orientation.lock('landscape').catch(()=>{});}catch(e){}
   await initDB();
   const p=await dGet('config','pilotage');if(p)PIL=Object.assign(PIL,p);
@@ -1187,7 +1193,7 @@ async function fixSaison(){
 }
 async function hCta(){
   const ouvertes=(await dAll('sessions')).filter(s=>s.statut==='ouvert').sort((a,b)=>b.date.localeCompare(a.date));
-  const today=new Date().toISOString().slice(0,10);
+  const today=jourLocal();
   const s=ouvertes.find(x=>x.date===today||(PIL.match&&x.date===PIL.match.dateMatch));
   if(s)ouvrirSess(s.id);else openNM();
 }
@@ -1217,7 +1223,7 @@ async function rHome(){
     ht.textContent=adv?'VS '+adv:nom;ht.className='hero-t'+((adv||nom).length>18?' small':'');
     const d=m.date?new Date(m.date):null;
     $('heroSub').textContent=d&&!isNaN(d)?d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})+' à '+im.heure.replace(':','h'):(m.dateMatch||'');
-    $('heroK').textContent=m.dateMatch===new Date().toISOString().slice(0,10)?'Match ce soir':'Prochain match';
+    $('heroK').textContent=m.dateMatch===jourLocal()?'Match ce soir':'Prochain match';
   }else if(ouverte){
     ht.textContent=ouverte.match_label.replace(/^Spacer's\s+/i,'');ht.className='hero-t';
     $('heroSub').textContent=ouverte.date+(ouverte.heure?' · '+ouverte.heure:'')+(ouverte.benevole?' · '+ouverte.benevole:'');
@@ -1294,7 +1300,7 @@ function infoMatchTickie(nom,dateIso){
 }
 // [/match-tickie]
 function openNM(){
-  $('mDat').value=new Date().toISOString().slice(0,10);$('mAdv').value='';$('mBen').value='';
+  $('mDat').value=jourLocal();$('mAdv').value='';$('mBen').value='';
   const m=PIL.match,box=$('nmPil');
   if(m){
     const im=infoMatchTickie(m.nom,m.date);
@@ -1426,12 +1432,17 @@ function ajoutPan(p,src){
 // 23/11/2026 : article absent du catalogue (ex. bonnet pas encore créé, prix d'étiquette différent).
 // La vente part au CRM comme les autres (chiffre d'affaires, paiement) ; le stock n'est pas touché :
 // le CRM la signale dans 99_DIAGNOSTIC (« Produits inconnus ») pour régularisation.
+// 25/11/2026 : on tape le PRIX ÉTIQUETTE (avant remise) ; la tablette déduit seule −5 % / −10 % comme pour les autres
+// articles (avant : « prix encaissé » → un prix déjà remisé était remisé une 2e fois). Une ligne DIVERS n'entre
+// jamais dans un pack. Prix unique (registre) : un maillot, une écharpe ou une carte se vendent par leur tuile.
 function articleLibre(){
   const nom=(prompt('Article hors catalogue : nom, couleur, taille (ex. Bonnet bleu)')||'').trim();if(!nom)return;
-  const px=Number(String(prompt('Prix encaissé (€) pour « '+nom+' »')||'').replace(',','.').replace(/[^0-9.]/g,''));
+  if(/maillot|[ée]charpe|carte\s*abonn/i.test(nom)&&!confirm('« '+nom+' » existe au catalogue : vends-le avec sa tuile (prix unique stand = Tickie).\n\nOK seulement si l\'article est vraiment absent du catalogue.'))return;
+  const px=Number(String(prompt('Prix ÉTIQUETTE (€) de « '+nom+' », AVANT remise.\nLa remise billet / abonné est déduite automatiquement : ne la retire pas toi-même.')||'').replace(',','.').replace(/[^0-9.]/g,''));
   if(!(px>0)){toast('Prix invalide');return;}
+  if(px>150&&!confirm('Prix étiquette de '+fmt(px)+' : c\'est bien ça ?'))return;
   const id='DIVERS-'+uid();
-  pan[id]={id,ref_boutique:'DIVERS',nom:'Divers – '+nom,categorie:'Divers',prix_vente:Math.round(px*100)/100,qty:1,k:id,src:''};
+  pan[id]={id,ref_boutique:'DIVERS',nom:'Divers – '+nom,categorie:'Divers',prix_vente:Math.round(px*100)/100,qty:1,k:id,src:'',libre:true};
   rPan();
 }
 function chQty(k,d){
@@ -1470,6 +1481,7 @@ function tauxRemise(b){
 }
 const typeRemise=b=>(b&&b.abo)?'abonne':'billet';
 function estComposant(l,motif){
+  if(l.libre||refOf(l)==='DIVERS')return false;   // un article hors catalogue n'entre jamais dans un pack
   try{const re=new RegExp(motif,'i');return re.test(String(refOf(l)||''))||re.test(String(l.nom||''));}catch(e){return false;}
 }
 // Calcul ligne par ligne au centime : le total est la somme des lignes, CRM et caisse tombent juste.
@@ -1652,8 +1664,9 @@ async function enregistrerVente(){
   const now=new Date().toISOString(),grp=uid(),b=billet;
   // Pas de remise sur un article offert
   const T=totaux(items,b,{sansRemise:mode==='Offert'});
+  const lignesV=[];
   for(const item of T.lignes){
-    await dPut('ventes',{id:uid(),session_id:sess.id,boutique_id:CFG.boutique_id,saison:CFG.saison,
+    lignesV.push({id:uid(),session_id:sess.id,boutique_id:CFG.boutique_id,saison:CFG.saison,
       produit_id:item.id,produit_ref:refOf(item),produit_nom:item.nom,categorie:item.categorie,
       quantite:item.qty,prix_unitaire:r2(item.net/item.qty),ca_ligne:item.net,
       prix_brut:item.prix_vente,remise:item.remise,remise_type:item.remise_type||'',tarif:item.tarif||'public',
@@ -1663,6 +1676,13 @@ async function enregistrerVente(){
       ticket_id:b?(b.ticket_id||null):null,barcode:b?(b.barcode||null):null,client_tarif:b?(b.tarif||null):null,
       client_email:null,client_nom:null,client_tribune:null,pil_envoye:false,
       stock_source:item.src||CFG.boutique_id,a_chercher:!!item.src});
+  }
+  try{await dPutMany('ventes',lignesV);}
+  catch(e){
+    // Rien n'est écrit (transaction annulée) : le panier reste affiché, la vente n'existe pas sur la tablette
+    ss('s-cai');rPan();
+    alert('⛔ VENTE NON ENREGISTRÉE ('+(e&&e.message||'mémoire de la tablette')+').\n\nLe panier est conservé. Si le client a déjà payé : note la vente sur papier (article, montant, CB/espèces, heure) et appelle le responsable. Ne ré-encaisse pas.');
+    return;
   }
   // Articles pris dans l'autre boutique : une course par ligne, à confirmer « Remis » quand le volant revient
   const courses=T.lignes.filter(i=>i.src);
