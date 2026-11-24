@@ -1,0 +1,8 @@
+# Fichiers du dépôt à ne pas publier sur le site des tablettes (Cloudflare)
+.git
+apps-script
+tests
+README.md
+wrangler.jsonc
+.gitignore
+.assetsignore
