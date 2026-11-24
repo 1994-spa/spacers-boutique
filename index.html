@@ -784,9 +784,9 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
       <div style="display:flex;flex-direction:column;gap:12px">
         <div id="cloCourses" style="display:none"></div>
         <div class="esphigh" style="margin:0;flex-direction:column;align-items:flex-start;gap:4px">
-          <div class="esphl">ÉTAPE 1 — ESPÈCES À REMETTRE</div>
+          <div class="esphl">ÉTAPE 1 — ESPÈCES ENCAISSÉES (hors fond de caisse)</div>
           <div class="esphv" id="cloEsp">0 €</div>
-          <div style="font-size:13px;font-weight:600">Remets ce montant au responsable avec les billets et pièces.</div>
+          <div style="font-size:13px;font-weight:600" id="cloEspSub">Le tiroir doit contenir ce montant + le fond de caisse de 30 €. Compte tout le tiroir ci-dessous, puis remets-le au responsable sous enveloppe (GP ou VIP).</div>
         </div>
         <div class="card" style="box-shadow:none;background:var(--surface-2)" id="cloCtl">
           <div class="card-t">Contrôle de caisse (ticket de fin du terminal + comptage du tiroir)</div>
@@ -1801,6 +1801,7 @@ async function ouvrirCloture(){
   const v=(await dAll('ventes')).filter(x=>x.session_id===sess.id);
   const T=_cloT=totauxCloture(v);
   $('cloEsp').textContent=fmt(T.esp);
+  $('cloEspSub').textContent='Le tiroir doit contenir '+fmt(T.esp+FOND_CAISSE)+' ('+fmt(T.esp)+' + fond de '+FOND_CAISSE+' €). Compte tout le tiroir ci-dessous, puis remets-le au responsable sous enveloppe '+nomPt(CFG.boutique_id)+'.';
   const ligne=(id,lib,tab,ph)=>'<div class="ctl-row"><span>'+lib+'<br><b>tablette '+fmt(tab)+'</b></span><input id="'+id+'" inputmode="decimal" placeholder="'+ph+'" oninput="rCloEcarts()"><span class="ctl-ec" id="'+id+'E">—</span></div>';
   $('cloCtlRows').innerHTML=(T.tpe.length?T.tpe:[{tpe:tpeCourant(),cb:0,nb:0}]).map((t,i)=>ligne('cloTpe'+i,'💳 '+esc(tpeLib(t.tpe))+' · '+t.nb+' ticket'+(t.nb>1?'s':''),t.cb,'ticket TPE €')).join('')
     +ligne('cloEspC','💵 Espèces : tout le tiroir compté, fond de '+FOND_CAISSE+' € compris',T.esp+FOND_CAISSE,'compté €');
