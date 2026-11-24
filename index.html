@@ -1125,6 +1125,14 @@ async function lireLienConfig(){
     await dPut('config',PIL);
     const b=(c.boutique==='B1'||c.boutique==='B2')?c.boutique:null;
     let cfg=await dGet('config','main');
+    // 25/11/2026 : le lien d'une AUTRE boutique ne change pas la boutique d'une tablette qui a des ventes non envoyées
+    // (sinon les ventes GP partaient comme VIP, ou l'inverse, avec le stock de la mauvaise boutique)
+    if(b&&cfg&&cfg.boutique_id&&cfg.boutique_id!==b){
+      const ses=await dAll('sessions'),ven=await dAll('ventes');
+      const att=ses.filter(x=>x.statut!=='synchro'&&ven.some(v=>v.session_id===x.id)).length;
+      if(att){alert('⛔ Ce lien est celui de la boutique '+b+', mais cette tablette est la boutique '+cfg.boutique_id+' et a '+att+' session(s) pas encore synchronisée(s).\n\nBoutique NON changée. Synchronise d\'abord, ou utilise le bon lien.');return true;}
+      if(!confirm('Cette tablette est réglée en boutique '+cfg.boutique_id+'. Le lien la passe en boutique '+b+'.\n\nConfirmer le changement ?'))return true;
+    }
     if(b){
       cfg=Object.assign({id:'main',key:'main',saison:saisonCourante(),contact_urgence:''},cfg||{},
         {boutique_id:b,boutique_nom:(cfg&&cfg.boutique_id===b&&cfg.boutique_nom)||c.nom||(b==='B1'?'Grand Public':'VIP')});
