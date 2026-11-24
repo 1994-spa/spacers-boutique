@@ -749,11 +749,12 @@ function si_validerControle_(inv, sh) {
   const copie = String(sh.getRange('J4').getValue()).trim();
   const heure = sb_fmt_(new Date(), 'dd/MM HH:mm');
 
-  // 1. Caisse
+  // 1. Caisse — 25/11/2026 : le contrôle de caisse se fait UNE fois, dans 5_APRES_MATCH du fichier boutique d'Élise.
+  //    Ici on ne l'écrit plus dans 25_CONTROLES_CAISSE (avant : deux lignes par boutique et par match).
   const caisse = sh.getRange(SI.A_CAISSE + 1, 1, 3, 11).getValues();
-  const shC = si_ongletCRM_(SI.CONTROLES, SI.ENTETES_CONTROLES);
-  const cC = sb_cols_(shC);
-  caisse.slice(0, 2).forEach(r => {
+  if (false) caisse.slice(0, 2).forEach(r => {
+    const shC = si_ongletCRM_(SI.CONTROLES, SI.ENTETES_CONTROLES);
+    const cC = sb_cols_(shC);
     const row = new Array(shC.getLastColumn()).fill('');
     const set = (k, v) => { if (cC[k]) row[cC[k] - 1] = v; };
     set('horodatage', new Date()); set('match', match); set('boutique', r[0]); set('CA_tablette_TTC', r[3]);
@@ -766,17 +767,21 @@ function si_validerControle_(inv, sh) {
   // 2. Stock compté → écarts corrigés dans le CRM
   const n = sh.getLastRow() - SI.A_ART;
   const art = n > 0 ? sh.getRange(SI.A_ART + 1, 1, n, SI.A_COLS_ART.length).getValues() : [];
-  const lignes = [], ecarts = [];
+  const lignes = [], ecarts = [], ecartsIgnores = [];
   const Pfrais = sb_lireProduits_();   // l'écart se calcule sur le stock CRM du moment, pas sur l'affichage
   art.forEach(r => {
     const ref = String(r[0]).trim();
     if (!ref || ref === '—') return;
-    const l = { ref: ref, R: r[14], B1: r[8], B2: r[11] };
-    if (l.R === '' && l.B1 === '' && l.B2 === '') return;
+    // 25/11/2026 : « En boutique » fait foi pour GP / VIP (décision du 09/11) : seuls les comptages du DÉPÔT
+    // vont au CRM. Un comptage GP / VIP saisi ici est ignoré (il écrasait B1/B2 en valeur absolue, puis eb_appliquer
+    // le réécrasait : deux vérités en ping-pong).
+    const l = { ref: ref, R: r[14], B1: '', B2: '' };
+    if (r[8] !== '' || r[11] !== '') ecartsIgnores.push(r[1] + ' ' + r[2]);
+    if (l.R === '') return;
     const x = Pfrais.rows.find(p => p.ref === ref);
     if (!x) return;
     lignes.push(l);
-    [['B1', 8, 'GP'], ['B2', 11, 'VIP'], ['R', 14, 'dépôt']].forEach(t => {
+    [['R', 14, 'dépôt']].forEach(t => {
       if (r[t[1]] !== '' && Number(r[t[1]]) !== x[t[0]]) ecarts.push(r[1] + ' ' + r[2] + ' ' + t[2] + ' : CRM ' + x[t[0]] + ', compté ' + r[t[1]]);
     });
   });
@@ -796,8 +801,9 @@ function si_validerControle_(inv, sh) {
   // Les comptages ont été appliqués : on les vide pour ne pas les réappliquer
   if (n > 0) [9, 12, 15].forEach(c => sh.getRange(SI.A_ART + 1, c, n, 1).clearContent());
   sh.getRange('A3').setValue('Dernier contrôle validé : ' + match + ' — ' + heure + ' par ' + auteur).setFontColor('#15803d');
-  return '✅ ' + heure + ' — contrôle enregistré dans le CRM · caisse : ' + caisse.slice(0, 2).map(r => r[0] + ' ' + si_eur_(r[3])).join(', ') +
-         ' · ' + (ecarts.length ? ecarts.length + ' écart(s) de stock corrigé(s)' : msgStock) + ' · rapport envoyé par mail.';
+  return '✅ ' + heure + ' — dépôt : ' + (ecarts.length ? ecarts.length + ' écart(s) corrigé(s)' : msgStock) +
+         ' · caisse : à valider dans 5_APRES_MATCH du fichier boutique (pas ici)' +
+         (ecartsIgnores.length ? ' · ⚠ comptages GP / VIP ignorés (' + ecartsIgnores.length + ') : les reporter dans « En boutique »' : '') + ' · rapport envoyé par mail.';
 }
 
 function si_mailRapport_(match, auteur, caisse, art, ecarts, commentaire) {

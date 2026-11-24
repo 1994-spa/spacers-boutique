@@ -1,7 +1,7 @@
 // Lance tous les tests : node tests/tout.js   (fuseau Europe/Paris imposé)
 const { spawnSync } = require('child_process'), path = require('path');
 const T = ['caisse/test.js', 'adversaire/test.js', 'adversaire/pilotage.js', 'fichier_boutique/scenario.js', 'fichier_boutique/reprise.js',
-           'cloture/test.js', 'verrou/test.js', 'import_session/test.js', 'corrections_crm/test.js'];
+           'cloture/test.js', 'verrou/test.js', 'import_session/test.js', 'apres_match/test.js', 'corrections_crm/test.js'];
 let ko = 0;
 for (const t of T) {
   const r = spawnSync(process.execPath, [path.join(__dirname, t)], { env: Object.assign({}, process.env, { TZ: 'Europe/Paris' }), encoding: 'utf8' });
