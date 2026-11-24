@@ -29,8 +29,8 @@ function monter(options) {
   ctx.mettreAJourDashboard = () => T.appels.push('dashboard');
   ctx.logDiag = (s, n, m) => T.appels.push('diag:' + m);
   if (options && options.repriseAvant) {
-    // État réel du 24/11 : reprise écrite avec l'ANCIENNE version (RV-05 en CB, RV-10 en « Bordeaux »)
-    const ancien = execFileSync('git', ['show', 'HEAD:apps-script/crm/Reprise_Ventes_VIP.gs'], { cwd: path.join(__dirname, '../..') }).toString();
+    // État réel du 24/11 : reprise écrite avec l'ANCIENNE version (commit 9d0a4d1 : RV-05 en CB, RV-10 en « Bordeaux »)
+    const ancien = execFileSync('git', ['show', '9d0a4d1:apps-script/crm/Reprise_Ventes_VIP.gs'], { cwd: path.join(__dirname, '../..') }).toString();
     vm.runInContext(ancien, ctx);
     vm.runInContext('rv_appliquer()', ctx);
   }
