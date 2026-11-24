@@ -825,4 +825,4 @@ function sb_num_(v) {
 
 function sb_estActif_(v) {
   return v === true || /^(vrai|true|oui|1)$/i.test(String(v).trim());
-}
+}
