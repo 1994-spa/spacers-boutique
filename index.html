@@ -1020,6 +1020,15 @@ const fmtS=n=>(Number(n)||0).toFixed(0)+' €';
 const fmtP=n=>{n=Number(n)||0;return (n%1?n.toFixed(2).replace('.',','):n.toFixed(0))+' €';};
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=id=>document.getElementById(id);
+// 25/11/2026 : toute requête a un délai maximum, LECTURE DE LA RÉPONSE COMPRISE (le minuteur n'est coupé qu'après le JSON).
+// Sans cela, un wifi saturé gelait la synchro, le chargement du match ou la file du pilotage live.
+async function fetchJSON(url,opt,ms){
+  ms=ms||20000;const ctl=new AbortController(),tmo=setTimeout(()=>ctl.abort(),ms);
+  try{const r=await fetch(url,Object.assign({},opt||{},{signal:ctl.signal}));const t=await r.text();
+    try{return JSON.parse(t);}catch(e){throw new Error('réponse illisible (HTTP '+r.status+')');}}
+  catch(e){if(e&&e.name==='AbortError')throw new Error('délai dépassé ('+Math.round(ms/1000)+' s)');throw e;}
+  finally{clearTimeout(tmo);}
+}
 const ss=id=>{document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));$(id).classList.add('on');if(id==='s-pilotage')rPilotage();};
 let _tt;const toast=(m,d=2800)=>{const e=$('toast');e.textContent=m;e.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>e.classList.remove('show'),d)};
 
@@ -1513,7 +1522,7 @@ async function chercherAbonne(code){
 async function chargerAbonnes(){
   const url=CFG.apps_script_url;if(!url)return;
   try{
-    const d=await (await fetch(url+'?action=get_abonnes')).json();
+    const d=await fetchJSON(url+'?action=get_abonnes',{},30000);
     if(d.status!=='ok'||!Array.isArray(d.abonnes))throw new Error(d.message||'réponse invalide (CRM pas encore en V3.4 ?)');
     const m={};d.abonnes.forEach(a=>{if(a&&a.h)m[a.h]=[a.p||'',a.f||''];});
     ABO.liste=m;ABO.maj=d.maj||new Date().toISOString();if(d.remise)ABO.remise=Number(d.remise);
@@ -1566,7 +1575,7 @@ async function rPilBand(){
   if(!PIL.url||!PIL.token){el.textContent='—';el.className='cav';return;}
   const dep=Date.parse(PIL.depuis||0)||0;
   const n=(await dAll('ventes')).filter(v=>!v.pil_envoye&&Date.parse(v.timestamp)>=dep).reduce((s,v)=>s.add(v.groupe||v.id),new Set()).size+trfAEnvoyer(true).length;
-  el.textContent=n?n+' en attente':'✓ à jour';el.className='cav '+(n?'wt':'gr');
+  el.textContent=n?n+' en attente':'✓ à jour';el.className='cav '+(n?'wt':'gr');el.title=n&&PIL.derniere_erreur?'Dernière erreur : '+PIL.derniere_erreur:'';
 }
 function confirmerVider(){$('ov-vider').classList.add('on');}
 function viderConfirme(){$('ov-vider').classList.remove('on');viderPan();}
@@ -1786,7 +1795,7 @@ async function lancerSync(){
     const sv=ventes.filter(v=>v.session_id===s.id);
     synL('Envoi : '+s.match_label+'…');
     // Session marquée « synchronisée » seulement si le CRM confirme l'avoir reçue (sinon elle reste en attente, sans risque de doublon)
-    try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'import_session',session:s,ventes:sv,stock_cloture:s.stock_cloture||[]})});const d=await r.json();if(d.status!=='ok')throw new Error(d.message||'refusé par le CRM');s.statut='synchro';await dPut('sessions',s);ok++;synL('OK : '+s.match_label+' · '+(d.ventes_ajoutees||0)+' ligne(s)');}
+    try{const d=await fetchJSON(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'import_session',session:s,ventes:sv,stock_cloture:s.stock_cloture||[]})},90000);if(d.status!=='ok')throw new Error(d.message||'refusé par le CRM');s.statut='synchro';await dPut('sessions',s);ok++;synL('OK : '+s.match_label+' · '+(d.ventes_ajoutees||0)+' ligne(s)');}
     catch(e){synL('ERREUR : '+s.match_label+' — '+e.message);}
   }
   const nt=await envoyerTransfertsCRM(url);
@@ -1809,8 +1818,7 @@ async function syncCat(){
   const url=CFG.apps_script_url;if(!url){toast('URL Apps Script non configurée');return;}
   synL('Récupération catalogue…');
   await envoyerRemises(true); // sinon le stock d'un maillot remis mais pas encore envoyé serait écrasé
-  try{const r=await fetch(url+'?action=get_catalogue&boutique='+CFG.boutique_id+'&saison='+encodeURIComponent(CFG.saison));
-    const data=await r.json();
+  try{const data=await fetchJSON(url+'?action=get_catalogue&boutique='+CFG.boutique_id+'&saison='+encodeURIComponent(CFG.saison),{},30000);
     if(!guardCatalogSourceBoutique(data))return;
     if(data.produits&&Array.isArray(data.produits)&&!data.produits.length){synL('Catalogue vide renvoyé par le CRM : catalogue de la tablette conservé');toast('Catalogue vide côté CRM : rien changé');return;}
     if(data.produits&&Array.isArray(data.produits)){await stockAutreBoutique(url,data.produits);await dClr('produits');for(const p of data.produits)await dPut('produits',p);await loadP();await recalcStockSession();if(data.regles){REG=Object.assign({},REG,data.regles,{id:'regles'});await dPut('config',REG);}$('synNP').textContent=prods.length;synL('Catalogue OK : '+prods.length+' produit(s)');await chargerAbonnes();await chargerRetraits();toast(prods.length+' produit(s) · '+Object.keys(ABO.liste||{}).length+' carte(s) abonné · '+retAFaire()+' retrait(s) web');}
@@ -1831,7 +1839,7 @@ function rPilState(){
   if(!PIL.url||!PIL.token){el.className='state-line';el.textContent='Pilotage non configuré : ouvre le lien envoyé par le responsable, ou colle l\'URL et le jeton ci-dessous.';return;}
   if(!PIL.match){el.className='state-line wait';el.textContent='Aucun match chargé.';return;}
   const d=PIL.charge?new Date(PIL.charge).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
-  el.className='state-line ok';el.textContent='🎫 '+PIL.match.nom+' · chargé le '+d+' · '+Object.keys(PIL.billets||{}).length+' billets en mémoire';
+  el.className='state-line ok';el.textContent='🎫 '+PIL.match.nom+' · chargé le '+d+' · '+Object.keys(PIL.billets||{}).length+' billets en mémoire'+(PIL.derniere_erreur?' · ⚠ dernier envoi live refusé : '+PIL.derniere_erreur:'');
 }
 async function savePil(){
   PIL.url=$('pilUrl').value.trim();PIL.token=$('pilTok').value.trim();
@@ -1844,7 +1852,7 @@ async function chargerMatch(){
   const el=$('pilMatchState');el.className='state-line';el.textContent='⏳ Chargement du match et des billets…';
   try{
     const u=new URL(PIL.url);u.searchParams.set('action','tablette');u.searchParams.set('boutique',CFG.boutique_id);u.searchParams.set('token',PIL.token);
-    const d=await (await fetch(u.toString())).json();
+    const d=await fetchJSON(u.toString(),{},60000);
     if(d.status!=='ok')throw new Error(d.message||'réponse invalide');
     PIL.match=d.match;PIL.charge=d.charge;
     if(d.billetsOk){const m={};(d.billets||[]).forEach(([code,id,tarif])=>{m[code]=[id,tarif];});PIL.billets=m;}
@@ -1877,14 +1885,12 @@ async function pilEnvoyer(force){
         ticket:(v0.ticket_id||v0.barcode)?{ticket_id:v0.ticket_id||'',barcode:v0.barcode||'',tarif:v0.client_tarif||''}:null};});
     // text/plain : pas de pré-vérification CORS, accepté par Apps Script
     // 23/11/2026 : délai maximum de 20 s, sinon une requête bloquée (wifi saturé) gelait tous les envois suivants
-    const ctl=new AbortController(),tmo=setTimeout(()=>ctl.abort(),20000);
-    let r;try{r=await fetch(PIL.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'ventes',token:PIL.token,boutique:CFG.boutique_id,ventes}),signal:ctl.signal});}
-    finally{clearTimeout(tmo);}
-    const res=await r.json();
+    const res=await fetchJSON(PIL.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'ventes',token:PIL.token,boutique:CFG.boutique_id,ventes})},20000);
     if(res.status!=='ok')throw new Error(res.message||'refus');
     const recus=new Set(res.recus||[]);
     for(const v of enAttente)if(recus.has(v.groupe||v.id)){v.pil_envoye=true;await dPut('ventes',v);}
-  }catch(e){/* réseau coupé ou jeton refusé : nouvel essai plus tard */}
+    PIL.derniere_erreur='';
+  }catch(e){PIL.derniere_erreur=new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})+' · '+e.message;/* nouvel essai dans 60 s */}
   finally{_envoi=false;rPilBand();}
 }
 window.addEventListener('online',()=>pilEnvoyer());
@@ -1930,10 +1936,10 @@ async function chercherBillet(barcode){
   setScanStatus('⏳ Recherche du billet…');
   try{
     const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),5000);
-    let r;try{r=await fetch(TICKIE_PROXY_URL+'/ticket/'+encodeURIComponent(barcode),{signal:ctl.signal});}finally{clearTimeout(to);}
-    if(r.status===404)throw Object.assign(new Error('billet introuvable dans Tickie'),{definitif:true});
-    if(!r.ok)throw new Error('erreur '+r.status);
-    const t=await r.json();
+    let t;try{const r=await fetch(TICKIE_PROXY_URL+'/ticket/'+encodeURIComponent(barcode),{signal:ctl.signal});
+      if(r.status===404)throw Object.assign(new Error('billet introuvable dans Tickie'),{definitif:true});
+      if(!r.ok)throw new Error('erreur '+r.status);
+      t=await r.json();}finally{clearTimeout(to);}
     if(t.error)throw Object.assign(new Error(t.error),{definitif:true});
     afficherBillet(t,barcode);
   }catch(e){
@@ -2001,7 +2007,7 @@ async function chargerRetraits(){
   const url=CFG.apps_script_url;if(!url)return;
   if(!retraitsIci()){synL('Retraits web : uniquement à la boutique GP (rien à charger sur cette tablette)');rRetSyn();return;}
   try{
-    const d=await (await fetch(url+'?action=get_retraits&boutique='+encodeURIComponent(CFG.boutique_id||'B1'))).json();
+    const d=await fetchJSON(url+'?action=get_retraits&boutique='+encodeURIComponent(CFG.boutique_id||'B1'),{},30000);
     if(d.status!=='ok'||!Array.isArray(d.retraits))throw new Error(d.message||'réponse invalide (CRM pas encore en V3.5 ?)');
     RET.retraits=d.retraits;RET.tailles=d.tailles||{};RET.maj=d.maj||new Date().toISOString();
     retIndexer();await dPut('config',RET);
@@ -2016,9 +2022,7 @@ async function envoyerRemises(silencieux){
   const lot=RET.attente.slice(),body=JSON.stringify({action:'remises_retraits',remises:lot});
   let ok=false;
   try{
-    const ctl=new AbortController(),tmo=setTimeout(()=>ctl.abort(),20000);
-    let r;try{r=await fetch(url,{method:'POST',body,signal:ctl.signal});}finally{clearTimeout(tmo);}
-    const d=await r.json();
+    const d=await fetchJSON(url,{method:'POST',body},20000);
     if(d.status!=='ok')throw new Error(d.message||'refusé par le CRM');
     ok=true;if(d.stock_negatif&&d.stock_negatif.length)synL('⚠ Stock négatif dans le CRM après remise : '+d.stock_negatif.join(', '));
   }catch(e){
@@ -2188,8 +2192,7 @@ async function envoyerTransfertsCRM(url){
   if(!lot.length)return 0;
   synL('Envoi : '+lot.length+' transfert(s) entre boutiques…');
   try{
-    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'transferts',boutique:CFG.boutique_id,transferts:lot.map(trfPourEnvoi)})});
-    const d=await r.json();
+    const d=await fetchJSON(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'transferts',boutique:CFG.boutique_id,transferts:lot.map(trfPourEnvoi)})},60000);
     if(d.status!=='ok')throw new Error(d.message||'refusé par le CRM');
     const recus=new Set(d.recus||[]);let n=0;
     lot.forEach(t=>{if(recus.has(t.id)){t.crm_envoye=true;n++;}});
@@ -2201,8 +2204,7 @@ async function envoyerTransfertsCRM(url){
 // Au chargement du catalogue : stock de l'autre boutique, pour savoir si le volant a une chance de trouver l'article
 async function stockAutreBoutique(url,produits){
   try{
-    const r=await fetch(url+'?action=get_catalogue&boutique='+autreB()+'&saison='+encodeURIComponent(CFG.saison));
-    const d=await r.json();
+    const d=await fetchJSON(url+'?action=get_catalogue&boutique='+autreB()+'&saison='+encodeURIComponent(CFG.saison),{},30000);
     if(!Array.isArray(d.produits)||!d.produits.length)throw new Error('catalogue '+nomPt(autreB())+' vide');
     const m={};d.produits.forEach(x=>{m[x.id]=Number(x.stock)||0;});
     produits.forEach(p=>{p.stock_autre=(p.id in m)?m[p.id]:0;});
@@ -2214,9 +2216,9 @@ async function envoyerTransferts(force){
   const lot=trfAEnvoyer(!!force).slice(0,40);
   if(!lot.length||!PIL.url||!PIL.token||navigator.onLine===false)return;
   try{
-    const r=await fetch(PIL.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'transferts',token:PIL.token,boutique:CFG.boutique_id,
-      transferts:lot.map(trfPourEnvoi)})});
-    const res=await r.json();
+    // 25/11/2026 : délai de 20 s ici aussi (cet envoi passe AVANT les ventes : bloqué, il gelait tout le pilotage live)
+    const res=await fetchJSON(PIL.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'transferts',token:PIL.token,boutique:CFG.boutique_id,
+      transferts:lot.map(trfPourEnvoi)})},20000);
     if(res.status!=='ok')throw new Error(res.message||'refus');
     const recus=new Set(res.recus||[]);
     lot.forEach(t=>{if(recus.has(t.id))t.pil_envoye=true;});
