@@ -74,7 +74,14 @@ function cm_problemesAvantEb_(maintenant) {
   const pb = [];
   // a) ventes reçues en direct mais pas encore dans 01_VENTES (comparaison des quantités par jour et par boutique)
   const ns = cm_nonSynchro_(ss, new Date(maintenant.getTime() - CM.JOURS_CONTROLE * 864e5));
-  Object.keys(ns).sort().forEach(k => { const [j, b] = k.split('|'); pb.push(ns[k] + ' article(s) ' + cm_nomB_(b) + ' du ' + j + ' pas encore synchronisé(s)'); });
+  // (un jour déjà expliqué — ex. course « introuvable » restée dans le direct — se déclare dans CM_JOURS_VERIFIES)
+  const verifies = String(PropertiesService.getScriptProperties().getProperty('CM_JOURS_VERIFIES') || '').split(',').map(x => x.trim());
+  Object.keys(ns).filter(k => verifies.indexOf(k) === -1).sort().forEach(k => { const [j, b] = k.split('|'); pb.push(ns[k] + ' article(s) ' + cm_nomB_(b) + ' du ' + j + ' pas encore synchronisé(s)'); });
+  // a bis) l'inverse : ventes synchronisées mais JAMAIS reçues en direct (pilotage non configuré, tablette hors ligne tout le
+  //        match…) : majInventaire ne les a pas retirées de « En boutique », et eb_appliquer les remettrait en stock.
+  const jv = cm_jamaisVuesEnDirect_(ss, new Date(maintenant.getTime() - CM.JOURS_CONTROLE * 864e5));
+  Object.keys(jv).sort().forEach(k => { const [j, b] = k.split('|'); pb.push(jv[k] + ' article(s) ' + cm_nomB_(b) + ' du ' + j +
+    ' synchronisé(s) mais jamais reçu(s) en direct : « En boutique » ne les a pas décomptés (les retirer dans « En boutique », puis noter dans la propriété CM_JOURS_VERIFIES « ' + j + '|' + b + ' »)'); });
   // b) transferts GP ↔ VIP reçus mais pas encore appliqués à 03_PRODUITS
   const trf = cm_lire_(ss, CM.TRF);
   const colFait = trf.entetes.find(h => /^(appliqu|trait|fait)/i.test(h));
@@ -106,6 +113,27 @@ function cm_nonSynchro_(ss, depuis) {
   });
   const out = {};
   Object.keys(recu).forEach(k => { const manque = recu[k] - (synchro[k] || 0); if (manque > 0) out[k] = manque; });
+  return out;
+}
+
+/** { 'aaaa-mm-jj|B1': surplus } : articles dans 01_VENTES (tablette) au-delà de ce que 21_LIGNES_LIVE a reçu ce jour-là.
+ *  Un jour déjà régularisé à la main se déclare dans la propriété de script CM_JOURS_VERIFIES (« 2026-11-07|B1,2026-11-21|B2 »). */
+function cm_jamaisVuesEnDirect_(ss, depuis) {
+  const recu = {}, synchro = {};
+  cm_lire_(ss, CM.LIVE).lignes.forEach(l => {
+    const d = cm_date_(l['Horodatage']);
+    if (!d || d < depuis || cm_estDivers_(l['Réf.'], l['Produit'])) return;
+    const k = cm_jour_(d) + '|' + cm_b_(l['Boutique']); recu[k] = (recu[k] || 0) + cm_num_(l['Qté']);
+  });
+  cm_lire_(ss, CM.VENTES).lignes.forEach(v => {
+    if (String(v['source'] || '').trim() !== 'tablette') return;
+    const d = cm_date_(v['date']);
+    if (!d || d < depuis || cm_estDivers_('', v['produit'])) return;
+    const k = cm_jour_(d) + '|' + cm_b_(v['boutique_id']); synchro[k] = (synchro[k] || 0) + cm_num_(v['quantite']);
+  });
+  const ok = String(PropertiesService.getScriptProperties().getProperty('CM_JOURS_VERIFIES') || '').split(',').map(x => x.trim());
+  const out = {};
+  Object.keys(synchro).forEach(k => { const surplus = synchro[k] - (recu[k] || 0); if (surplus > 0 && ok.indexOf(k) === -1) out[k] = surplus; });
   return out;
 }
 
