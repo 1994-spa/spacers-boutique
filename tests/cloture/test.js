@@ -100,7 +100,7 @@ console.log('3. Rapport de clôture');
 {
   const R = T.run('cm_calculerCloture_(SpreadsheetApp.getActive(), "' + MATCH + '")');
   const gp = R.boutiques.find(b => b.boutique === 'B1'), vip = R.boutiques.find(b => b.boutique === 'B2');
-  check(gp.ca === 189.9 && gp.cb === 175.65 && gp.esp === 14.25 && gp.offerts === 1 && gp.tickets === 1, 'GP : CA 189,90 € = CB 175,65 € + espèces 14,25 €, 1 offert (au centime)');
+  check(gp.ca === 189.9 && gp.cb === 175.65 && gp.esp === 14.25 && gp.offerts === 1 && gp.sessions === 1, 'GP : CA 189,90 € = CB 175,65 € + espèces 14,25 €, 1 offert (au centime)');
   check(vip.ca === 15 && vip.cb === 15, 'VIP : 15 € CB');
   const tGP = R.terminaux.find(t => t.terminal === '2668544-001'), tB2 = R.terminaux.find(t => t.terminal === '2668543-001'), tV = R.terminaux.find(t => t.terminal === '6053438-002');
   check(tGP.tablette === 118.65 && tGP.compte === 118.65 && tGP.ecart === 0 && tGP.source === 'ticket saisi sur la tablette', 'D177 GP : 118,65 € tablette = ticket, écart 0');

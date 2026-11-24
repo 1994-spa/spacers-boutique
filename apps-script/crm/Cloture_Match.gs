@@ -297,10 +297,16 @@ function cm_calculerCloture_(ss, match) {
   const pbs = [], actions = [];
   synchro.filter(s => s.manque > 0).forEach(s => pbs.push(cm_nomB_(s.boutique) + ' : ' + s.manque + ' article(s) pas synchronisé(s)'));
   lignesTpe.forEach(l => {
-    if (l.terminal === '(non indiqué)') pbs.push('CB sans terminal indiqué : ' + cm_eur_(l.tablette));
-    else if (l.dedie && l.compte === '') pbs.push(l.lib + ' : télécollecte non saisie (28_TELECOLLECTES)');
+    if (l.terminal === '(non indiqué)') return;
+    if (l.dedie && l.compte === '') pbs.push(l.lib + ' : télécollecte non saisie (28_TELECOLLECTES)');
     else if (l.ecart !== null && Math.abs(l.ecart) > CM.TOL_CB) pbs.push(l.lib + ' : écart ' + cm_signe_(l.ecart));
     if (l.note) actions.push(l.lib + ' : ' + cm_eur_(l.tablette) + ' de ventes boutique à réaffecter dans Pennylane');
+  });
+  // CB de 01_VENTES sans détail par terminal (ventes d'avant la v20, ou 26_VENTES_TPE absent) : non rapprochables
+  ['B1', 'B2'].filter(b => bq[b]).forEach(b => {
+    const vu = Object.keys(parTpe).filter(k => parTpe[k].boutique === b && parTpe[k].terminal !== '(non indiqué)').reduce((s, k) => s + parTpe[k].cb, 0);
+    const manque = cm_r2_(bq[b].cb - vu);
+    if (manque > 0.005) pbs.push(cm_nomB_(b) + ' : CB sans terminal indiqué : ' + cm_eur_(manque) + ' (rapprocher à la main avec les télécollectes)');
   });
   esp.forEach(e => {
     if (e.ecart === null) pbs.push('espèces ' + cm_nomB_(e.boutique) + ' non comptées');
@@ -310,7 +316,7 @@ function cm_calculerCloture_(ss, match) {
   const total = cm_r2_(Object.keys(bq).reduce((s, b) => s + bq[b].ca, 0));
   const resume = (pbs.length ? '❌ CLÔTURE À FINIR' : '✅ CLÔTURE CONFORME') + ' — ' + match + ' (' + (jour || 'date ?') + ') · CA tablettes ' + cm_eur_(total) +
     (pbs.length ? ' · ' + pbs.join(' · ') : '') + (actions.length ? ' · À faire : ' + actions.join(' · ') : '');
-  return { match: match, jour: jour, synchro: synchro, boutiques: ['B1', 'B2'].filter(b => bq[b]).map(b => Object.assign({}, bq[b], { tickets: Object.keys(bq[b].tickets).length })),
+  return { match: match, jour: jour, synchro: synchro, boutiques: ['B1', 'B2'].filter(b => bq[b]).map(b => Object.assign({}, bq[b], { sessions: Object.keys(bq[b].tickets).length })),
            terminaux: lignesTpe, especes: esp, problemes: pbs, actions: actions, total: total, resume: resume };
 }
 
@@ -326,8 +332,8 @@ function cm_ecrireRapport_(ss, R) {
   push('1. Synchronisation des tablettes', 'articles vus en direct mais pas dans 01_VENTES');
   R.synchro.forEach(s => push(cm_nomB_(s.boutique), s.manque, s.manque ? '❌ faire « Synchroniser tout »' : '✅'));
   push('');
-  push('2. Ventes (01_VENTES)', 'tickets', 'articles', 'CA TTC', 'dont CB', 'dont espèces', 'autre', 'offerts (art.)', 'hors catalogue (art.)');
-  R.boutiques.forEach(b => push(cm_nomB_(b.boutique), b.tickets, b.articles, b.ca, b.cb, b.esp, b.autre, b.offerts, b.divers));
+  push('2. Ventes (01_VENTES)', 'sessions tablette', 'articles', 'CA TTC', 'dont CB', 'dont espèces', 'autre', 'offerts (art.)', 'hors catalogue (art.)');
+  R.boutiques.forEach(b => push(cm_nomB_(b.boutique), b.sessions, b.articles, b.ca, b.cb, b.esp, b.autre, b.offerts, b.divers));
   push('Total', '', '', R.total);
   push('');
   push('3. CB par terminal', 'libellé', 'CB tablette GP', 'CB tablette VIP', 'CB tablette total', 'montant terminal', 'source', 'écart signé', 'remarque');
