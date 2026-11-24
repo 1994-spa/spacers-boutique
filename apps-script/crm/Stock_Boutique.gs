@@ -618,10 +618,16 @@ function rafraichirSynthese_() {
 
 /* ================================ OUTILS ==================================== */
 
+// 25/11/2026 : verrou ré-entrant. Une fonction déjà sous le verrou (doPost des tablettes, ou un autre sb_avecVerrou_)
+// qui appelle sb_avecVerrou_ ne le reprend pas et, surtout, ne le RELÂCHE pas en sortant : sinon la suite du
+// traitement tournait sans verrou (écritures concurrentes possibles avec une tablette).
+var SB_VERROU_PROFONDEUR_ = 0;
 function sb_avecVerrou_(fn) {
+  if (SB_VERROU_PROFONDEUR_ > 0) return fn();
   const lock = LockService.getScriptLock();   // même verrou que le doPost des tablettes
   lock.waitLock(20000);
-  try { return fn(); } finally { lock.releaseLock(); }
+  SB_VERROU_PROFONDEUR_++;
+  try { return fn(); } finally { SB_VERROU_PROFONDEUR_--; lock.releaseLock(); }
 }
 
 function sb_onglet_(cle) {

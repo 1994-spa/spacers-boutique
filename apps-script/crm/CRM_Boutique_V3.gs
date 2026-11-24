@@ -277,6 +277,7 @@ function doPost(e) {
 
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) return jsonResponse({ status: 'error', message: 'Serveur occupé, réessayez dans un instant.' });
+  if (typeof SB_VERROU_PROFONDEUR_ !== 'undefined') SB_VERROU_PROFONDEUR_++;   // 25/11 : sb_avecVerrou_ ne relâche plus ce verrou
   try {
     if (!e || !e.postData || !e.postData.contents) {
       return jsonResponse({ status: 'error', message: 'Payload manquant' });
@@ -287,6 +288,10 @@ function doPost(e) {
 
     if (action === 'import_session') {
       const result = importSessionDepuisTablet(payload);
+      // 25/11/2026 : terminal CB par vente + contrôle de clôture de la tablette (Cloture_Match.gs) — n'empêche jamais l'import
+      if (typeof cm_apresImport_ === 'function') {
+        try { result.cloture = cm_apresImport_(payload); } catch (e) { logDiag('doPost', 'WARN', 'Cloture_Match : ' + e.message); }
+      }
       return jsonResponse({ status: 'ok', ...result });
     }
 
@@ -303,6 +308,7 @@ function doPost(e) {
     logDiag('doPost', 'ERROR', err.message);
     return jsonResponse({ status: 'error', message: err.message });
   } finally {
+    if (typeof SB_VERROU_PROFONDEUR_ !== 'undefined') SB_VERROU_PROFONDEUR_--;
     lock.releaseLock();
   }
 }
@@ -387,7 +393,10 @@ function importSessionDepuisTablet(payload) {
       matchLabel, boutiqueId, saison, v.mode_paiement || '',
     ]);
     clesExist.add(cle);
-    const k = slugify(v.produit_nom || v.produit_id);
+    // 25/11/2026 : article retrouvé par sa RÉFÉRENCE quand la tablette l'envoie (un renommage dans 03_PRODUITS
+    // ne fait plus « produit inconnu » / stock non décompté), sinon par le nom comme avant
+    const refV = String(v.produit_ref || '').trim();
+    const k = (refV && refV !== 'DIVERS' && !/^DIVERS-/.test(refV)) ? 'ref:' + refV : slugify(v.produit_nom || v.produit_id);
     sorties[k] = sorties[k] || { nom: v.produit_nom || v.produit_id, vendu: 0, offert: 0 };
     if (/offert/i.test(String(v.mode_paiement || ''))) sorties[k].offert += q; else sorties[k].vendu += q;
   }
@@ -413,6 +422,8 @@ function importSessionDepuisTablet(payload) {
   for (let i = 1; i < prodData.length; i++) {
     const nom = String(prodData[i][COL_PROD.NOM] || '').trim();
     if (nom) idxParSlug[slugify(nom)] = i;
+    const ref = cProd.ref_boutique ? String(prodData[i][cProd.ref_boutique - 1] || '').trim() : '';
+    if (ref) idxParSlug['ref:' + ref] = i;
   }
   const attendu = {};
   stockCloture.forEach(sc => { attendu[slugify(sc.produit_nom || sc.produit_id)] = Number(sc.stock_restant); });
@@ -422,7 +433,8 @@ function importSessionDepuisTablet(payload) {
   const ecarts = [];
   Object.keys(sorties).forEach(k => {
     const s = sorties[k];
-    const i = idxParSlug[k];
+    let i = idxParSlug[k];
+    if (i === undefined && k.indexOf('ref:') === 0) i = idxParSlug[slugify(s.nom)];   // réf. inconnue : repli sur le nom
     if (i === undefined) { inconnus.push(s.nom); return; }
     const apres = (Number(prodData[i][colStock]) || 0) - s.vendu - s.offert;
     shProd.getRange(i + 1, colStock + 1).setValue(apres);
@@ -438,7 +450,8 @@ function importSessionDepuisTablet(payload) {
       if (s.offert) sb_mouvement_({ type: 'OFFERT_CAISSE', ref_boutique: ref, produit: nom, point: boutiqueId, quantite: -s.offert,
         cout_unitaire: cout, valeur: -s.offert * cout, match: matchLabel, reference: session.id || '', commentaire: 'offert saisi en caisse' });
     }
-    if (k in attendu && attendu[k] !== apres) ecarts.push(`${s.nom} : tablette ${attendu[k]} / calculé ${apres}`);
+    const ka = slugify(s.nom);
+    if (ka in attendu && attendu[ka] !== apres) ecarts.push(`${s.nom} : tablette ${attendu[ka]} / calculé ${apres}`);
   });
   if (inconnus.length) logDiag('doPost', 'WARN', `Produits inconnus dans 03_PRODUITS (stock non mis à jour) : ${inconnus.join(', ')}`);
   if (ecarts.length) logDiag('doPost', 'WARN', `Écarts de stock ${boutiqueId} (ventes web / dotations pendant le match ?) : ${ecarts.join(' · ')}`);
