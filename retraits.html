@@ -112,6 +112,7 @@
 </head>
 <body>
 
+<div style="background:#D3343B;color:#fff;font-weight:800;padding:10px 14px;font-size:15px">⚠ Page de secours. La caisse (application S'Boutique, bouton « 🎁 Retrait commande web ») fait déjà les retraits : n'utilisez pas les deux en même temps sur le même stand.</div>
 <header>
   <h1>🎁 Retraits add-ons</h1>
   <div class="etat">
@@ -180,7 +181,8 @@ const CLES = { donnees: 'retraits_donnees_v1', attente: 'retraits_attente_v1', s
 const etat = {
   donnees: lireJSON(CLES.donnees, null),   // { retraits, tailles, maj }
   attente: lireJSON(CLES.attente, []),     // remises pas encore reçues par le CRM
-  stand: lireTexte(CLES.stand) || 'B1',
+  // Registre transverse du 20/11 : retraits uniquement à la boutique GP (B1), aucun retrait en VIP
+  stand: 'B1',
   benevole: lireTexte(CLES.benevole) || '',
   match: lireTexte(CLES.match) || '',
   index: new Map(),                        // empreinte → retrait
@@ -552,12 +554,11 @@ function ouvrirReglages(obligatoire) {
   modale('<h3>' + (obligatoire ? 'Avant de commencer' : 'Réglages') + '</h3><div class="reglages">'
     + '<label>Votre prénom<input type="text" id="regBenevole" value="' + echapper(etat.benevole) + '" placeholder="ex. Lucie"></label>'
     + '<label>Match<input type="text" id="regMatch" value="' + echapper(etat.match) + '" placeholder="ex. Spacer\'s vs Narbonne"></label>'
-    + '<div>Stand<div class="choix" style="margin-top:6px"><button type="button" data-stand="B1" class="' + (etat.stand === 'B1' ? 'actif' : '') + '">Grand Public</button>'
-    + '<button type="button" data-stand="B2" class="' + (etat.stand === 'B2' ? 'actif' : '') + '">VIP</button></div></div>'
+    + '<div>Stand : <b>Boutique Grand Public (B1)</b><div class="note" style="font-size:13px;margin-top:4px">Les articles payés en ligne se retirent uniquement à la boutique GP, sur scan du billet (règle du 20/11). En VIP : envoyer le client en GP.</div></div>'
     + '<div class="actions"><button class="btn-principal" id="regValider">Valider</button>' + (obligatoire ? '' : '<button class="btn-clair" id="regAnnuler">Annuler</button>') + '</div></div>');
   let standChoisi = etat.stand;
   document.querySelectorAll('[data-stand]').forEach(b => b.addEventListener('click', () => {
-    standChoisi = b.dataset.stand;
+    standChoisi = 'B1';
     document.querySelectorAll('[data-stand]').forEach(x => x.classList.toggle('actif', x === b));
   }));
   $('regValider').addEventListener('click', () => {

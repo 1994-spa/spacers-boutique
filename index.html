@@ -1037,6 +1037,7 @@ const TPE_LISTE=[
   {id:'6053438-003',lib:'A920 Buvette 3'},
   {id:'6053438-004',lib:'A920 Désoiffeur'},
 ];
+const APP_VERSION='v20';   // à contrôler sur chaque tablette avant le match (accueil)
 const FOND_CAISSE=30; // registre : 30 € par boutique
 const tpeDefaut=()=>(TPE_LISTE.find(t=>t.stand===CFG.boutique_id)||TPE_LISTE[0]).id;
 const tpeLib=id=>{const t=TPE_LISTE.find(x=>x.id===id);return t?t.lib+' (n° '+t.id+')':(id||'terminal non indiqué');};
@@ -1246,7 +1247,7 @@ async function hCta(){
   if(s)ouvrirSess(s.id);else openNM();
 }
 async function rHome(){
-  $('hSai').textContent=(CFG.boutique_nom||'')+' · saison '+(CFG.saison||'—');
+  $('hSai').textContent=(CFG.boutique_nom||'')+' · saison '+(CFG.saison||'—')+' · version '+APP_VERSION;
   $('hBdg').textContent=CFG.boutique_id||'B?';
   const sc=saisonCourante(),sw=$('saisonWarn');
   if(CFG.saison&&CFG.saison!==sc){$('saisonTxt').textContent='La tablette est réglée sur la saison '+CFG.saison+'. Nous sommes en '+sc+'.';sw.style.display='flex';}else sw.style.display='none';

@@ -268,6 +268,7 @@ body{font-family:var(--font-body);color:var(--white);display:flex;flex-direction
 </style>
 </head>
 <body>
+<div style="position:sticky;top:0;z-index:999;background:#D3343B;color:#fff;font-weight:800;padding:10px 14px;font-size:15px;text-align:center">⚠ ANCIENNE CAISSE — ne pas vendre ici. Utiliser l'application S'Boutique (index.html). Cette page ne sert plus qu'à envoyer au CRM d'anciennes sessions restées sur la tablette.</div>
 
 <!-- ══════════════════════════════════════════
      SCREEN 1 — CONFIG
@@ -1086,12 +1087,15 @@ async function lancerSyncTout() {
     };
     syncLog(`Envoi: ${s.match_label}...`);
     try {
-      const r = await fetch(url, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      // 25/11/2026 : plus d'envoi « à l'aveugle » (no-cors) : la session n'est marquée synchronisée
+      // que si le CRM répond « ok » (sinon elle restait marquée envoyée alors qu'elle était perdue)
+      const ctl = new AbortController(), tmo = setTimeout(() => ctl.abort(), 90000);
+      let d;
+      try {
+        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload), signal: ctl.signal });
+        d = JSON.parse(await r.text());
+      } finally { clearTimeout(tmo); }
+      if (!d || d.status !== 'ok') throw new Error((d && d.message) || 'refusé par le CRM');
       s.statut = 'synchro';
       await dbPut('sessions', s);
       nbOk++;
