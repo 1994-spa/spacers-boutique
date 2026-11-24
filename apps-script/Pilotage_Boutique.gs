@@ -251,10 +251,15 @@ function pbCalendrierChoix_() {
   if (!r) return null;
   return { eventId: String(r[0]), dateMatch: r[1] instanceof Date ? pbDate_(r[1]) : String(r[1]) };
 }
+// [pb-adversaire] 25/11/2026 : même règle que la tablette (infoMatchTickie). Avant : l'apostrophe typographique
+// (« Spacer’s vs Chaumont ») donnait un adversaire vide, et le tiret coupait les noms composés (« Saint-Nazaire » → « Saint »).
 function pbAdversaire_(nom) {
-  const m = String(nom || '').match(/spacer'?s?\s+vs\.?\s+([^&\-]+)/i);
-  return m ? m[1].trim() : '';
+  const brut = String(nom || '').replace(/\s+-\s+(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b.*$/i, '').trim();
+  const seg = brut.split(/\s+[&\/]\s+/).filter(function (x) { return /spacer[’'`]?s?\b/i.test(x); })[0] || '';
+  const m = seg.match(/spacer[’'`]?s?\s+vs\.?\s+(.+)$/i);
+  return m ? m[1].split(/\s+-\s+|\s*·/)[0].trim() : '';
 }
+// [/pb-adversaire]
 function pbSyncCalendrier_(actifId) {
   const ss = pbSS_();
   let sh = ss.getSheetByName(PB_CAL);
