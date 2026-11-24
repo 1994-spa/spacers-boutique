@@ -2,7 +2,7 @@
 // Lancer : node tests/verrou/test.js
 const fs = require('fs'), path = require('path'), vm = require('vm'), assert = require('assert');
 const src = fs.readFileSync(path.join(__dirname, '../../apps-script/crm/Stock_Boutique.gs'), 'utf8');
-const bloc = src.match(/var SB_VERROU_PROFONDEUR_ = 0;[\s\S]*?\n}\n/)[0];
+const bloc = src.match(/var SB_VERROU_PROFONDEUR_ = 0;[\s\S]*?\r?\n}\r?\n/)[0];
 let tenu = 0, prises = 0, relaches = 0;
 const ctx = { LockService: { getScriptLock: () => ({ waitLock() { if (tenu) throw new Error('Lock timeout'); tenu = 1; prises++; }, releaseLock() { tenu = 0; relaches++; } }) } };
 vm.createContext(ctx); vm.runInContext(bloc, ctx);
