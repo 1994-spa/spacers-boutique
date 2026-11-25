@@ -71,7 +71,7 @@ const RG_CONFIG = {
     { code: 'POLO',   ref: 'POL-W-XL',   prix: 38, prix_brut: 40, remise_type: 'billet -5%', mode: 'CB', note: 'polo femme XL non saisi : tablette encore à 50 €' },
     { code: 'VESTE',  ref: 'SWT-NAV-M',  prix: 57, prix_brut: 60, remise_type: 'billet -5%', mode: 'CB', note: 'sweat zippé M non saisi : tablette encore à 70 €' },
     // ⬇ À COMPLÉTER : mode 'CB' ou 'Espèces' (et prix / prix_brut / remise_type si remise) — sinon la vente du bonnet est sautée
-    { code: 'BONNET', ref: 'BON-BLE-TU', prix: null, mode: '???', note: 'bonnet bleu absent des tablettes' },  // prix null = prix du catalogue ci-dessous
+    { code: 'BONNET', ref: 'BON-BLE-TU', prix: 10, mode: 'CB', note: 'bonnet bleu absent des tablettes — 10 € CB (Clément, 25/11)' },
   ],
 
   // ── 3. Bonnets à créer ────────────────────────────────────────────────────
@@ -79,13 +79,14 @@ const RG_CONFIG = {
   BONNETS: {
     modele: "Bonnet Spacer's",
     categorie: 'Accessoires',
-    prix_vente: null,   // ⬇ À COMPLÉTER : prix TTC auquel Élise a vendu le bonnet (ex. 15) — sinon bonnets non créés, vente sautée
-    cout: 0,
+    prix_vente: 10,     // Clément, 25/11/2026 : bonnet vendu 10 € TTC
+    cout: 5.5,          // facture Monprinteur F20261030-996 : 5,50 € HT pièce
     couleurs: [
       // stock compté par Élise (« En boutique » 23/11) ; dépôt = commandés (10 bleus, 15 blancs) − GP − VIP
       // B1 / B2 = « En boutique » AVANT la vente de Tours (le bonnet bleu vendu sort ensuite par la vente : GP 5 → 4)
-      { ref: 'BON-BLE-TU', taille: 'Bleu',  B1: 5, B2: 2, R: 3 },
-      { ref: 'BON-BLC-TU', taille: 'Blanc', B1: 5, B2: 2, R: 8 },
+      // dépôt mis à 0 : il sera compté à l'inventaire du 26/11 (facture : 15 + 15, journal d'Élise : 10 bleus) — pas de stock supposé
+      { ref: 'BON-BLE-TU', taille: 'Bleu',  B1: 5, B2: 2, R: 0 },
+      { ref: 'BON-BLC-TU', taille: 'Blanc', B1: 5, B2: 2, R: 0 },
     ],
   },
 
@@ -108,20 +109,21 @@ const RG_CONFIG = {
     { famille: 'Chaussettes', stand: 'GP',  taille: '3942', attendu: 6, nouveau: 4, motif: '2 paires vendues à Tours (tablette GP)' },
     { famille: 'Chaussettes', stand: 'VIP', taille: '3942', attendu: 2, nouveau: 1, motif: '1 paire vendue à Tours (tablette VIP)' },
     { famille: 'Sac',         stand: 'GP',  taille: 'TU',   attendu: 3, nouveau: 2, motif: '1 sac à dos Team vendu à Tours (tablette GP)' },
-    { famille: 'Maillot Bleu clair', stand: 'GP', taille: 'L', attendu: 3, nouveau: 2, motif: '1 maillot Bleu Ciel L offert à Jean-Claude Tardif (21/11)', siDotation: true },
+    // XL confirmé par Clément le 25/11 ; attendu null = valeur lue au moment de l'application, moins 1
+    { famille: 'Maillot Bleu clair', stand: 'GP', taille: 'XL', attendu: null, moins: 1, motif: '1 maillot Bleu Ciel XL offert à Jean-Claude Tardif (21/11)', siDotation: true },
   ],
 
   // ── 6. Cadeau (dotation) : sort du stock GP du CRM, sans chiffre d'affaires, bon DOT-2627-… ──
   DOTATION: {
     code: 'DOT-JC',
-    ref: 'MAI-BCI-L',
+    ref: 'MAI-BCI-XL',
     quantite: 1,
     beneficiaire: 'Jean-Claude Tardif',
     // ⬇ À COMPLÉTER : nom EXACT de l'enveloppe (onglet 14_ENVELOPPES_DOTATIONS), par exemple :
     //   'Contrepartie contractuelle partenaire' · 'Cadeau partenaire / prospect' · 'Protocole / collectivités / officiels'
     //   'Bénévoles' · 'Joueurs / staff (dotation équipement)'
     enveloppe: '???',
-    commentaire: 'noté « Maillot GP XL 62 € – Maillot JC » dans le journal ; en réalité Bleu Ciel L offert (Élise, 24/11)',
+    commentaire: 'noté « Maillot GP XL 62 € – Maillot JC » dans le journal ; Bleu Ciel (Élise, 24/11), taille XL (Clément, 25/11)',
   },
   TABLEAUX: [   // tableaux « TableauN » de l'onglet « En boutique » à renommer (titre du bloc → nom attendu par le script)
     { titre: /chaussettes/i, nom: 'B_Chaussettes' },
@@ -494,6 +496,7 @@ function rg_inventaire_(ecrire, out) {
     if (!t) { out.push('⏸ ' + k.famille + ' ' + k.stand + ' : tableau introuvable.'); return; }
     const l = t.lignes.filter(x => x.taille === invNormTaille_(k.taille))[0] || (t.lignes.length === 1 ? t.lignes[0] : null);
     if (!l) { out.push('⏸ ' + k.famille + ' ' + k.stand + ' : taille ' + k.taille + ' absente de ' + t.nom + '.'); return; }
+    if (k.attendu === null) k = Object.assign({}, k, { attendu: l.valeur, nouveau: Number(l.valeur) - (k.moins || 1) });   // 25/11 : sortie relative
     if (l.valeur !== k.attendu) {
       out.push('⏸ ' + k.famille + ' ' + k.stand + ' ' + k.taille + ' : valeur actuelle ' + l.valeur + ' (attendu ' + k.attendu + ') — déjà corrigé à la main ? Laissé tel quel.');
       return;

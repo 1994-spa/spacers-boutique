@@ -25,7 +25,7 @@
  *      synchro des tablettes, ventes par boutique et moyen de paiement (01_VENTES), CB par terminal
  *      (26_VENTES_TPE), montants des terminaux (28_TELECOLLECTES saisi d'après les PDF de télécollecte,
  *      sinon le ticket saisi sur la tablette), espèces (tiroir − fond de 30 €, ou 25_CONTROLES_CAISSE),
- *      écart SIGNÉ au centime et verdict avec tolérances (CB 0 €, espèces ±2 €).
+ *      écart SIGNÉ au centime et verdict avec tolérances (0 € d'écart en CB et en espèces, Clément 25/11).
  *      Lecture seule partout, sauf l'onglet 27_CLOTURE_MATCH (réécrit) et la création de 28_TELECOLLECTES vide.
  * ============================================================================
  */
@@ -46,7 +46,7 @@ const CM = {
     '6053438-003': { lib: 'A920 Buvette 3', boutique: '' },
     '6053438-004': { lib: 'A920 Désoiffeur', boutique: '' },
   },
-  FOND: 30, TOL_CB: 0, TOL_ESP: 2,
+  FOND: 30, TOL_CB: 0, TOL_ESP: 0,   // Clément, 25/11 : 0 écart pour le moment
   AVANT_MATCH_MIN: 90, APRES_MATCH_MIN: 180, JOURS_CONTROLE: 21,
   TZ: 'Europe/Paris',
 };
