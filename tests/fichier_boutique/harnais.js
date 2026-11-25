@@ -12,7 +12,7 @@ function parseA1(a) {
 }
 
 class Sheet {
-  constructor(ss, name) { this.ss = ss; this.name = name; this.g = {}; this.notes = {}; this.prot = []; this.bg = {}; }
+  constructor(ss, name) { this.ss = ss; this.name = name; this.g = {}; this.notes = {}; this.prot = []; this.bg = {}; this.merges = []; this.hauteurs = {}; this.bords = []; this.fig = 0; }
   getName() { return this.name; }
   key(r, c) { return r + ',' + c; }
   get(r, c) { const v = this.g[this.key(r, c)]; return v === undefined ? '' : v; }
@@ -28,9 +28,17 @@ class Sheet {
   }
   getDataRange() { return new Range(this, 1, 1, Math.max(1, this.getLastRow()), Math.max(1, this.getLastColumn())); }
   appendRow(row) { const r = this.getLastRow() + 1; row.forEach((v, i) => this.set(r, i + 1, v)); }
-  setFrozenRows() {} setFrozenColumns() {} setColumnWidth() {} setRowHeight() {} setHiddenGridlines() {} setTabColor() {}
+  setFrozenRows() {} setFrozenColumns(n) { this.fig = n; } getFrozenColumns() { return this.fig; } setColumnWidth() {} setRowHeight(r, h) { this.hauteurs[r] = h; } setHiddenGridlines() {} setTabColor() {}
   getProtections() { return this.prot; }
-  clear() { this.g = {}; this.notes = {}; }
+  // groupes (comme Google Sheets : getRowGroup / getColumnGroup lèvent une exception si le groupe n'existe pas)
+  groupe_(sens, i, prof) {
+    const g = (this.groupes || []).find(x => x.sens === sens && x.prof === prof && i >= x.debut && i < x.debut + x.nb);
+    if (!g) throw new Error('No ' + (sens === 'ligne' ? 'row' : 'column') + ' group at index ' + i);
+    return { collapse() { g.replie = true; return this; }, expand() { g.replie = false; return this; }, isCollapsed: () => g.replie };
+  }
+  getRowGroup(i, p) { return this.groupe_('ligne', i, p); }
+  getColumnGroup(i, p) { return this.groupe_('colonne', i, p); }
+  clear() { this.g = {}; this.notes = {}; this.merges = []; }
   copyTo() { return this; } setName(n) { this.name = n; return this; }
   // utilitaire de test
   row(r, n) { return Array.from({ length: n }, (_, i) => this.get(r, i + 1)); }
@@ -54,9 +62,30 @@ class Range {
   getNote() { return this.sh.notes[this.r + ',' + this.c] || ''; }
   setBackgrounds(b) { b.forEach((l, i) => { this.sh.bg[(this.r + i) + ',' + this.c] = l[0]; }); return this; }
   setBackground(b) { for (let i = 0; i < this.nr; i++) this.sh.bg[(this.r + i) + ',' + this.c] = b; return this; }
+  // fusions : comme Google Sheets, refus à cheval sur les colonnes figées ou sur une fusion existante
+  merge() {
+    const f = this.sh.fig, c2 = this.c + this.nc - 1, r2 = this.r + this.nr - 1;
+    if (f > 0 && this.c <= f && c2 > f) throw new Error('You can\'t merge frozen and non-frozen columns.');
+    const croise = m => !(m.c > c2 || m.c + m.nc - 1 < this.c || m.r > r2 || m.r + m.nr - 1 < this.r);
+    const dedans = m => m.c >= this.c && m.c + m.nc - 1 <= c2 && m.r >= this.r && m.r + m.nr - 1 <= r2;
+    if (this.sh.merges.some(m => croise(m) && !dedans(m))) throw new Error('You must select all cells in a merged range to merge or unmerge them.');
+    this.sh.merges = this.sh.merges.filter(m => !dedans(m)).concat([{ r: this.r, c: this.c, nr: this.nr, nc: this.nc }]);
+    return this;
+  }
+  breakApart() {
+    const c2 = this.c + this.nc - 1, r2 = this.r + this.nr - 1;
+    const croise = m => !(m.c > c2 || m.c + m.nc - 1 < this.c || m.r > r2 || m.r + m.nr - 1 < this.r);
+    const dedans = m => m.c >= this.c && m.c + m.nc - 1 <= c2 && m.r >= this.r && m.r + m.nr - 1 <= r2;
+    if (this.sh.merges.some(m => croise(m) && !dedans(m))) throw new Error('You must select all cells in a merged range to merge or unmerge them.');
+    this.sh.merges = this.sh.merges.filter(m => !dedans(m));
+    return this;
+  }
+  setBorder(t, l, b, rr, v, h, couleur) { this.sh.bords.push({ r: this.r, c: this.c, nr: this.nr, nc: this.nc, on: !!t, couleur: couleur || null }); return this; }
+  shiftRowGroupDepth(d) { (this.sh.groupes = this.sh.groupes || []).push({ sens: 'ligne', debut: this.r, nb: this.nr, prof: d, replie: false }); return this; }
+  shiftColumnGroupDepth(d) { (this.sh.groupes = this.sh.groupes || []).push({ sens: 'colonne', debut: this.c, nb: this.nc, prof: d, replie: false }); return this; }
   protect() { const p = { d: '', setDescription(d) { this.d = d; return this; }, getDescription() { return this.d; }, setWarningOnly() { return this; }, remove() {} }; this.sh.prot.push(p); return p; }
 }
-['setFontSize', 'setFontWeight', 'setFontColor', 'setWrap', 'setVerticalAlignment', 'setHorizontalAlignment', 'merge', 'setFontStyle',
+['setFontSize', 'setFontWeight', 'setFontColor', 'setWrap', 'setVerticalAlignment', 'setHorizontalAlignment', 'setFontStyle',
  'setNumberFormat', 'setFontFamily', 'clearDataValidations', 'setDataValidation'].forEach(m => { Range.prototype[m] = function () { return this; }; });
 
 class SS {
@@ -95,7 +124,7 @@ function creerContexte() {
       openById: id => { if (!fichiers[id]) throw new Error('introuvable ' + id); return fichiers[id]; },
       create: n => { const s = new SS(n, 'F' + (++nid)); s.insertSheet('Feuille 1'); fichiers[s.id] = s; return s; },
       newDataValidation: () => { const v = { requireNumberGreaterThanOrEqualTo: () => v, requireValueInList: () => v, setAllowInvalid: () => v, setHelpText: () => v, build: () => ({}) }; return v; },
-      ProtectionType: { RANGE: 'RANGE' }, getUi: () => ({})
+      ProtectionType: { RANGE: 'RANGE' }, BorderStyle: { SOLID: 'SOLID', SOLID_MEDIUM: 'SOLID_MEDIUM' }, getUi: () => ({})
     },
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k] || null, setProperty: (k, v) => { props[k] = v; } }) },
     CacheService: { getScriptCache: () => ({ get: k => cache[k] || null, put: (k, v) => { cache[k] = v; }, remove: k => { delete cache[k]; } }) },

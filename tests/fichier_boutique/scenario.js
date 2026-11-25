@@ -55,12 +55,61 @@ check(String(C.get(C.find(1, 'BON-BLE-TU', 9), 11)).indexOf('Rupture') !== -1, '
 run('installerFichierBoutique()');
 check(T.triggers.length === 2 && T.fichiers.F2 === undefined, 'réinstallation : même classeur, pas de déclencheur en double');
 
+// ---------- 1 bis. Mémo de chaque onglet (25/11) ----------
+console.log('1 bis. Mémos');
+{
+  const memo = run('FB_MEMOS');
+  const att = { '1_COMMANDE': [14, 3], '2_BOUTIQUE': [17, 3], '3_JOURNAL_VENTES': [13, 0], '4_TOP_VENTES': [14, 0], '5_APRES_MATCH': [11, 0] };
+  const texte = sh => (sh.get(2, 1) + '\n' + sh.get(2, 4));
+  const fusions2 = sh => sh.merges.filter(m => m.r === 2 || m.r + m.nr - 1 >= 2 && m.r <= 2);
+  Object.keys(att).forEach(n => {
+    const sh = F.getSheetByName(n), [nb, fig] = att[n], L = memo[n];
+    check(L && L.length >= 4 && L.length <= 12 && L.every(l => /^[A-ZÀ-Ý][A-ZÀ-Ý /-]+ : /.test(l)), n + ' : mémo de ' + (L || []).length + ' lignes, chacune ouverte par un mot-clé en MAJUSCULES');
+    const f = fusions2(sh);
+    const ok = fig ? (f.length === 2 && f[0].c === 1 && f[0].nc === fig && f[1].c === fig + 1 && f[1].c + f[1].nc - 1 === nb && sh.get(2, 1) === '📌 MÉMO' && sh.get(2, fig + 1) === L.join('\n'))
+                   : (f.length === 1 && f[0].c === 1 && f[0].nc === nb && sh.get(2, 1) === '📌 MÉMO\n' + L.join('\n'));
+    check(ok, n + ' : encadré « 📌 MÉMO » fusionné en ligne 2 sur ' + nb + ' colonnes' + (fig ? ' (A–C figées à part, Sheets refuse la fusion à cheval)' : ''));
+    check(sh.bg['2,1'] === '#fff8e1' && sh.bords.some(b => b.r === 2 && b.c === 1 && b.nc === nb && b.on), n + ' : fond #fff8e1 et bordure sur toute la largeur');
+    check(sh.hauteurs[2] === (L.length + (fig ? 0 : 1)) * 18 + 14, n + ' : hauteur de ligne 2 = ' + sh.hauteurs[2] + ' px (18 px par ligne)');
+    // 26/11 : mémo ≤ 120 caractères par ligne, sans « CRM » ; ligne 2 dans un groupe repliable ouvert
+    check(L.every(l => l.length <= 120) && !L.some(l => /CRM/.test(l)), n + ' : lignes du mémo ≤ 120 caractères (max ' + Math.max.apply(null, L.map(l => l.length)) + '), sans « CRM »');
+    const gr = (sh.groupes || []).filter(g => g.sens === 'ligne');
+    check(gr.length === 1 && gr[0].debut === 2 && gr[0].nb === 1 && !gr[0].replie, n + ' : ligne 2 (mémo) dans un groupe de lignes, ouvert');
+  });
+  check(C.get(8, 1) === 'Réf.' && C.get(4, 1) === 'Saisi par :' && C.get(4, 4) === 'Fournisseur :' && C.get(4, 9) === 'N° de facture :' && C.find(1, 'ECH-TU', 9) === lc,
+        '1_COMMANDE : en-tête en ligne 8, B4 / E4 / J4 et lignes d\'articles non décalés');
+  check(B.get(8, 12) === 'Compté GP (0 si aucun)' && B.get(4, 15) === '✅ Valider →' && B.get(4, 17) === false && B.get(4, 8) === '' &&
+        B.get(4, 4) === '📝 Proposer le réassort →' && B.get(4, 12) === false, '2_BOUTIQUE : en-tête ligne 8, Valider en Q4 (hors des colonnes repliées), Proposer en L4');
+  const Ap0 = F.getSheetByName('5_APRES_MATCH');
+  check(Ap0.get(4, 1) === 'Match (liste) :' && Ap0.get(4, 4) === 'Ton prénom :' && Ap0.get(5, 1) === 'Commentaire :' &&
+        Ap0.get(8, 7) === 'CB relevé TPE (ticket de fin)' && Ap0.get(8, 8) === 'Espèces comptées (SANS les 30 € du fond)',
+        '5_APRES_MATCH : libellés « Match (liste) » / « Ton prénom », colonnes TPE / espèces renommées, rien de décalé');
+  // chaque libellé cité dans les mémos existe bien dans l'onglet
+  const cite = (n, motif) => memo[n].join(' ').indexOf(motif) !== -1;
+  check(cite('1_COMMANDE', '« ➕ Reçu (quantité) »') && run('FB.CDE_COLS').indexOf('➕ Reçu (quantité)') !== -1 && cite('1_COMMANDE', '« Prix d\'achat HT (facture) »') && run('FB.CDE_COLS').indexOf('Prix d\'achat HT (facture)') !== -1,
+        '1_COMMANDE : libellés du mémo = colonnes réelles');
+  check(['Compté GP (0 si aucun)', 'Compté dépôt (0 si aucun)', '➡️ Pièces à AJOUTER en GP (prises au dépôt)'].every(x => run('FB.BTQ_COLS').indexOf(x) !== -1) &&
+        cite('2_BOUTIQUE', '« Pièces à AJOUTER en GP »') && cite('2_BOUTIQUE', 'L4') && cite('2_BOUTIQUE', '(Q4)') && cite('2_BOUTIQUE', 'TÉMOIN') &&
+        cite('5_APRES_MATCH', 'LE SOIR DU MATCH') && cite('5_APRES_MATCH', 'D177 2668544-001 = GP'),
+        '2_BOUTIQUE : libellés et cases du mémo = onglet réel');
+  // idempotence : reconstruire deux fois ne crée ni fusion en double ni erreur ; une ancienne consigne A2 non fusionnée est remplacée
+  const J0 = F.getSheetByName('3_JOURNAL_VENTES');
+  J0.merges = J0.merges.filter(m => m.r !== 2); J0.getRange('A2').setValue('Automatique, depuis le CRM : rien à saisir.');
+  run('installerFichierBoutique()'); run('majFichierBoutique()');
+  check(Object.keys(att).every(n => fusions2(F.getSheetByName(n)).length === (att[n][1] ? 2 : 1)), 'reconstructions répétées : toujours une seule fusion de mémo par onglet');
+  check(J0.get(2, 1).indexOf('📌 MÉMO') === 0 && !/Automatique, depuis/.test(J0.get(2, 1)), 'ancienne consigne A2 (version précédente) remplacée par le mémo');
+  check(Object.keys(att).every(n => { const sh = F.getSheetByName(n); for (let c = 2; c <= 30; c++) if (c !== att[n][1] + 1 && sh.get(2, c) !== '') return false; return true; }),
+        'ligne 2 : aucun texte résiduel hors des cellules du mémo');
+}
+
 // ---------- 2. Réception ----------
 console.log('2. Réception (1_COMMANDE)');
 C.getRange('B4').setValue('Élise'); C.getRange(lc, 12).setValue(50); C.getRange('H4').setValue(true);
 run('fb_traiterDemandes()');
 check(stock('ECH-TU').R === 119, 'sans facture : rien n\'est enregistré');
 check(String(C.get(lc, 14)).indexOf('facture') !== -1 && C.get(lc, 12) === 50, 'message dans Résultat, saisie conservée');
+check(/^⚠ 1 ligne\(s\) saisie\(s\) mais pas validée\(s\) : coche « ✅ Valider » aujourd'hui/.test(C.get(3, 1)) && C.bg['3,1'] === '#fde2e1',
+      '1_COMMANDE : bandeau rouge ligne 3 « 1 ligne(s) saisie(s) mais pas validée(s) »');
 C.getRange('E4').setValue('Fournisseur X'); C.getRange('H4').setValue(true);
 run('fb_traiterDemandes()');
 check(stock('ECH-TU').R === 119 && /J4/.test(C.get(lc, 14)), 'fournisseur sans n° de facture : refusé');
@@ -72,6 +121,7 @@ const mvA = MV.getLastRow();
 check(MV.get(mvA, 2) === 'ENTREE_ACHAT' && MV.get(mvA, 14) === 'Fichier boutique · Élise', 'mouvement ENTREE_ACHAT signé « Fichier boutique · Élise »');
 check(C.get(lc, 12) === '' && C.get(lc, 4) === 169 && String(C.get(lc, 14)).indexOf('✅') === 0, 'case vidée, dépôt affiché 169, résultat ✅');
 check(C.get(5, 1).indexOf('✅') === 0 && C.get(4, 5) === '' && C.get(4, 10) === '', 'message général ✅, fournisseur et facture effacés');
+check(/^Stock du club lu le /.test(C.get(3, 1)) && C.bg['3,1'] === null, '1_COMMANDE : tout validé → plus de bandeau rouge ligne 3');
 check(/Valeur du stock .* total /.test(C.get(6, 1)), 'ligne « valeur du stock au coût d\'achat » affichée');
 C.getRange('H4').setValue(true); run('fb_traiterDemandes()');
 check(stock('ECH-TU').R === 169 && C.get(5, 1) === 'Aucune quantité saisie.', 'recocher sans saisie : aucun doublon');
@@ -87,7 +137,7 @@ C.getRange(lm, 12).setValue('');
 // CRM occupé par une tablette : rien n'est perdu, rien n'est doublé
 ctx.__verrouOccupe = true;
 C.getRange(lm, 12).setValue(1); C.getRange('H4').setValue(true); run('fb_traiterDemandes()');
-check(stock('MAI-BNU-L').R === 10 && C.get(lm, 12) === 1 && /⏸ CRM occupé/.test(C.get(lm, 14)), 'CRM occupé : ligne en attente, saisie conservée');
+check(stock('MAI-BNU-L').R === 10 && C.get(lm, 12) === 1 && /⏸ stock du club occupé/.test(C.get(lm, 14)), 'stock du club occupé : ligne en attente, saisie conservée');
 ctx.__verrouOccupe = false;
 C.getRange('H4').setValue(true); run('fb_traiterDemandes()');
 check(stock('MAI-BNU-L').R === 11 && C.get(lm, 12) === '', 'recoché ensuite : +1 enregistré une seule fois');
@@ -101,50 +151,72 @@ check(!/introuvable/.test(C.get(5, 1)) && stock('MAI-BNU-L').R === 12 && C.get(l
 check(ctx.__actif === crm, 'classeur actif rétabli sur le CRM');
 ctx.__actif = null;
 
-// ---------- 3. Préparation des boutiques (mode « En boutique ») ----------
-console.log('3. Préparation (2_BOUTIQUE, mode « En boutique »)');
-check(B.get(8, 12) === 'Compté dépôt' && /Sortir du dépôt vers GP/.test(B.get(8, 13)) && /vers VIP/.test(B.get(8, 14)) && B.get(8, 15) === 'Résultat' && B.get(8, 16) === '',
-      'plus de « Compté GP/VIP » ni de « Mettre en » : seulement compté dépôt et sorties du dépôt');
+// ---------- 3. Inventaire et préparation des boutiques (fichier unique, 25/11) ----------
+console.log('3. Inventaire et préparation (2_BOUTIQUE, mode complet)');
+check(B.get(8, 12) === 'Compté GP (0 si aucun)' && B.get(8, 13) === 'Compté VIP (0 si aucun)' && B.get(8, 14) === 'Compté dépôt (0 si aucun)' &&
+      B.get(8, 15) === '➡️ Pièces à AJOUTER en GP (prises au dépôt)' && B.get(8, 16) === '➡️ Pièces à AJOUTER en VIP (prises au dépôt)' && B.get(8, 17) === 'Résultat',
+      'colonnes jaunes : « Compté … (0 si aucun) » GP / VIP / dépôt, puis « Pièces à AJOUTER en GP / VIP (prises au dépôt) », puis Résultat');
+check(/BOUTIQUES GP \/ VIP ET DÉPÔT/.test(B.get(1, 1)) && !/En boutique/.test(B.get(2, 4)) && /INVENTAIRE COMPLET/.test(B.get(2, 4)) && /ORDRE : 1\) compte SANS rien déplacer/.test(B.get(2, 4)),
+      'titre et mémo du mode complet (inventaire complet, ordre comptage puis déplacement)');
+{ const gc = (B.groupes || []).filter(g => g.sens === 'colonne');
+  check(gc.length === 1 && gc[0].debut === 7 && gc[0].nb === 5 && gc[0].replie, 'colonnes grises G–K groupées et repliées à la création'); }
 B.getRange('B4').setValue('Élise');
-const be = B.find(1, 'ECH-TU', 9), bm = B.find(1, 'MAI-BNU-L', 9), bg = B.find(1, 'GRD-TU', 9), b152 = B.find(1, 'MAI-BNU-152', 9);
+const be = B.find(1, 'ECH-TU', 9), bm = B.find(1, 'MAI-BNU-L', 9), bg = B.find(1, 'GRD-TU', 9), bmap = B.find(1, 'MAP-BNU-M', 9);
 const totalEch0 = stock('ECH-TU').R + stock('ECH-TU').B1 + stock('ECH-TU').B2;
-B.getRange(be, 13).setValue(4); B.getRange(be, 14).setValue(0);            // +4 en GP, 0 en VIP
-B.getRange(bm, 12).setValue(10); B.getRange(bm, 13).setValue(2);           // dépôt compté 10 (CRM 12), puis +2 en GP
-B.getRange(bg, 13).setValue(5);                                            // dépôt 0 : refus
-B.getRange('H4').setValue(true);
+const nbMv0 = MV.getLastRow();
+B.getRange(be, 15).setValue(4); B.getRange(be, 16).setValue(0);            // sortie seule : +4 en GP, 0 en VIP
+B.getRange(bm, 14).setValue(10); B.getRange(bm, 15).setValue(2);           // même ligne : dépôt compté 10 (CRM 12), puis +2 en GP
+B.getRange(bg, 15).setValue(5);                                            // dépôt 0 : refus
+B.getRange(bmap, 14).setValue(1); B.getRange(bmap, 16).setValue(2);        // dépôt compté 1 (CRM 2), sortie 2 : refus
+B.getRange('Q4').setValue(true);
 run('fb_traiterDemandes()');
 let s = stock('ECH-TU');
-check(s.B1 === 20 && s.B2 === 7 && s.R === 165, 'écharpe : 4 dépôt → GP (GP 16 → 20, VIP 7 inchangé, dépôt 169 → 165)');
+check(s.B1 === 20 && s.B2 === 7 && s.R === 165, 'sortie seule : 4 dépôt → GP (GP 16 → 20, VIP 7 inchangé, dépôt 169 → 165)');
 check(s.R + s.B1 + s.B2 === totalEch0, 'sortie du dépôt : aucune pièce créée ni perdue');
-check(/👉 ajouter dans « En boutique » : \+4 GP/.test(B.get(be, 15)) && !/VIP/.test(String(B.get(be, 15)).split('👉')[1]), 'résultat : rappel « ajouter +4 GP dans En boutique »');
+check(/4 dépôt → GP/.test(B.get(be, 17)) && /maintenant dépôt 165 \/ GP 20 \/ VIP 7/.test(B.get(be, 17)) && !/En boutique|👉/.test(B.get(be, 17)),
+      'résultat : « maintenant dépôt 165 / GP 20 / VIP 7 », plus aucun rappel « En boutique »');
+check(B.get(be, 15) === '' && B.get(be, 16) === '', 'case à 0 vidée sans mouvement, case appliquée vidée');
 s = stock('MAI-BNU-L');
-check(s.R === 8 && s.B1 === 5, 'maillot L : dépôt compté 10 puis 2 dépôt → GP (dépôt 8, GP 5)');
-const ajust = []; for (let r = 2; r <= MV.getLastRow(); r++) if (MV.get(r, 2) === 'AJUSTEMENT_INVENTAIRE') ajust.push(MV.get(r, 5));
-check(ajust.length === 1 && ajust[0] === 'R', 'seul ajustement : le dépôt (jamais GP ni VIP depuis le fichier)');
-check(MV.get(MV.getLastRow(), 2) === 'TRANSFERT', 'sorties tracées en TRANSFERT');
-check(stock('GRD-TU').B1 === 1 && String(B.get(bg, 15)).indexOf('❌') === 0 && B.get(bg, 13) === 5, 'gourde : dépôt vide → ligne refusée, saisie conservée');
-check(B.get(be, 13) === '' && B.get(be, 14) === '' && B.get(bm, 12) === '' && B.get(bm, 13) === '', 'cases appliquées vidées (y compris la case à 0)');
-check(/En boutique/.test(B.get(5, 1)) && /eb_simuler/.test(B.get(5, 1)), 'message général : ajouter dans « En boutique » puis eb_simuler');
+check(s.R === 8 && s.B1 === 5 && s.B2 === 0, 'comptage + sortie sur la même ligne : dépôt compté 10 (−2), puis 2 dépôt → GP (dépôt 8, GP 5)');
+check(/compté dépôt 10 \(/.test(B.get(bm, 17)) && /maintenant dépôt 8 \/ GP 5 \/ VIP 0/.test(B.get(bm, 17)), 'résultat maillot L : comptage puis sortie, état final');
+check(B.get(bm, 14) === '' && B.get(bm, 15) === '', 'maillot L : cases comptage et sortie vidées');
+check(stock('GRD-TU').B1 === 1 && String(B.get(bg, 17)).indexOf('❌') === 0 && B.get(bg, 15) === 5, 'gourde : dépôt vide → ligne refusée, saisie conservée');
+s = stock('MAP-BNU-M');
+check(s.R === 2 && s.B2 === 11 && /❌ il faut 2 au dépôt, il y en a 1 \(compté\)/.test(B.get(bmap, 17)) && B.get(bmap, 14) === 1 && B.get(bmap, 16) === 2,
+      'sortie > dépôt compté : ligne entière refusée (pas même le comptage), saisies conservées');
+const mvs = []; for (let r = nbMv0 + 1; r <= MV.getLastRow(); r++) mvs.push({ type: MV.get(r, 2), ref: MV.get(r, 3), pt: MV.get(r, 5), q: MV.get(r, 6) });
+check(mvs.filter(m => m.type === 'AJUSTEMENT_INVENTAIRE').map(m => m.ref + ' ' + m.pt + ' ' + m.q).join() === 'MAI-BNU-L R -2', 'un seul écart tracé : maillot L dépôt −2 (AJUSTEMENT_INVENTAIRE)');
+check(mvs.filter(m => m.type === 'TRANSFERT').length === 4 && !mvs.some(m => m.ref === 'GRD-TU' || m.ref === 'MAP-BNU-M'), 'sorties tracées en TRANSFERT (2 × 2 lignes), rien pour les lignes refusées');
+check(/Mettre à jour le catalogue/.test(B.get(5, 1)) && /Charger le match/.test(B.get(5, 1)) && !/En boutique|eb_simuler/.test(B.get(5, 1)), 'message général : « Mettre à jour le catalogue » puis « Charger le match »');
 check(B.get(be, 11) === 15, 'prix de vente TTC affiché (15 €)');
 check(B.get(be, 5) === 20 && B.get(be, 6) === 7, 'tableau relu : GP 20 / VIP 7');
 const mvB = MV.getLastRow();
 check(MV.get(mvB, 11) === "Spacer's vs Paris" && /Élise/.test(MV.get(mvB, 14)), 'double affiche : mouvements signés « Spacer\'s vs Paris » (comme les tablettes), par Élise');
 check(/Match des tablettes : Spacer's vs Paris/.test(B.get(6, 1)), 'bandeau : match des tablettes « Spacer\'s vs Paris »');
-B.getRange(bg, 13).setValue('');
 check(/🎁 .*3 Écharpe.*1 Maillot Blanc \(dont 1 de matchs passés/.test(B.get(7, 1)) && !/Echarpe/.test(B.get(7, 1)), 'bandeau add-ons : « Echarpe » et « Écharpe » regroupées (3), 1 maillot Blanc d\'un match passé');
 
-// recalage « En boutique » (maquette d'eb_appliquer : B1 / B2 := En boutique, dépôt jamais touché)
-const ebAppliquer = enBoutique => {
-  const n = []; Object.keys(enBoutique).forEach(ref => {
-    const r = P.find(8, ref, 2);
-    [['B1', 5], ['B2', 6]].forEach(([pt, col]) => {
-      const v = enBoutique[ref][pt]; if (v === undefined || v === P.get(r, col)) return;
-      n.push(ref + ' ' + pt + ' ' + (v - P.get(r, col))); P.set(r, col, v);
-    });
-  }); return n;
-};
-check(ebAppliquer({ 'ECH-TU': { B1: 20, B2: 7 }, 'MAI-BNU-L': { B1: 5, B2: 0 } }).length === 0 && stock('ECH-TU').R + stock('ECH-TU').B1 + stock('ECH-TU').B2 === totalEch0,
-      'Élise a reporté dans « En boutique » : eb_appliquer ne change rien (0 écart), stock conservé');
+// deuxième passage : comptage seul GP / VIP / dépôt, nombres invalides
+B.getRange(bg, 15).setValue(''); B.getRange(bmap, 14).setValue(''); B.getRange(bmap, 16).setValue('');
+const b152 = B.find(1, 'MAI-BNU-152', 9);
+const nbMv1 = MV.getLastRow();
+B.getRange(bmap, 12).setValue(0); B.getRange(bmap, 13).setValue(10); B.getRange(bmap, 14).setValue(2);   // CRM : GP 0, VIP 11, dépôt 2
+B.getRange(b152, 12).setValue(-1);
+B.getRange('Q4').setValue(true); run('fb_traiterDemandes()');
+s = stock('MAP-BNU-M');
+check(s.R === 2 && s.B1 === 0 && s.B2 === 10, 'comptage seul GP / VIP / dépôt : VIP 11 → 10, GP et dépôt conformes');
+const aj2 = []; for (let r = nbMv1 + 1; r <= MV.getLastRow(); r++) aj2.push(MV.get(r, 2) + ' ' + MV.get(r, 5) + ' ' + MV.get(r, 6) + ' ' + MV.get(r, 13));
+check(aj2.length === 1 && /^AJUSTEMENT_INVENTAIRE B2 -1 Comptage Élise/.test(aj2[0]), 'un seul mouvement : écart VIP −1 tracé (AJUSTEMENT_INVENTAIRE, « Comptage Élise »)');
+check(/compté GP 0, compté VIP 10 \(.1\), compté dépôt 2 · maintenant dépôt 2 \/ GP 0 \/ VIP 10/.test(B.get(bmap, 17)) && B.get(bmap, 12) === '' && B.get(bmap, 13) === '' && B.get(bmap, 14) === '',
+      'résultat du comptage, les 3 cases comptées vidées');
+check(/❌ nombres entiers positifs/.test(B.get(b152, 17)) && stock('MAI-BNU-152').B1 === 1 && B.get(b152, 12) === -1, 'compté négatif : refusé, rien enregistré');
+B.getRange(b152, 12).setValue('');
+// plan seul (sans écriture) : cases vides = non comptées
+{
+  const pl = run(`fb_planBoutique([{ ref: 'X', cGP: '', cVIP: 3, cR: '', aGP: 1, aVIP: '' }], [{ ref: 'X', R: 4, B1: 2, B2: 5 }])`);
+  const inv = pl.ok[0].ops[0], rep = pl.ok[0].ops[1];
+  check(inv.type === 'inventaire' && inv.B1 === '' && inv.B2 === 3 && inv.R === '' && rep.type === 'repartition' && rep.B1 === 1 && rep.colonne === 3 &&
+        pl.ok[0].apres.R === 3 && pl.ok[0].apres.B1 === 3 && pl.ok[0].apres.B2 === 3, 'fb_planBoutique : non compté laissé vide, apres = { R 3, B1 3, B2 3 }');
+}
 pause(5);
 
 // ---------- 4. Match : ventes tablettes + add-on ----------
@@ -182,15 +254,32 @@ check(Tp.get(6, 2) === 'Écharpe' && Tp.get(6, 3) === 8 && Tp.get(6, 4) === 6 &&
 const be2 = B.find(1, 'ECH-TU', 9);
 check(B.get(be2, 7) === 6 && B.get(be2, 8) === 2 && B.get(be2, 9) === 3, 'boutique : vendu GP 6, VIP 2, add-ons 3 au dernier match');
 check(String(B.get(be2, 10)).indexOf('+9 GP') !== -1 && String(B.get(be2, 10)).indexOf('+2 VIP') !== -1, 'réassort conseillé : +9 GP, +2 VIP (vente VIP pas encore synchronisée)');
-const bm2 = B.find(1, 'MAI-BNU-L', 9), b1522 = B.find(1, 'MAI-BNU-152', 9), bmap = B.find(1, 'MAP-BNU-M', 9), bbon = B.find(1, 'BON-BLE-TU', 9);
+const bm2 = B.find(1, 'MAI-BNU-L', 9), b1522 = B.find(1, 'MAI-BNU-152', 9), bmap2 = B.find(1, 'MAP-BNU-M', 9), bbon = B.find(1, 'BON-BLE-TU', 9);
 check(String(B.get(bm2, 10)).indexOf('+1 GP') !== -1, 'maillot L : 1 vendu → +1 GP');
 check(B.get(b1522, 10) === '', 'maillot 152 non vendu, dépôt vide : pas d\'alerte rouge due au seul seuil');
 const bg3 = B.find(1, 'GRD-TU', 9);
 check(/❌ manque 1 : dépôt vide/.test(B.get(bg3, 10)), 'gourde offerte au match, dépôt vide → « manque 1 »');
-check(B.get(bmap, 10) === '', 'maillot partenaire (VIP seulement) : jamais proposé en GP');
+check(B.get(bmap2, 10) === '', 'maillot partenaire (VIP seulement) : jamais proposé en GP');
 check(String(B.get(bbon, 10)).indexOf('🔁') === -1, 'bonnet jamais en boutique : rien proposé');
 check(T.props.FB_ALERTE_EMAIL === 'carpreau.elise@gmail.com', 'adresse d\'alerte d\'Élise réglée à l\'installation');
 check(T.mails.length === 0, 'pas d\'alerte tant qu\'une tablette n\'a pas synchronisé');
+// 26/11 (A1) : vente VIP pas encore arrivée → toute validation de 2_BOUTIQUE refusée, rien enregistré, rien vidé
+{
+  const nbMv = MV.getLastRow(), avant = JSON.stringify(stock('ECH-TU')), res0 = B.get(be2, 17);
+  B.getRange('B4').setValue('Élise'); B.getRange(be2, 12).setValue(5); B.getRange(be2, 15).setValue(2);
+  B.getRange('Q4').setValue(true); run('fb_traiterDemandes()');
+  check(B.get(5, 1) === '❌ Des ventes des tablettes ne sont pas encore arrivées (GP : 0, VIP : 1). Fais « Synchroniser tout » sur chaque tablette, ' +
+        'attends que le bandeau rouge en A6 disparaisse (10 min max), puis recoche Valider. Rien n\'a été enregistré.', 'A1 : validation refusée tant qu\'une vente VIP n\'est pas synchronisée (message exact en A5)');
+  check(JSON.stringify(stock('ECH-TU')) === avant && MV.getLastRow() === nbMv && B.get(be2, 17) === res0, 'A1 : aucun mouvement, stock inchangé, résultat de ligne inchangé');
+  check(B.get(be2, 12) === 5 && B.get(be2, 15) === 2 && B.get(4, 17) === false, 'A1 : cases jaunes NON vidées (comptage et ajout), case Valider décochée');
+  check(/^⚠ 1 ligne\(s\) saisie\(s\) mais pas validée\(s\) : coche « ✅ Valider » aujourd'hui, ou efface et recompte\./.test(B.get(3, 1)) && B.bg['3,1'] === '#fde2e1',
+        'A2 : bandeau rouge ligne 3 « 1 ligne(s) saisie(s) mais pas validée(s) » (A6 / A7 inchangés)');
+  check(/Match des tablettes/.test(B.get(6, 1)) && /^🎁/.test(B.get(7, 1)), 'A2 : bandeaux A6 (synchro) et A7 (add-ons) toujours en place');
+  check(run(`fb_refusNonSync_({ nonSync: {} })`) === '' && /GP : 2, VIP : 0/.test(run(`fb_refusNonSync_({ nonSync: { GP: 2 } })`)), 'fb_refusNonSync_ : vide sans retard, GP / VIP comptés sinon');
+  B.getRange(be2, 12).setValue(''); B.getRange(be2, 15).setValue('');
+  run('majFichierBoutique()');
+  check(/^Stock du club lu le /.test(B.get(3, 1)) && B.bg['3,1'] === null, 'A2 : cases effacées → bandeau ligne 3 retiré');
+}
 V.appendRow([d, 'tablette', 'sess_v9', '', 'Écharpe', '', 1, 15, 15, match, 'B2', '2026-2027', 'CB']);
 { const r9 = P.find(8, 'ECH-TU', 2); P.set(r9, 6, P.get(r9, 6) - 1); MV.appendRow([d, 'VENTE_COMPTOIR', 'ECH-TU', 'Écharpe', 'B2', -1, 0, 0, '', '', match, 'sess', '', '']); }
 run('majFichierBoutique()');
@@ -202,22 +291,19 @@ check(T.mails.length === 1, '…et pas deux fois pour le même match');
 // ---------- 5. Proposer puis valider le réassort ----------
 console.log('5. Réassort');
 B.getRange('L4').setValue(true); run('fb_traiterDemandes()');
-check(B.get(be2, 13) === 9 && B.get(be2, 14) === 3, 'proposé en quantités à sortir : écharpe +9 GP, +3 VIP');
+check(B.get(be2, 15) === 9 && B.get(be2, 16) === 3 && B.get(be2, 12) === '' && B.get(be2, 13) === '' && B.get(be2, 14) === '', 'proposer : « Sortir du dépôt » rempli (+9 GP, +3 VIP), cases de comptage intactes');
 const bg2 = B.find(1, 'GRD-TU', 9);
-check(B.get(bg2, 13) === '', 'gourde : dépôt vide → rien proposé');
-check(B.get(bm2, 13) === 1, 'maillot L proposé : +1 GP');
+check(B.get(bg2, 15) === '', 'gourde : dépôt vide → rien proposé');
+check(B.get(bm2, 15) === 1, 'maillot L proposé : +1 GP');
 check(stock('ECH-TU').B1 === 11, 'proposer n\'enregistre rien');
-B.getRange('B4').setValue('Élise'); B.getRange('H4').setValue(true); run('fb_traiterDemandes()');
+B.getRange('B4').setValue('Élise'); B.getRange('Q4').setValue(true); run('fb_traiterDemandes()');
 s = stock('ECH-TU');
 check(s.B1 === 20 && s.B2 === 7 && s.R === 153, 'réassort validé : GP 20, VIP 7, dépôt 165 − 12 = 153');
-check(/\+9 GP · \+3 VIP/.test(B.get(be2, 15)), 'rappel : ajouter +9 GP · +3 VIP dans « En boutique »');
+check(/9 dépôt → GP, 3 dépôt → VIP · maintenant dépôt 153 \/ GP 20 \/ VIP 7/.test(B.get(be2, 17)), 'résultat : 9 dépôt → GP, 3 dépôt → VIP, maintenant dépôt 153 / GP 20 / VIP 7');
 check(String(B.get(be2, 10)).indexOf('🔁') === -1, 'après réassort : plus rien de conseillé pour l\'écharpe');
 B.getRange('L4').setValue(true); run('fb_traiterDemandes()');
-check(B.get(be2, 13) === '' && B.get(be2, 14) === '', 'recocher « Proposer » : écharpe pas reproposée (pas de double réassort)');
+check(B.get(be2, 15) === '' && B.get(be2, 16) === '', 'recocher « Proposer » : écharpe pas reproposée (pas de double réassort)');
 check(stock('ECH-TU').B1 === 20, 'stock écharpe inchangé');
-// oubli du report dans « En boutique » : le recalage montre l'écart (c'est ce qu'eb_simuler doit faire voir à Clément)
-check(ebAppliquer({ 'ECH-TU': { B1: 11, B2: 4 } }).join() === 'ECH-TU B1 -9,ECH-TU B2 -3', 'report oublié : eb fait apparaître −9 GP / −3 VIP (à voir dans eb_simuler avant d\'appliquer)');
-{ const r = P.find(8, 'ECH-TU', 2); P.set(r, 5, 20); P.set(r, 6, 7); }   // remis pour la suite
 
 // ---------- 6. Contrôle de caisse ----------
 console.log('6. Caisse (5_APRES_MATCH)');
@@ -236,20 +322,80 @@ check(CC && CC.getLastRow() === 3 && CC.get(2, 7) === -4.4 && CC.get(3, 10) === 
 check(T.mails.some(m => /caisse/.test(m.subject)), 'rapport de caisse envoyé par mail');
 check(Ap.get(9, 7) === '' && Ap.get(9, 8) === '', 'saisies de caisse vidées');
 
-// ---------- 7. Ancien Inventaire : rien n'est arrêté ----------
-console.log('7. « En boutique » fait foi : déclencheurs de l\'Inventaire conservés');
-['majInventaireElise', 'majSaisieInventaire', 'si_surModification', 'majInventaire', 'Topventes'].forEach(h => run(`ScriptApp.newTrigger('${h}').create()`));
-const avant = T.triggers.map(t => t.h).sort().join();
-const r = run('arreterAncienInventaire()');
-check(r.length === 0 && T.triggers.map(t => t.h).sort().join() === avant, 'arreterAncienInventaire neutralisée : majInventaire et les autres restent actifs');
-run('installerFichierBoutique()');
-check(T.triggers.some(t => t.h === 'majInventaire'), 'réinstallation : aucun déclencheur de l\'Inventaire retiré');
+// 25/11/2026 : statut / tolérance, pas de double contrôle, pas de contrôle tant qu'une vente n'est pas synchronisée
+{
+  const cSt = CC.row(1, CC.getLastColumn()).map(String).indexOf('statut') + 1;
+  check(cSt > 0 && CC.get(2, cSt) === '❌ écart à expliquer' && CC.get(3, cSt) === '⏳ incomplet', 'statut : GP −4,40 € « à expliquer », VIP sans relevé TPE « incomplet »');
+  Ap.getRange('E4').setValue('Élise'); Ap.getRange(9, 7).setValue(144.4); Ap.getRange(9, 8).setValue(5);
+  Ap.getRange('H4').setValue(true); run('fb_traiterDemandes()');
+  check(/déjà validé/.test(String(Ap.get(6, 1))) && CC.getLastRow() === 3, 'second contrôle du même match sans « Correction » : refusé, rien ajouté');
+  Ap.getRange(9, 7).setValue(144.4); Ap.getRange(9, 8).setValue(5); Ap.getRange('B5').setValue('Correction : ticket TPE relu');
+  Ap.getRange('H4').setValue(true); run('fb_traiterDemandes()');
+  check(CC.getLastRow() === 4 && CC.get(4, 7) === 0 && CC.get(4, cSt) === '✅ dans la tolérance', 'correction motivée : ligne ajoutée (historique gardé), écart 0 → dans la tolérance');
+  L.appendRow(['v10', d, 'ev1', 'B1', 'ECH-TU', 'Écharpe', '', 2, 15, 30, 'CB']);   // vente encore dans la tablette GP
+  run('majFichierBoutique()');
+  Ap.getRange('E4').setValue('Élise'); Ap.getRange(9, 7).setValue(174.4); Ap.getRange('B5').setValue('Correction : après vente oubliée');
+  Ap.getRange('H4').setValue(true); run('fb_traiterDemandes()');
+  check(/pas encore synchronisées \(2 article\(s\) GP\)/.test(String(Ap.get(6, 1))) && CC.getLastRow() === 4, 'vente GP pas encore synchronisée : contrôle refusé (CA incomplet), rien ajouté');
+}
 
-// ---------- 8. Passage de l'ancienne disposition de 2_BOUTIQUE à la nouvelle ----------
-console.log('8. Mise à jour d\'un onglet 2_BOUTIQUE de l\'ancienne version');
-F.getSheetByName('2_BOUTIQUE').getRange(8, 12).setValue('Compté GP'); F.getSheetByName('2_BOUTIQUE').getRange(8, 17).setValue('Résultat');
+// ---------- 7. Archivage de l'ancien Inventaire ----------
+console.log('7. Archivage de l\'ancien Inventaire (25/11)');
+['majInventaireElise', 'majSaisieInventaire', 'si_surModification', 'si_traiterDemandes', 'majInventaire', 'eb_appliquer', 'eb_simuler', 'Topventes'].forEach(h => run(`ScriptApp.newTrigger('${h}').create()`));
+const r = run('arreterAncienInventaire()');
+check(r.slice().sort().join() === 'eb_appliquer,eb_simuler,majInventaire,majInventaireElise,majSaisieInventaire,si_surModification,si_traiterDemandes',
+      'arreterAncienInventaire : déclencheurs de l\'Inventaire et eb_* retirés');
+check(T.triggers.map(t => t.h).sort().join() === 'Topventes,fb_surModification,majFichierBoutique', 'déclencheurs du fichier boutique (et Topventes) conservés');
+check(run('arreterAncienInventaire()').length === 0, 'relancée : rien à retirer');
+run(`ScriptApp.newTrigger('eb_simuler').create()`);
+run('installerFichierBoutique()');
+check(T.triggers.some(t => t.h === 'eb_simuler') && T.triggers.filter(t => /^fb_surModification|majFichierBoutique$/.test(t.h)).length === 2, 'installerFichierBoutique ne touche pas aux autres déclencheurs');
+{ const N = F.getSheetByName('📖 LISEZ-MOI'); const txt = Array.from({ length: 60 }, (_, i) => N.get(i + 1, 1)).join('\n');
+  check(N.getRange('A1').getNote() === 'fb-notice-v5-revue' && /INVENTAIRE ET PRÉPARATION DU MATCH/.test(txt) && /MÉMO en haut/.test(txt) && !/En boutique|eb_simuler/.test(txt), 'notice v5 : renvoi aux mémos, inventaire complet + répartition, plus de renvoi à « En boutique »');
+  check(!/CRM/.test(txt) && /PETIT LEXIQUE\nTPE = terminal carte bancaire\.\nAdd-on = .*\n« Synchroniser tout » = .*\nRéassort = /.test(txt), 'notice v5 : plus de « CRM », lexique de 4 lignes (TPE, add-on, Synchroniser tout, réassort)');
+  check(/Pièces à AJOUTER en GP \(prises au dépôt\)/.test(txt) && /Compté GP \(0 si aucun\)/.test(txt) && /Prix d'achat HT \(facture\)/.test(txt) && /Méline/.test(txt) &&
+        /Aucun échange de taille ni retour au stand/.test(txt) && /enveloppe signée/.test(txt) && /témoin/.test(txt), 'notice v5 : nouveaux libellés, espèces le soir même à deux, pas d\'échange au stand, inventaire avec témoin'); }
+
+// ---------- 8. Passage de la disposition du 24/11 (« En boutique ») au mode complet ----------
+console.log('8. Mise à jour d\'un onglet 2_BOUTIQUE de la version du 24/11');
+{ const Bo = F.getSheetByName('2_BOUTIQUE');
+  Bo.getRange(8, 12).setValue('Compté dépôt'); Bo.getRange(8, 13).setValue('➡️ Sortir du dépôt vers GP (ajout)');
+  Bo.getRange(8, 14).setValue('➡️ Sortir du dépôt vers VIP (ajout)'); Bo.getRange(8, 15).setValue('Résultat');
+  Bo.getRange(8, 16).setValue(''); Bo.getRange(8, 17).setValue(''); }
 run('majFichierBoutique()');
 const B2n = F.getSheetByName('2_BOUTIQUE');
-check(B2n.get(8, 12) === 'Compté dépôt' && B2n.get(8, 17) === '' && B2n.find(1, 'ECH-TU', 9) > 0, 'ancien onglet refait automatiquement avec les nouvelles colonnes');
+check(B2n.get(8, 12) === 'Compté GP (0 si aucun)' && B2n.get(8, 14) === 'Compté dépôt (0 si aucun)' && B2n.get(8, 17) === 'Résultat' && B2n.find(1, 'ECH-TU', 9) > 0, 'ancien onglet refait automatiquement avec les colonnes du mode complet');
+
+// ---------- 9. Renommage simple d'en-tête (1_COMMANDE) : saisies gardées ----------
+console.log('9. Renommages et match de 5_APRES_MATCH');
+{
+  const C0 = F.getSheetByName('1_COMMANDE');
+  C0.getRange(8, 13).setValue('Prix d\'achat HT (si différent)'); C0.getRange(8, 10).setValue('Prix d\'achat HT (CRM)');
+  const l = C0.find(1, 'GRD-TU', 9);
+  C0.getRange('E4').setValue('Fournisseur Y'); C0.getRange(l, 12).setValue(3);
+  run('majFichierBoutique()');
+  const C1 = F.getSheetByName('1_COMMANDE');
+  check(C1 === C0 && C1.get(8, 13) === 'Prix d\'achat HT (facture)' && C1.get(8, 10) === 'Prix d\'achat HT (actuel)' && C1.get(l, 12) === 3 && C1.get(4, 5) === 'Fournisseur Y',
+        '1_COMMANDE : ancien en-tête renommé sur place, saisie en cours et fournisseur gardés');
+  C1.getRange(l, 12).setValue(''); C1.getRange('E4').setValue('');
+  // groupes non empilés après plusieurs passages
+  run('majFichierBoutique()'); run('installerFichierBoutique()');
+  const Bx = F.getSheetByName('2_BOUTIQUE');
+  check((Bx.groupes || []).filter(g => g.sens === 'colonne').length === 1 && (Bx.groupes || []).filter(g => g.sens === 'ligne').length === 1 &&
+        ['1_COMMANDE', '3_JOURNAL_VENTES', '4_TOP_VENTES', '5_APRES_MATCH'].every(n => (F.getSheetByName(n).groupes || []).length === 1), 'groupes créés une seule fois (pas d\'empilement)');
+  const gc = Bx.groupes.find(g => g.sens === 'colonne'); gc.replie = false;     // Élise déplie G–K
+  run('majFichierBoutique()');
+  check(gc.replie === false, 'colonnes G–K dépliées par Élise : pas repliées de nouveau');
+  // 5_APRES_MATCH : B4 suit le dernier match une fois le précédent contrôlé
+  const Ap = F.getSheetByName('5_APRES_MATCH');
+  Ap.getRange(9, 7, 2, 2).clearContent(); Ap.getRange('B5').clearContent();
+  const d2 = new Date(Date.now() + 2 * 86400000);
+  V.appendRow([d2, 'tablette', 'sess_n1', '', 'Écharpe', '', 1, 15, 15, "Spacer's vs Nice", 'B1', '2026-2027', 'CB']);
+  run('majFichierBoutique()');
+  check(Ap.get(4, 2) === "Spacer's vs Nice", '5_APRES_MATCH : Paris déjà contrôlé → B4 passe tout seul au dernier match (Nice)');
+  Ap.getRange('B4').setValue(match); Ap.getRange(9, 7).setValue(10);
+  run('majFichierBoutique()');
+  check(Ap.get(4, 2) === match, '5_APRES_MATCH : saisie en cours → le match choisi n\'est pas changé');
+}
 
 console.log('\n' + ok + ' contrôles OK');

@@ -336,6 +336,9 @@ function enregistrerRemisesRetraits_(payload) {
 
     const q = Math.max(1, Number(rm.quantite) || 1);
     const stand = String(rm.stand || 'B1').trim() === 'B2' ? 'B2' : 'B1';
+    // 25/11/2026 : registre du 20/11 — aucun retrait en VIP. La remise est gardée telle quelle (l'article est sorti
+    // physiquement du stand VIP : la refuser ferait boucler la tablette et fausserait le stock), mais elle est signalée.
+    if (stand === 'B2') logDiag('Retraits', 'WARN', 'Retrait add-on saisi en VIP (B2), contraire au registre du 20/11 : ' + id + ' · ' + (rm.produit || '') + ' · ' + (rm.benevole || '?'));
     const quand = rm.horodatage ? new Date(rm.horodatage) : maintenant;
     const k = ligneDe[String(rm.cle || '')];
     let etatStock = '';

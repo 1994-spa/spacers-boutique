@@ -1,10 +1,12 @@
 // Service worker — Spacer's Boutique : la caisse s'ouvre même sans réseau.
 // Pages : réseau d'abord (pour recevoir les mises à jour), cache si hors ligne.
 // Fichiers statiques (icônes, polices, lecteur QR) : cache d'abord.
-// v20 (25/11/2026) : index.html — remise bénévole sur scan de l'accréditation (liste hors ligne, journal des remises).
+// v22 (25/11/2026) : index.html — remise bénévole sur scan de l'accréditation (liste hors ligne, journal des remises).
+// v20 (25/11/2026) : index.html — délais réseau partout, vente en une transaction, terminal CB par vente, contrôle de caisse
+//   à la clôture, article hors catalogue au prix étiquette ; retraits.html GP seulement ; ancienne caisse sans no-cors.
 // v19 (24/11/2026) : index.html — double affiche Tickie : adversaire pris dans le segment « Spacer's », heure 18:00 si début < 16:00.
 // v18 (23/11/2026) : index.html corrigé (envoi à la sortie de veille, délai max 20 s, bénévole obligatoire, article hors catalogue).
-const CACHE = 'spacers-boutique-v20';
+const CACHE = 'spacers-boutique-v22';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './fonts/sansation-bold.woff2', './fonts/heaters.woff2',
   'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js'];
 
@@ -31,7 +33,8 @@ self.addEventListener('fetch', e => {
     // (jamais une page de portail wifi ou d'erreur).
     const cache = () => caches.match('./index.html').then(r => r || caches.match('./'));
     const reseau = fetch(req).then(r => {
-      if (r.ok && r.type === 'basic') { const copy = r.clone(); caches.open(CACHE).then(c => c.put('./index.html', copy)); }
+      const page = url.pathname.replace(/^.*\//, '');
+      if (r.ok && r.type === 'basic' && (page === '' || page === 'index.html')) { const copy = r.clone(); caches.open(CACHE).then(c => c.put('./index.html', copy)); }
       return r;
     });
     e.respondWith(new Promise(resolve => {

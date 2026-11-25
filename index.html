@@ -272,6 +272,11 @@ input,textarea,select{font-family:inherit;color:var(--text);outline:none}
 .cb-step{font-size:15px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--day)}
 .cb-amt{font-size:84px;font-weight:900;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-1px}
 .cb-sub{font-size:16px;color:#C8D2EB;font-weight:600;line-height:1.45}
+.cb-tpe{margin-top:12px;font-size:14px;color:#C8D2EB;font-weight:700;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.cb-tpe select{font:inherit;font-size:15px;padding:8px 10px;border-radius:10px;border:2px solid #91BEE6;background:#0B3446;color:#fff;max-width:100%}
+.ctl-row{display:grid;grid-template-columns:1fr 120px 110px;gap:8px;align-items:center;font-size:14px;padding:6px 0;border-bottom:1px solid var(--line,#e3e8ef)}
+.ctl-row input{font:inherit;font-size:16px;padding:8px;border-radius:8px;border:2px solid #C8D2EB;width:100%;text-align:right}
+.ctl-ec{font-weight:900;text-align:right}.ctl-ec.ok{color:var(--ok)}.ctl-ec.ko{color:var(--err)}
 .cb-items{margin-top:8px;border-top:1px solid rgba(255,255,255,.18);padding-top:10px;font-size:14px;color:#C8D2EB;max-height:26dvh;overflow:auto}
 .cb-items div{display:flex;justify-content:space-between;gap:10px;padding:3px 0}
 .cb-r{display:flex;flex-direction:column;gap:12px;justify-content:center}
@@ -665,6 +670,7 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
       <div class="cb-step">Tape ce montant sur le terminal CB</div>
       <div class="cb-amt" id="cbAmt">0,00 €</div>
       <div class="cb-sub">Le client présente sa carte. Attends que le terminal affiche <b style="color:#fff">ACCEPTÉ</b>.</div>
+      <div class="cb-tpe">💳 Terminal utilisé : <select id="cbTpe" onchange="choisirTpe(this.value)" aria-label="Terminal CB utilisé"></select></div>
       <div class="cb-items" id="cbItems"></div>
     </div>
     <div class="cb-r">
@@ -779,9 +785,14 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
       <div style="display:flex;flex-direction:column;gap:12px">
         <div id="cloCourses" style="display:none"></div>
         <div class="esphigh" style="margin:0;flex-direction:column;align-items:flex-start;gap:4px">
-          <div class="esphl">ÉTAPE 1 — ESPÈCES À REMETTRE</div>
+          <div class="esphl">ÉTAPE 1 — ESPÈCES ENCAISSÉES (hors fond de caisse)</div>
           <div class="esphv" id="cloEsp">0 €</div>
-          <div style="font-size:13px;font-weight:600">Remets ce montant au responsable avec les billets et pièces.</div>
+          <div style="font-size:13px;font-weight:600" id="cloEspSub">Le tiroir doit contenir ce montant + le fond de caisse de 30 €. Compte tout le tiroir ci-dessous, puis remets-le au responsable sous enveloppe (GP ou VIP).</div>
+        </div>
+        <div class="card" style="box-shadow:none;background:var(--surface-2)" id="cloCtl">
+          <div class="card-t">Contrôle de caisse (ticket de fin du terminal + comptage du tiroir)</div>
+          <div id="cloCtlRows"></div>
+          <div class="hint" style="margin-top:6px">Laisse vide si tu n'as pas le ticket : le responsable le saisira. Écart = compté − tablette (+ = trop encaissé, − = manque).</div>
         </div>
         <div class="card" style="box-shadow:none;background:var(--surface-2)">
           <div class="card-t">Étape 3 — Avant de partir</div>
@@ -991,6 +1002,8 @@ function initDB(){return new Promise((res,rej)=>{
 const dPut=(s,v)=>new Promise((ok,no)=>{const t=DB.transaction(s,'readwrite');t.objectStore(s).put(v);t.oncomplete=ok;t.onerror=no});
 const dGet=(s,k)=>new Promise((ok,no)=>{const t=DB.transaction(s,'readonly');const r=t.objectStore(s).get(k);r.onsuccess=()=>ok(r.result);r.onerror=no});
 const dAll=(s)=>new Promise((ok,no)=>{const t=DB.transaction(s,'readonly');const r=t.objectStore(s).getAll();r.onsuccess=()=>ok(r.result);r.onerror=no});
+// 25/11/2026 : toutes les lignes d'une vente dans UNE transaction (tout ou rien : jamais de vente à moitié écrite)
+const dPutMany=(s,arr)=>new Promise((ok,no)=>{const t=DB.transaction(s,'readwrite');const st=t.objectStore(s);arr.forEach(v=>st.put(v));t.oncomplete=ok;t.onerror=()=>no(t.error||new Error('écriture refusée'));t.onabort=()=>no(t.error||new Error('écriture annulée'));});
 const dDel=(s,k)=>new Promise((ok,no)=>{const t=DB.transaction(s,'readwrite');t.objectStore(s).delete(k);t.oncomplete=ok;t.onerror=no});
 const dClr=(s)=>new Promise((ok,no)=>{const t=DB.transaction(s,'readwrite');t.objectStore(s).clear();t.oncomplete=ok;t.onerror=no});
 
@@ -1018,18 +1031,70 @@ let RET={id:'retraits',retraits:[],tailles:{},maj:null,attente:[]};
 // configuré, au fil de l'eau (24_TRANSFERTS_LIVE) : l'inventaire et 03_PRODUITS passent l'article
 // d'une boutique à l'autre ; la vente, elle, reste une vente du stand qui a encaissé.
 let TRF={id:'transferts',liste:[]};
+// 25/11/2026 : terminal CB utilisé, enregistré sur chaque vente CB (table de Clément du 24/11).
+// But : rapprocher chaque euro CB de la télécollecte du BON terminal (à Tours ≈ 500 € GP sont passés sur le D177 Buvette 2).
+const TPE_LISTE=[
+  // 25/11 (Clément) : les deux D177 vont aux boutiques, l'A920 n°2 (ex-VIP) passe à la Buvette 2
+  {id:'2668544-001',lib:'D177 Boutique GP',stand:'B1'},
+  {id:'2668543-001',lib:'D177 Boutique VIP',stand:'B2'},
+  {id:'6053438-002',lib:'A920 Buvette 2'},
+  {id:'6053438-001',lib:'A920 Buvette 1'},
+  {id:'6053438-003',lib:'A920 Buvette 3'},
+  {id:'6053438-004',lib:'A920 Désoiffeur'},
+];
+const APP_VERSION='v21';   // à contrôler sur chaque tablette avant le match (accueil)
+const FOND_CAISSE=30; // registre : 30 € par boutique
+const tpeDefaut=()=>(TPE_LISTE.find(t=>t.stand===CFG.boutique_id)||TPE_LISTE[0]).id;
+const tpeLib=id=>{const t=TPE_LISTE.find(x=>x.id===id);return t?t.lib+' (n° '+t.id+')':(id||'terminal non indiqué');};
+const tpeCourant=()=>CFG.tpe&&TPE_LISTE.some(t=>t.id===CFG.tpe)?CFG.tpe:tpeDefaut();
+function rTpe(){const el=$('cbTpe');if(!el)return;const cur=tpeCourant();
+  el.innerHTML=TPE_LISTE.map(t=>'<option value="'+esc(t.id)+'"'+(t.id===cur?' selected':'')+'>'+esc(t.lib)+' · n° '+esc(t.id)+(t.stand&&t.stand!==CFG.boutique_id?' ⚠ pas ce stand':'')+'</option>').join('');}
+async function choisirTpe(id){
+  if(!TPE_LISTE.some(t=>t.id===id))return;
+  const t=TPE_LISTE.find(x=>x.id===id);
+  if(t.stand!==CFG.boutique_id&&!confirm('Ce terminal ('+t.lib+') n\'est pas celui de la boutique '+nomPt(CFG.boutique_id)+'.\n\nOK seulement si tu encaisses VRAIMENT sur ce terminal (le responsable rapprochera sa télécollecte).')){rTpe();return;}
+  CFG.tpe=id;await dPut('config',{...CFG,id:'main',key:'main'});rTpe();toast('Terminal : '+tpeLib(id));
+}
+// Totaux de clôture d'une session (pur, testé) : CB par terminal, espèces, offerts
+function totauxCloture(ventes){
+  const r2_=n=>Math.round((Number(n)||0)*100)/100;
+  const o={cb:0,esp:0,offerts:0,nb:0,parTpe:{}};const g=new Set();
+  ventes.forEach(v=>{const ca=Number(v.ca_ligne)||0;
+    if(v.mode_paiement==='Offert'){o.offerts+=Number(v.quantite)||0;return;}
+    g.add(v.groupe||v.id);
+    if(v.mode_paiement==='CB'){o.cb+=ca;const k=v.tpe||'';const t=o.parTpe[k]=o.parTpe[k]||{tpe:k,cb:0,tickets:new Set()};t.cb+=ca;t.tickets.add(v.groupe||v.id);}
+    else if(v.mode_paiement==='Espèces')o.esp+=ca;});
+  o.nb=g.size;o.cb=r2_(o.cb);o.esp=r2_(o.esp);
+  o.tpe=Object.values(o.parTpe).map(t=>({tpe:t.tpe,cb:r2_(t.cb),nb:t.tickets.size}));delete o.parTpe;
+  return o;
+}
+// Écart signé au centime (compté − tablette) ; null si rien de saisi
+function ecartSigne(compte,tablette){if(compte===''||compte===null||compte===undefined||isNaN(Number(compte)))return null;return Math.round((Number(compte)-Number(tablette||0))*100)/100;}
+// Date du jour en heure locale (toISOString donnait la date UTC : veille entre minuit et 1 h)
+const jourLocal=d=>{d=d||new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const fmt=n=>(Number(n)||0).toFixed(2).replace('.',',')+' €';
 const fmtS=n=>(Number(n)||0).toFixed(0)+' €';
 const fmtP=n=>{n=Number(n)||0;return (n%1?n.toFixed(2).replace('.',','):n.toFixed(0))+' €';};
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=id=>document.getElementById(id);
+// 25/11/2026 : toute requête a un délai maximum, LECTURE DE LA RÉPONSE COMPRISE (le minuteur n'est coupé qu'après le JSON).
+// Sans cela, un wifi saturé gelait la synchro, le chargement du match ou la file du pilotage live.
+async function fetchJSON(url,opt,ms){
+  ms=ms||20000;const ctl=new AbortController(),tmo=setTimeout(()=>ctl.abort(),ms);
+  try{const r=await fetch(url,Object.assign({},opt||{},{signal:ctl.signal}));const t=await r.text();
+    try{return JSON.parse(t);}catch(e){throw new Error('réponse illisible (HTTP '+r.status+')');}}
+  catch(e){if(e&&e.name==='AbortError')throw new Error('délai dépassé ('+Math.round(ms/1000)+' s)');throw e;}
+  finally{clearTimeout(tmo);}
+}
 const ss=id=>{document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));$(id).classList.add('on');if(id==='s-pilotage')rPilotage();};
 let _tt;const toast=(m,d=2800)=>{const e=$('toast');e.textContent=m;e.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>e.classList.remove('show'),d)};
 
 // ── DÉMARRAGE ─────────────────────────────────
 async function startup(){
   rSW();
+  // 25/11/2026 : demande au navigateur de ne jamais effacer les données de la caisse (stockage plein)
+  try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});}catch(e){}
   try{if(screen.orientation&&screen.orientation.lock)screen.orientation.lock('landscape').catch(()=>{});}catch(e){}
   await initDB();
   const p=await dGet('config','pilotage');if(p)PIL=Object.assign(PIL,p);
@@ -1066,6 +1131,14 @@ async function lireLienConfig(){
     await dPut('config',PIL);
     const b=(c.boutique==='B1'||c.boutique==='B2')?c.boutique:null;
     let cfg=await dGet('config','main');
+    // 25/11/2026 : le lien d'une AUTRE boutique ne change pas la boutique d'une tablette qui a des ventes non envoyées
+    // (sinon les ventes GP partaient comme VIP, ou l'inverse, avec le stock de la mauvaise boutique)
+    if(b&&cfg&&cfg.boutique_id&&cfg.boutique_id!==b){
+      const ses=await dAll('sessions'),ven=await dAll('ventes');
+      const att=ses.filter(x=>x.statut!=='synchro'&&ven.some(v=>v.session_id===x.id)).length;
+      if(att){alert('⛔ Ce lien est celui de la boutique '+b+', mais cette tablette est la boutique '+cfg.boutique_id+' et a '+att+' session(s) pas encore synchronisée(s).\n\nBoutique NON changée. Synchronise d\'abord, ou utilise le bon lien.');return true;}
+      if(!confirm('Cette tablette est réglée en boutique '+cfg.boutique_id+'. Le lien la passe en boutique '+b+'.\n\nConfirmer le changement ?'))return true;
+    }
     if(b){
       cfg=Object.assign({id:'main',key:'main',saison:saisonCourante(),contact_urgence:''},cfg||{},
         {boutique_id:b,boutique_nom:(cfg&&cfg.boutique_id===b&&cfg.boutique_nom)||c.nom||(b==='B1'?'Grand Public':'VIP')});
@@ -1183,12 +1256,12 @@ async function fixSaison(){
 }
 async function hCta(){
   const ouvertes=(await dAll('sessions')).filter(s=>s.statut==='ouvert').sort((a,b)=>b.date.localeCompare(a.date));
-  const today=new Date().toISOString().slice(0,10);
+  const today=jourLocal();
   const s=ouvertes.find(x=>x.date===today||(PIL.match&&x.date===PIL.match.dateMatch));
   if(s)ouvrirSess(s.id);else openNM();
 }
 async function rHome(){
-  $('hSai').textContent=(CFG.boutique_nom||'')+' · saison '+(CFG.saison||'—');
+  $('hSai').textContent=(CFG.boutique_nom||'')+' · saison '+(CFG.saison||'—')+' · version '+APP_VERSION;
   $('hBdg').textContent=CFG.boutique_id||'B?';
   const sc=saisonCourante(),sw=$('saisonWarn');
   if(CFG.saison&&CFG.saison!==sc){$('saisonTxt').textContent='La tablette est réglée sur la saison '+CFG.saison+'. Nous sommes en '+sc+'.';sw.style.display='flex';}else sw.style.display='none';
@@ -1213,7 +1286,7 @@ async function rHome(){
     ht.textContent=adv?'VS '+adv:nom;ht.className='hero-t'+((adv||nom).length>18?' small':'');
     const d=m.date?new Date(m.date):null;
     $('heroSub').textContent=d&&!isNaN(d)?d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})+' à '+im.heure.replace(':','h'):(m.dateMatch||'');
-    $('heroK').textContent=m.dateMatch===new Date().toISOString().slice(0,10)?'Match ce soir':'Prochain match';
+    $('heroK').textContent=m.dateMatch===jourLocal()?'Match ce soir':'Prochain match';
   }else if(ouverte){
     ht.textContent=ouverte.match_label.replace(/^Spacer's\s+/i,'');ht.className='hero-t';
     $('heroSub').textContent=ouverte.date+(ouverte.heure?' · '+ouverte.heure:'')+(ouverte.benevole?' · '+ouverte.benevole:'');
@@ -1290,7 +1363,7 @@ function infoMatchTickie(nom,dateIso){
 }
 // [/match-tickie]
 function openNM(){
-  $('mDat').value=new Date().toISOString().slice(0,10);$('mAdv').value='';$('mBen').value='';
+  $('mDat').value=jourLocal();$('mAdv').value='';$('mBen').value='';
   const m=PIL.match,box=$('nmPil');
   if(m){
     const im=infoMatchTickie(m.nom,m.date);
@@ -1310,7 +1383,9 @@ async function createSess(){
     match_label:'Spacer\'s vs '+adv,date,heure:$('mHeu').value,
     benevole:$('mBen').value.trim(),statut:'ouvert',stock_ouverture:prods.map(p=>({id:p.id,stock:p.stock})),
     tickie_event_id:(PIL.match&&PIL.match.dateMatch===date)?PIL.match.eventId:''};
-  await dPut('sessions',s);closeNM();
+  await dPut('sessions',s);
+  if(CFG.tpe){delete CFG.tpe;await dPut('config',{...CFG,id:'main',key:'main'});}   // 25/11 : chaque session repart sur le terminal du stand
+  closeNM();
   await _prepSess(s.id);
   obSt=0;
   document.querySelectorAll('.obsl').forEach((sl,i)=>sl.classList.toggle('on',i===0));
@@ -1422,12 +1497,17 @@ function ajoutPan(p,src){
 // 23/11/2026 : article absent du catalogue (ex. bonnet pas encore créé, prix d'étiquette différent).
 // La vente part au CRM comme les autres (chiffre d'affaires, paiement) ; le stock n'est pas touché :
 // le CRM la signale dans 99_DIAGNOSTIC (« Produits inconnus ») pour régularisation.
+// 25/11/2026 : on tape le PRIX ÉTIQUETTE (avant remise) ; la tablette déduit seule −5 % / −10 % comme pour les autres
+// articles (avant : « prix encaissé » → un prix déjà remisé était remisé une 2e fois). Une ligne DIVERS n'entre
+// jamais dans un pack. Prix unique (registre) : un maillot, une écharpe ou une carte se vendent par leur tuile.
 function articleLibre(){
   const nom=(prompt('Article hors catalogue : nom, couleur, taille (ex. Bonnet bleu)')||'').trim();if(!nom)return;
-  const px=Number(String(prompt('Prix encaissé (€) pour « '+nom+' »')||'').replace(',','.').replace(/[^0-9.]/g,''));
+  if(/maillot|[ée]charpe|carte\s*abonn/i.test(nom)&&!confirm('« '+nom+' » existe au catalogue : vends-le avec sa tuile (prix unique stand = Tickie).\n\nOK seulement si l\'article est vraiment absent du catalogue.'))return;
+  const px=Number(String(prompt('Prix ÉTIQUETTE (€) de « '+nom+' », AVANT remise.\nLa remise billet / abonné est déduite automatiquement : ne la retire pas toi-même.')||'').replace(',','.').replace(/[^0-9.]/g,''));
   if(!(px>0)){toast('Prix invalide');return;}
+  if(px>150&&!confirm('Prix étiquette de '+fmt(px)+' : c\'est bien ça ?'))return;
   const id='DIVERS-'+uid();
-  pan[id]={id,ref_boutique:'DIVERS',nom:'Divers – '+nom,categorie:'Divers',prix_vente:Math.round(px*100)/100,qty:1,k:id,src:''};
+  pan[id]={id,ref_boutique:'DIVERS',nom:'Divers – '+nom,categorie:'Divers',prix_vente:Math.round(px*100)/100,qty:1,k:id,src:'',libre:true};
   rPan();
 }
 function chQty(k,d){
@@ -1467,6 +1547,7 @@ function tauxRemise(b){
 }
 const typeRemise=b=>(b&&b.ben)?'benevole':(b&&b.abo)?'abonne':'billet';
 function estComposant(l,motif){
+  if(l.libre||refOf(l)==='DIVERS')return false;   // un article hors catalogue n'entre jamais dans un pack
   try{const re=new RegExp(motif,'i');return re.test(String(refOf(l)||''))||re.test(String(l.nom||''));}catch(e){return false;}
 }
 // Calcul ligne par ligne au centime : le total est la somme des lignes, CRM et caisse tombent juste.
@@ -1519,7 +1600,7 @@ async function chercherAbonne(code){
 async function chargerAbonnes(){
   const url=CFG.apps_script_url;if(!url)return;
   try{
-    const d=await (await fetch(url+'?action=get_abonnes')).json();
+    const d=await fetchJSON(url+'?action=get_abonnes',{},30000);
     if(d.status!=='ok'||!Array.isArray(d.abonnes))throw new Error(d.message||'réponse invalide (CRM pas encore en V3.4 ?)');
     const m={};d.abonnes.forEach(a=>{if(a&&a.h)m[a.h]=[a.p||'',a.f||''];});
     ABO.liste=m;ABO.maj=d.maj||new Date().toISOString();if(d.remise)ABO.remise=Number(d.remise);
@@ -1542,7 +1623,7 @@ async function chercherBenevole(code){
 async function chargerBenevoles(){
   const url=CFG.apps_script_url;if(!url)return;
   try{
-    const d=await (await fetch(url+'?action=get_benevoles')).json();
+    const d=await fetchJSON(url+'?action=get_benevoles',{},30000);
     if(d.status!=='ok'||!Array.isArray(d.benevoles))throw new Error(d.message||'réponse invalide (module Benevoles_Remise absent du CRM ?)');
     const m={};d.benevoles.forEach(a=>{const t=Number(a&&a.t)/100;if(a&&a.h&&t>0&&t<=0.5)m[a.h]=[a.p||'',a.f||'',t];});
     BEN.liste=m;BEN.maj=d.maj||new Date().toISOString();
@@ -1573,9 +1654,7 @@ async function envoyerRemisesBen(silencieux){
   if(!lot.length)return;
   _benEnvoi=true;let ok=false;
   try{
-    const ctl=new AbortController(),tmo=setTimeout(()=>ctl.abort(),20000);
-    let r;try{r=await fetch(url,{method:'POST',body:JSON.stringify({action:'remises_benevoles',remises:lot}),signal:ctl.signal});}finally{clearTimeout(tmo);}
-    const d=await r.json();
+    const d=await fetchJSON(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'remises_benevoles',remises:lot})},20000);
     if(d.status!=='ok')throw new Error(d.message||'refusé par le CRM');
     ok=true;
   }catch(e){console.error('Remises bénévoles : envoi',e);if(!silencieux)toast('Remises bénévoles non envoyées : elles restent sur la tablette');}
@@ -1630,7 +1709,7 @@ async function rPilBand(){
   if(!PIL.url||!PIL.token){el.textContent='—';el.className='cav';return;}
   const dep=Date.parse(PIL.depuis||0)||0;
   const n=(await dAll('ventes')).filter(v=>!v.pil_envoye&&Date.parse(v.timestamp)>=dep).reduce((s,v)=>s.add(v.groupe||v.id),new Set()).size+trfAEnvoyer(true).length;
-  el.textContent=n?n+' en attente':'✓ à jour';el.className='cav '+(n?'wt':'gr');
+  el.textContent=n?n+' en attente':'✓ à jour';el.className='cav '+(n?'wt':'gr');el.title=n&&PIL.derniere_erreur?'Dernière erreur : '+PIL.derniere_erreur:'';
 }
 function confirmerVider(){$('ov-vider').classList.add('on');}
 function viderConfirme(){$('ov-vider').classList.remove('on');viderPan();}
@@ -1662,7 +1741,7 @@ function payer(mode){
   if(mode==='Offert'){$('ov-offert').classList.add('on');return;}
   // CB : le montant à taper sur le terminal, en très grand (remise abonné déduite)
   majPaiementEnCours();
-  rPayScan();
+  rPayScan();rTpe();
   const y=$('cbYes');y.disabled=true;setTimeout(()=>{y.disabled=false;},1200); // évite le double toucher
   ss('s-cb');
 }
@@ -1708,17 +1787,26 @@ async function enregistrerVente(){
   const now=new Date().toISOString(),grp=uid(),b=billet;
   // Pas de remise sur un article offert
   const T=totaux(items,b,{sansRemise:mode==='Offert'});
+  const lignesV=[];
   for(const item of T.lignes){
-    await dPut('ventes',{id:uid(),session_id:sess.id,boutique_id:CFG.boutique_id,saison:CFG.saison,
+    lignesV.push({id:uid(),session_id:sess.id,boutique_id:CFG.boutique_id,saison:CFG.saison,
       produit_id:item.id,produit_ref:refOf(item),produit_nom:item.nom,categorie:item.categorie,
       quantite:item.qty,prix_unitaire:r2(item.net/item.qty),ca_ligne:item.net,
       prix_brut:item.prix_vente,remise:item.remise,remise_type:item.remise_type||'',tarif:item.tarif||'public',
       abonne_code:(item.remise>0&&b&&b.abo)?(b.barcode||''):'',abonne_formule:(item.remise>0&&b&&b.abo)?(b.formule||''):'',
       mode_paiement:mode,motif_offert:mode==='Offert'?(motif||''):null,timestamp:now,groupe:grp,
+      tpe:mode==='CB'?tpeCourant():'',benevole:sess.benevole||'',
       // Billet relié : identifiants seulement. Le lien vers l'acheteur (nom, email) est fait côté serveur.
       ticket_id:b?(b.ticket_id||null):null,barcode:b?(b.barcode||null):null,client_tarif:b?(b.tarif||null):null,
       client_email:null,client_nom:null,client_tribune:null,pil_envoye:false,
       stock_source:item.src||CFG.boutique_id,a_chercher:!!item.src});
+  }
+  try{await dPutMany('ventes',lignesV);}
+  catch(e){
+    // Rien n'est écrit (transaction annulée) : le panier reste affiché, la vente n'existe pas sur la tablette
+    ss('s-cai');rPan();
+    alert('⛔ VENTE NON ENREGISTRÉE ('+(e&&e.message||'mémoire de la tablette')+').\n\nLe panier est conservé. Si le client a déjà payé : note la vente sur papier (article, montant, CB/espèces, heure) et appelle le responsable. Ne ré-encaisse pas.');
+    return;
   }
   // Articles pris dans l'autre boutique : une course par ligne, à confirmer « Remis » quand le volant revient
   const courses=T.lignes.filter(i=>i.src);
@@ -1767,6 +1855,7 @@ async function showRecap(){
   $('rModes').innerHTML=Object.entries(modes).map(([m,val])=>'<div class="list-row"><span>'+(mi[m]||'')+' '+esc(m)+(m==='Offert'?' <span class="c-mut" style="font-size:12px">(hors CA)</span>':'')+'</span><b>'+fmt(val)+'</b></div>').join('')||'<div class="empty">Aucune vente</div>';
   const mo={};v.filter(x=>x.mode_paiement==='Offert').forEach(x=>{const k=x.motif_offert||'Sans motif';mo[k]=(mo[k]||0)+x.quantite;});
   if(Object.keys(mo).length)$('rModes').innerHTML+='<div class="c-mut" style="font-size:13px;padding:6px 0 0">🎁 Offerts : '+Object.entries(mo).map(([k,n])=>esc(k)+' ×'+n).join(' · ')+'</div>';
+  {const Tc=totauxCloture(v);if(Tc.tpe.length)$('rModes').innerHTML+='<div class="c-mut" style="font-size:13px;padding:6px 0 0">💳 CB par terminal : '+Tc.tpe.map(t=>esc(tpeLib(t.tpe))+' '+fmt(t.cb)+' ('+t.nb+')').join(' · ')+'</div>';}
   const esp=modes['Espèces']||0;$('espHV').textContent=fmt(esp);$('espHigh').style.display=esp>0?'flex':'none';
   const pm={};vc.forEach(x=>{if(!pm[x.produit_nom])pm[x.produit_nom]={nb:0,ca:0};pm[x.produit_nom].nb+=x.quantite;pm[x.produit_nom].ca+=x.ca_ligne;});
   const top=Object.entries(pm).sort((a,b)=>b[1].ca-a[1].ca).slice(0,8);
@@ -1776,10 +1865,31 @@ async function showRecap(){
   }).join('')||'<div class="empty">Aucun produit</div>';
   ss('s-rec');
 }
+let _cloT=null;
 async function ouvrirCloture(){
   const v=(await dAll('ventes')).filter(x=>x.session_id===sess.id);
-  $('cloEsp').textContent=fmt(v.filter(x=>x.mode_paiement==='Espèces').reduce((s,x)=>s+x.ca_ligne,0));
-  $('cloNote').value='';rCloCourses();$('ov-cloture').classList.add('on');
+  const T=_cloT=totauxCloture(v);
+  $('cloEsp').textContent=fmt(T.esp);
+  $('cloEspSub').textContent='Le tiroir doit contenir '+fmt(T.esp+FOND_CAISSE)+' ('+fmt(T.esp)+' + fond de '+FOND_CAISSE+' €). Compte tout le tiroir ci-dessous, puis remets-le au responsable sous enveloppe '+nomPt(CFG.boutique_id)+'.';
+  const ligne=(id,lib,tab,ph)=>'<div class="ctl-row"><span>'+lib+'<br><b>tablette '+fmt(tab)+'</b></span><input id="'+id+'" inputmode="decimal" placeholder="'+ph+'" oninput="rCloEcarts()"><span class="ctl-ec" id="'+id+'E">—</span></div>';
+  $('cloCtlRows').innerHTML=(T.tpe.length?T.tpe:[{tpe:tpeCourant(),cb:0,nb:0}]).map((t,i)=>ligne('cloTpe'+i,'💳 '+esc(tpeLib(t.tpe))+' · '+t.nb+' ticket'+(t.nb>1?'s':''),t.cb,'ticket TPE €')).join('')
+    +ligne('cloEspC','💵 Espèces : tout le tiroir compté, fond de '+FOND_CAISSE+' € compris',T.esp+FOND_CAISSE,'compté €');
+  $('cloNote').value='';rCloCourses();rCloEcarts();$('ov-cloture').classList.add('on');
+}
+const lireMontant=id=>{const el=$(id);if(!el)return '';const t=String(el.value||'').trim().replace(',','.').replace(/[^0-9.\-]/g,'');return t===''?'':Number(t);};
+function rCloEcarts(){
+  const T=_cloT;if(!T)return;
+  const show=(id,e)=>{const el=$(id+'E');if(!el)return;if(e===null){el.textContent='—';el.className='ctl-ec';return;}el.textContent=(e>0?'+':'')+fmt(e);el.className='ctl-ec '+(Math.abs(e)<0.005?'ok':'ko');};
+  (T.tpe.length?T.tpe:[{cb:0}]).forEach((t,i)=>show('cloTpe'+i,ecartSigne(lireMontant('cloTpe'+i),t.cb)));
+  show('cloEspC',ecartSigne(lireMontant('cloEspC'),T.esp+FOND_CAISSE));
+}
+// Contrôle de clôture enregistré dans la session (envoyé au CRM avec « Synchroniser tout »)
+function controleCloture(T,saisi_par){
+  const lt=T.tpe.length?T.tpe:[{tpe:tpeCourant(),cb:0,nb:0}];
+  const esp=lireMontant('cloEspC');
+  return {ts:new Date().toISOString(),saisi_par:saisi_par||'',fond:FOND_CAISSE,nb_tickets:T.nb,cb_tablette:T.cb,esp_tablette:T.esp,offerts_articles:T.offerts,
+    tpe:lt.map((t,i)=>{const m=lireMontant('cloTpe'+i);return {tpe:t.tpe,lib:tpeLib(t.tpe),cb_tablette:t.cb,tickets:t.nb,tpe_saisi:m,ecart:ecartSigne(m,t.cb)};}),
+    esp_comptees_tiroir:esp,ecart_esp:ecartSigne(esp,T.esp+FOND_CAISSE)};
 }
 async function cloSess(){
   $('ov-cloture').classList.remove('on');
@@ -1787,6 +1897,7 @@ async function cloSess(){
   const all=await dAll('sessions');const s=all.find(x=>x.id===sess.id);
   if(s){
     s.statut='clos';s.note_transmission=$('cloNote').value.trim();
+    try{if(_cloT)s.controle=controleCloture(_cloT,s.benevole);}catch(e){console.error('Contrôle de clôture',e);}
     const v=(await dAll('ventes')).filter(x=>x.session_id===s.id);
     s.stock_cloture=prods.map(p=>({produit_id:p.id,produit_nom:p.nom,stock_restant:stockLocal(p,v)}));
     await dPut('sessions',s);
@@ -1855,7 +1966,7 @@ async function lancerSync(){
     const sv=ventes.filter(v=>v.session_id===s.id);
     synL('Envoi : '+s.match_label+'…');
     // Session marquée « synchronisée » seulement si le CRM confirme l'avoir reçue (sinon elle reste en attente, sans risque de doublon)
-    try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'import_session',session:s,ventes:sv,stock_cloture:s.stock_cloture||[]})});const d=await r.json();if(d.status!=='ok')throw new Error(d.message||'refusé par le CRM');s.statut='synchro';await dPut('sessions',s);ok++;synL('OK : '+s.match_label+' · '+(d.ventes_ajoutees||0)+' ligne(s)');}
+    try{const d=await fetchJSON(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'import_session',session:s,ventes:sv,stock_cloture:s.stock_cloture||[]})},90000);if(d.status!=='ok')throw new Error(d.message||'refusé par le CRM');s.statut='synchro';await dPut('sessions',s);ok++;synL('OK : '+s.match_label+' · '+(d.ventes_ajoutees||0)+' ligne(s)');}
     catch(e){synL('ERREUR : '+s.match_label+' — '+e.message);}
   }
   const nt=await envoyerTransfertsCRM(url);
@@ -1877,10 +1988,12 @@ function guardCatalogSourceBoutique(data){
 }
 async function syncCat(){
   const url=CFG.apps_script_url;if(!url){toast('URL Apps Script non configurée');return;}
+  // 25/11/2026 : recharger le stock pendant une caisse ouverte peut décompter deux fois les ventes déjà faites
+  // (si le CRM a été recalé entre-temps). Règle du 24/11 : aucun recalage pendant un match.
+  if((await dAll('sessions')).some(x=>x.statut==='ouvert')&&!confirm('Une caisse est OUVERTE sur cette tablette.\n\nRecharger le catalogue pendant le match peut fausser le stock affiché. À faire seulement si le responsable le demande.\n\nRecharger quand même ?'))return;
   synL('Récupération catalogue…');
   await envoyerRemises(true); // sinon le stock d'un maillot remis mais pas encore envoyé serait écrasé
-  try{const r=await fetch(url+'?action=get_catalogue&boutique='+CFG.boutique_id+'&saison='+encodeURIComponent(CFG.saison));
-    const data=await r.json();
+  try{const data=await fetchJSON(url+'?action=get_catalogue&boutique='+CFG.boutique_id+'&saison='+encodeURIComponent(CFG.saison),{},30000);
     if(!guardCatalogSourceBoutique(data))return;
     if(data.produits&&Array.isArray(data.produits)&&!data.produits.length){synL('Catalogue vide renvoyé par le CRM : catalogue de la tablette conservé');toast('Catalogue vide côté CRM : rien changé');return;}
     if(data.produits&&Array.isArray(data.produits)){await stockAutreBoutique(url,data.produits);await dClr('produits');for(const p of data.produits)await dPut('produits',p);await loadP();await recalcStockSession();if(data.regles){REG=Object.assign({},REG,data.regles,{id:'regles'});await dPut('config',REG);}$('synNP').textContent=prods.length;synL('Catalogue OK : '+prods.length+' produit(s)');await chargerAbonnes();await chargerBenevoles();await chargerRetraits();toast(prods.length+' produit(s) · '+Object.keys(ABO.liste||{}).length+' carte(s) abonné · '+retAFaire()+' retrait(s) web');}
@@ -1901,7 +2014,7 @@ function rPilState(){
   if(!PIL.url||!PIL.token){el.className='state-line';el.textContent='Pilotage non configuré : ouvre le lien envoyé par le responsable, ou colle l\'URL et le jeton ci-dessous.';return;}
   if(!PIL.match){el.className='state-line wait';el.textContent='Aucun match chargé.';return;}
   const d=PIL.charge?new Date(PIL.charge).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
-  el.className='state-line ok';el.textContent='🎫 '+PIL.match.nom+' · chargé le '+d+' · '+Object.keys(PIL.billets||{}).length+' billets en mémoire';
+  el.className='state-line ok';el.textContent='🎫 '+PIL.match.nom+' · chargé le '+d+' · '+Object.keys(PIL.billets||{}).length+' billets en mémoire'+(PIL.derniere_erreur?' · ⚠ dernier envoi live refusé : '+PIL.derniere_erreur:'');
 }
 async function savePil(){
   PIL.url=$('pilUrl').value.trim();PIL.token=$('pilTok').value.trim();
@@ -1914,7 +2027,7 @@ async function chargerMatch(){
   const el=$('pilMatchState');el.className='state-line';el.textContent='⏳ Chargement du match et des billets…';
   try{
     const u=new URL(PIL.url);u.searchParams.set('action','tablette');u.searchParams.set('boutique',CFG.boutique_id);u.searchParams.set('token',PIL.token);
-    const d=await (await fetch(u.toString())).json();
+    const d=await fetchJSON(u.toString(),{},60000);
     if(d.status!=='ok')throw new Error(d.message||'réponse invalide');
     PIL.match=d.match;PIL.charge=d.charge;
     if(d.billetsOk){const m={};(d.billets||[]).forEach(([code,id,tarif])=>{m[code]=[id,tarif];});PIL.billets=m;}
@@ -1941,20 +2054,18 @@ async function pilEnvoyer(force){
     const grp={};enAttente.forEach(v=>{(grp[v.groupe||v.id]=grp[v.groupe||v.id]||[]).push(v);});
     const ventes=Object.entries(grp).slice(0,40).map(([g,ls])=>{const v0=ls[0],s=sessions[v0.session_id]||{};
       return{id:g,ts:v0.timestamp,eventId:s.tickie_event_id||'',match:s.match_label||'',session:v0.session_id,benevole:s.benevole||'',
-        boutique:v0.boutique_id,mode:v0.mode_paiement,motif:v0.motif_offert||'',total:Math.round(ls.reduce((a,x)=>a+x.ca_ligne,0)*100)/100,
+        boutique:v0.boutique_id,mode:v0.mode_paiement,tpe:v0.tpe||'',motif:v0.motif_offert||'',total:Math.round(ls.reduce((a,x)=>a+x.ca_ligne,0)*100)/100,
         remise:Math.round(ls.reduce((a,x)=>a+(Number(x.remise)||0),0)*100)/100,abonne:v0.abonne_formule||'',remise_type:[...new Set(ls.map(x=>x.remise_type).filter(Boolean))].join(','),
         lignes:ls.map(x=>({ref:x.produit_ref||x.produit_id,nom:x.produit_nom,cat:x.categorie||'',qte:x.quantite,pu:x.prix_unitaire})),
         ticket:(v0.ticket_id||v0.barcode)?{ticket_id:v0.ticket_id||'',barcode:v0.barcode||'',tarif:v0.client_tarif||''}:null};});
     // text/plain : pas de pré-vérification CORS, accepté par Apps Script
     // 23/11/2026 : délai maximum de 20 s, sinon une requête bloquée (wifi saturé) gelait tous les envois suivants
-    const ctl=new AbortController(),tmo=setTimeout(()=>ctl.abort(),20000);
-    let r;try{r=await fetch(PIL.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'ventes',token:PIL.token,boutique:CFG.boutique_id,ventes}),signal:ctl.signal});}
-    finally{clearTimeout(tmo);}
-    const res=await r.json();
+    const res=await fetchJSON(PIL.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'ventes',token:PIL.token,boutique:CFG.boutique_id,ventes})},20000);
     if(res.status!=='ok')throw new Error(res.message||'refus');
     const recus=new Set(res.recus||[]);
     for(const v of enAttente)if(recus.has(v.groupe||v.id)){v.pil_envoye=true;await dPut('ventes',v);}
-  }catch(e){/* réseau coupé ou jeton refusé : nouvel essai plus tard */}
+    PIL.derniere_erreur='';
+  }catch(e){PIL.derniere_erreur=new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})+' · '+e.message;/* nouvel essai dans 60 s */}
   finally{_envoi=false;rPilBand();}
 }
 window.addEventListener('online',()=>pilEnvoyer());
@@ -2002,10 +2113,10 @@ async function chercherBillet(barcode){
   setScanStatus('⏳ Recherche du billet…');
   try{
     const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),5000);
-    let r;try{r=await fetch(TICKIE_PROXY_URL+'/ticket/'+encodeURIComponent(barcode),{signal:ctl.signal});}finally{clearTimeout(to);}
-    if(r.status===404)throw Object.assign(new Error('billet introuvable dans Tickie'),{definitif:true});
-    if(!r.ok)throw new Error('erreur '+r.status);
-    const t=await r.json();
+    let t;try{const r=await fetch(TICKIE_PROXY_URL+'/ticket/'+encodeURIComponent(barcode),{signal:ctl.signal});
+      if(r.status===404)throw Object.assign(new Error('billet introuvable dans Tickie'),{definitif:true});
+      if(!r.ok)throw new Error('erreur '+r.status);
+      t=await r.json();}finally{clearTimeout(to);}
     if(t.error)throw Object.assign(new Error(t.error),{definitif:true});
     afficherBillet(t,barcode);
   }catch(e){
@@ -2073,7 +2184,7 @@ async function chargerRetraits(){
   const url=CFG.apps_script_url;if(!url)return;
   if(!retraitsIci()){synL('Retraits web : uniquement à la boutique GP (rien à charger sur cette tablette)');rRetSyn();return;}
   try{
-    const d=await (await fetch(url+'?action=get_retraits&boutique='+encodeURIComponent(CFG.boutique_id||'B1'))).json();
+    const d=await fetchJSON(url+'?action=get_retraits&boutique='+encodeURIComponent(CFG.boutique_id||'B1'),{},30000);
     if(d.status!=='ok'||!Array.isArray(d.retraits))throw new Error(d.message||'réponse invalide (CRM pas encore en V3.5 ?)');
     RET.retraits=d.retraits;RET.tailles=d.tailles||{};RET.maj=d.maj||new Date().toISOString();
     retIndexer();await dPut('config',RET);
@@ -2088,9 +2199,7 @@ async function envoyerRemises(silencieux){
   const lot=RET.attente.slice(),body=JSON.stringify({action:'remises_retraits',remises:lot});
   let ok=false;
   try{
-    const ctl=new AbortController(),tmo=setTimeout(()=>ctl.abort(),20000);
-    let r;try{r=await fetch(url,{method:'POST',body,signal:ctl.signal});}finally{clearTimeout(tmo);}
-    const d=await r.json();
+    const d=await fetchJSON(url,{method:'POST',body},20000);
     if(d.status!=='ok')throw new Error(d.message||'refusé par le CRM');
     ok=true;if(d.stock_negatif&&d.stock_negatif.length)synL('⚠ Stock négatif dans le CRM après remise : '+d.stock_negatif.join(', '));
   }catch(e){
@@ -2204,7 +2313,11 @@ function retChercherNom(t){
 async function validerRetrait(){
   const r=_retCour;if(!r||!retPret().ok)return;
   const now=new Date().toISOString(),nouv=[];
-  const base={horodatage:now,stand:CFG.boutique_id||'B1',benevole:(sess&&sess.benevole)||'',match:(sess&&sess.match_label)||''};
+  // 25/11/2026 : traçabilité — une remise faite hors caisse ouverte demande le prénom et prend le match chargé
+  let ben=(sess&&sess.benevole)||'';
+  if(!ben){ben=(prompt('Ton prénom (obligatoire : qui remet l\'article)')||'').trim();if(!ben){toast('Prénom obligatoire pour remettre un article');return;}}
+  const mt=(sess&&sess.match_label)||(PIL.match?infoMatchTickie(PIL.match.nom,PIL.match.date).label:'');
+  const base={horodatage:now,stand:CFG.boutique_id||'B1',benevole:ben,match:mt};
   r.items.forEach(it=>{const s=_retSel[it.cle],n=it.q-it.qr;if(!s||!s.coche||n<=0)return;
     if(it.taille){const o=retOptions(it),par={};s.tailles.forEach(ref=>{par[ref]=(par[ref]||0)+1;});
       Object.keys(par).forEach(ref=>nouv.push(Object.assign({id:'R'+(CFG.boutique_id||'')+'-'+uid(),cle:it.cle,produit:it.produit,quantite:par[ref],ref,taille:(o.find(x=>x.ref===ref)||{}).taille||''},base)));}
@@ -2260,8 +2373,7 @@ async function envoyerTransfertsCRM(url){
   if(!lot.length)return 0;
   synL('Envoi : '+lot.length+' transfert(s) entre boutiques…');
   try{
-    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'transferts',boutique:CFG.boutique_id,transferts:lot.map(trfPourEnvoi)})});
-    const d=await r.json();
+    const d=await fetchJSON(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'transferts',boutique:CFG.boutique_id,transferts:lot.map(trfPourEnvoi)})},60000);
     if(d.status!=='ok')throw new Error(d.message||'refusé par le CRM');
     const recus=new Set(d.recus||[]);let n=0;
     lot.forEach(t=>{if(recus.has(t.id)){t.crm_envoye=true;n++;}});
@@ -2273,8 +2385,7 @@ async function envoyerTransfertsCRM(url){
 // Au chargement du catalogue : stock de l'autre boutique, pour savoir si le volant a une chance de trouver l'article
 async function stockAutreBoutique(url,produits){
   try{
-    const r=await fetch(url+'?action=get_catalogue&boutique='+autreB()+'&saison='+encodeURIComponent(CFG.saison));
-    const d=await r.json();
+    const d=await fetchJSON(url+'?action=get_catalogue&boutique='+autreB()+'&saison='+encodeURIComponent(CFG.saison),{},30000);
     if(!Array.isArray(d.produits)||!d.produits.length)throw new Error('catalogue '+nomPt(autreB())+' vide');
     const m={};d.produits.forEach(x=>{m[x.id]=Number(x.stock)||0;});
     produits.forEach(p=>{p.stock_autre=(p.id in m)?m[p.id]:0;});
@@ -2286,9 +2397,9 @@ async function envoyerTransferts(force){
   const lot=trfAEnvoyer(!!force).slice(0,40);
   if(!lot.length||!PIL.url||!PIL.token||navigator.onLine===false)return;
   try{
-    const r=await fetch(PIL.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'transferts',token:PIL.token,boutique:CFG.boutique_id,
-      transferts:lot.map(trfPourEnvoi)})});
-    const res=await r.json();
+    // 25/11/2026 : délai de 20 s ici aussi (cet envoi passe AVANT les ventes : bloqué, il gelait tout le pilotage live)
+    const res=await fetchJSON(PIL.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'transferts',token:PIL.token,boutique:CFG.boutique_id,
+      transferts:lot.map(trfPourEnvoi)})},20000);
     if(res.status!=='ok')throw new Error(res.message||'refus');
     const recus=new Set(res.recus||[]);
     lot.forEach(t=>{if(recus.has(t.id))t.pil_envoye=true;});
