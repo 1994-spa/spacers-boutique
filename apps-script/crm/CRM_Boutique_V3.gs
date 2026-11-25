@@ -9,6 +9,11 @@
  *                    sont présents (import des ventes add-on, stock, prix CRM → Tickie)
  * V3.5 (16/10/2026) : doPost action=transferts (articles passés de GP à VIP par le volant / réassort),
  *                    traité par Transferts_Boutique.gs → 24_TRANSFERTS_LIVE + stocks de 03_PRODUITS
+ * V3.7 (23/11/2026) : retour des routes de la page Retraits des tablettes
+ *                    doGet ?action=get_retraits&boutique=B1 · doPost { action:'remises_retraits', remises:[…] }
+ *                    (Retraits_Billets.gs) + menu « 🎁 Retraits add-ons » dans le classeur
+ * V3.8 (25/11/2026) : remise bénévole au stand sur scan de l'accréditation (Benevoles_Remise.gs)
+ *                    doGet ?action=get_benevoles · doPost { action:'remises_benevoles', remises:[…] }
  * V3.4 (05/10/2026) : remise abonnés −10 %
  *   - Onglet 16_ABONNES (cartes valides) alimenté par l'export billets Tickie (16b_IMPORT_ABONNES)
  *     + billets partenaires lus dans Tickie (CROUS : menu « 🤝 Importer les billets partenaires »,
@@ -231,7 +236,7 @@ function doGet(e) {
     const action = e && e.parameter && e.parameter.action || 'ping';
 
     if (action === 'ping') {
-      return jsonResponse({ status: 'ok', app: 'boutique', version: 'V3.6', timestamp: new Date().toISOString() });
+      return jsonResponse({ status: 'ok', app: 'boutique', version: 'V3.8', timestamp: new Date().toISOString() });
     }
 
     if (action === 'get_abonnes') {
@@ -239,9 +244,21 @@ function doGet(e) {
         maj: new Date().toISOString(), abonnes: getAbonnesPourTablette_() });
     }
 
+    // V3.8 (25/11/2026) : accréditations bénévoles ouvrant droit à une remise (empreintes, jamais le QR en clair)
+    if (action === 'get_benevoles') {
+      if (typeof bn_getBenevolesPourTablette_ !== 'function') return jsonResponse({ status: 'error', message: 'Benevoles_Remise.gs absent du projet Apps Script' });
+      return jsonResponse(Object.assign({ status: 'ok', app: 'boutique' }, bn_getBenevolesPourTablette_()));
+    }
+
     if (action === 'gestion_etat') {
       if (typeof ga_doGet_ !== 'function') return jsonResponse({ status: 'error', message: 'Gestion_API.gs absent du projet Apps Script' });
       return jsonResponse(Object.assign({ status: 'ok' }, ga_doGet_(e)));
+    }
+
+    // V3.7 (23/11/2026) : page Retraits des tablettes (add-ons Tickie à remettre au stand)
+    if (action === 'get_retraits') {
+      if (typeof getRetraitsPourTablette_ !== 'function') return jsonResponse({ status: 'error', message: 'Retraits_Billets.gs absent du projet Apps Script' });
+      return jsonResponse(Object.assign({ status: 'ok', app: 'boutique' }, getRetraitsPourTablette_(e.parameter.boutique || 'B1')));
     }
 
     if (action === 'get_catalogue') {
@@ -293,6 +310,22 @@ function doPost(e) {
         try { result.cloture = cm_apresImport_(payload); } catch (e) { logDiag('doPost', 'WARN', 'Cloture_Match : ' + e.message); }
       }
       return jsonResponse({ status: 'ok', ...result });
+    }
+
+    // V3.7 (23/11/2026) : remises d'add-ons Tickie saisies au stand (idempotent, journal 17b_REMISES)
+    if (action === 'remises_retraits') {
+      if (typeof enregistrerRemisesRetraits_ !== 'function') {
+        return jsonResponse({ status: 'error', message: 'Retraits_Billets.gs absent du projet Apps Script' });
+      }
+      return jsonResponse(Object.assign({ status: 'ok' }, enregistrerRemisesRetraits_(payload)));
+    }
+
+    // V3.8 (25/11/2026) : remises bénévoles accordées au stand, transmises à l'appli bénévoles (idempotent)
+    if (action === 'remises_benevoles') {
+      if (typeof bn_recevoirRemises_ !== 'function') {
+        return jsonResponse({ status: 'error', message: 'Benevoles_Remise.gs absent du projet Apps Script' });
+      }
+      return jsonResponse(Object.assign({ status: 'ok' }, bn_recevoirRemises_(payload.remises || [])));
     }
 
     if (action === 'transferts') {
@@ -1231,6 +1264,8 @@ function onOpen() {
   if (typeof menuStockBoutique_ === 'function') menuStockBoutique_();
   if (typeof menuDriveBoutique_ === 'function') menuDriveBoutique_();
   if (typeof menuTickieBoutique_ === 'function') menuTickieBoutique_();
+  if (typeof menuRetraitsBillets_ === 'function') menuRetraitsBillets_();
+  if (typeof menuRegulTours_ === 'function') menuRegulTours_();
   if (typeof organiserClasseur === 'function') {
     ui.createMenu('📖 Classeur')
       .addItem('Réorganiser (sommaire, tableau de bord, recherche)', 'organiserClasseur')

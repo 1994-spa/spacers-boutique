@@ -742,6 +742,7 @@ textarea.inp{height:110px;resize:none;line-height:1.5}
         <div class="list-row"><span class="c-mut">Saison</span><b id="synSai">—</b></div>
         <div class="list-row"><span class="c-mut">Produits catalogue</span><b id="synNP">0</b></div>
         <div class="list-row"><span class="c-mut">Cartes abonnés (remise −10 %)</span><b id="synAbo">0</b></div>
+        <div class="list-row"><span class="c-mut">🤝 Accréditations bénévoles (remise)</span><b id="synBen">0</b></div>
         <div class="list-row"><span class="c-mut">🎁 Retraits web à remettre</span><b id="synRet">0</b></div>
         <div class="list-row"><span class="c-mut">🎁 Remises à envoyer au CRM</span><b id="synRetAtt">0</b></div>
         <div class="list-row"><span class="c-mut">🏃 Transferts entre boutiques à envoyer</span><b id="synTrf">0</b></div>
@@ -1016,6 +1017,9 @@ let billet=null; // billet relié à la vente en cours : {ticket_id, barcode, ta
 let ABO={id:'abonnes',liste:{},maj:null,remise:0.10};
 // Règles du CRM (V3.6) : remise billet et packs, gardées hors ligne
 let REG={id:'regles',remise_billet:0.05,packs:[]};
+// Bénévoles (25/11/2026) : empreintes SHA-256 des QR d'accréditation (jamais le QR en clair), prénom, initiale, taux de remise.
+// Liste chargée depuis le CRM (qui la demande à l'appli bénévoles), utilisable hors ligne ; remises accordées en attente d'envoi.
+let BEN={id:'benevoles',liste:{},maj:null,attente:[]};
 // Retraits web : articles payés en ligne avec le billet (écharpe, maillot…), à remettre au stand.
 // Empreintes SHA-256 des codes billets, prénom + initiale ; remises en attente d'envoi gardées hors ligne.
 let RET={id:'retraits',retraits:[],tailles:{},maj:null,attente:[]};
@@ -1096,6 +1100,7 @@ async function startup(){
   const p=await dGet('config','pilotage');if(p)PIL=Object.assign(PIL,p);
   const ab=await dGet('config','abonnes');if(ab)ABO=Object.assign(ABO,ab);
   const rg=await dGet('config','regles');if(rg)REG=Object.assign(REG,rg);
+  const bn=await dGet('config','benevoles');if(bn)BEN=Object.assign(BEN,bn);
   const rt=await dGet('config','retraits');if(rt)RET=Object.assign(RET,rt);retIndexer();
   const tf=await dGet('config','transferts');if(tf)TRF=Object.assign(TRF,tf);
   // Seules les ventes faites à partir de cette version partent au pilotage (pas l'historique de la tablette)
@@ -1531,15 +1536,16 @@ function courseOui(){const p=_courseP;fermerCourse();if(p)ajoutPan(p,autreB());}
 function courseTable(){const p=_courseP;fermerCourse();if(!p)return;_horsStockOk.add(p.id);ajoutPan(p,'');}
 // ── REMISE ABONNÉ ─────────────────────────────
 const r2=n=>Math.round((Number(n)||0)*100)/100;
-// Remises (V3.6), non cumulables : carte abonné −10 %, sinon billet du match vérifié −5 %.
+// Remises (V3.6), non cumulables : accréditation bénévole (taux du palier), carte abonné −10 %, sinon billet du match vérifié −5 %.
 // Jamais sur une ligne au tarif partenaire (stand B2). Pas de remise billet si le billet n'a pas pu être vérifié.
 function tauxRemise(b){
   if(!b||b.valide===false)return 0;
+  if(b.ben)return Number(b.taux)||0;
   if(b.abo)return Number(ABO.remise)||0.10;
   if(b.nonVerifie)return 0;
   return Number(REG.remise_billet)||0;
 }
-const typeRemise=b=>(b&&b.abo)?'abonne':'billet';
+const typeRemise=b=>(b&&b.ben)?'benevole':(b&&b.abo)?'abonne':'billet';
 function estComposant(l,motif){
   if(l.libre||refOf(l)==='DIVERS')return false;   // un article hors catalogue n'entre jamais dans un pack
   try{const re=new RegExp(motif,'i');return re.test(String(refOf(l)||''))||re.test(String(l.nom||''));}catch(e){return false;}
@@ -1577,7 +1583,7 @@ function totaux(items,b,opt){
 function htmlRemise(T){
   let h='';
   if(T.nbPacks)h+='<div class="trem"><span>📦 '+esc(T.nomPack)+(T.nbPacks>1?' ×'+T.nbPacks:'')+'</span><span>−'+fmt(T.remPack)+'</span></div>';
-  if(T.remTaux>0)h+='<div class="trem"><span>'+(T.typ==='abonne'?'⭐ Remise abonné':'🎫 Remise billet')+' −'+Math.round(T.taux*100)+' %</span><span>−'+fmt(T.remTaux)+'</span></div>';
+  if(T.remTaux>0)h+='<div class="trem"><span>'+(T.typ==='benevole'?'🤝 Remise bénévole':T.typ==='abonne'?'⭐ Remise abonné':'🎫 Remise billet')+' −'+Math.round(T.taux*100)+' %</span><span>−'+fmt(T.remTaux)+'</span></div>';
   return h?'<div class="trem" style="color:var(--muted)"><span>Prix catalogue</span><span><s>'+fmt(T.brut)+'</s></span></div>'+h:'';
 }
 async function sha256Hex(txt){
@@ -1603,6 +1609,60 @@ async function chargerAbonnes(){
   }catch(e){synL('Abonnés non chargés : '+e.message+' (la liste précédente est conservée)');}
   if($('synAbo'))$('synAbo').textContent=Object.keys(ABO.liste||{}).length;
 }
+// [remise-benevole] Accréditation bénévole : QR « SPB:<32 caractères hexa> ». Seule son empreinte est gardée sur la tablette.
+const tokenAccred=code=>{const m=String(code||'').toUpperCase().match(/SPB:([A-F0-9]{32})(?![A-F0-9])/);return m?m[1]:null;};
+async function chercherBenevole(code){
+  const t=tokenAccred(code);if(!t)return null;
+  try{
+    if(!(window.crypto&&crypto.subtle))return{h:'',connu:false,prenom:'',initiale:'',taux:0};
+    const h=await sha256Hex(t),x=(BEN.liste||{})[h];
+    return{h,connu:!!x,prenom:x?x[0]:'',initiale:x?x[1]:'',taux:x?Number(x[2])||0:0};
+  }catch(e){return{h:'',connu:false,prenom:'',initiale:'',taux:0};}
+}
+// [/remise-benevole]
+async function chargerBenevoles(){
+  const url=CFG.apps_script_url;if(!url)return;
+  try{
+    const d=await fetchJSON(url+'?action=get_benevoles',{},30000);
+    if(d.status!=='ok'||!Array.isArray(d.benevoles))throw new Error(d.message||'réponse invalide (module Benevoles_Remise absent du CRM ?)');
+    const m={};d.benevoles.forEach(a=>{const t=Number(a&&a.t)/100;if(a&&a.h&&t>0&&t<=0.5)m[a.h]=[a.p||'',a.f||'',t];});
+    BEN.liste=m;BEN.maj=d.maj||new Date().toISOString();
+    await dPut('config',BEN);
+    synL('Bénévoles OK : '+Object.keys(m).length+' accréditation(s) avec remise');
+  }catch(e){synL('Bénévoles non chargés : '+e.message+' (la liste précédente est conservée)');}
+  if($('synBen'))$('synBen').textContent=Object.keys(BEN.liste||{}).length;
+}
+function afficherBenevole(bn){
+  if(!bn.connu||!(bn.taux>0)){
+    billetLu=null;
+    montrerResultat('warn','<div class="scan-state">🤝 Accréditation bénévole</div><div class="scan-tarif">Pas de remise</div><div class="scan-meta">'
+      +(Object.keys(BEN.liste||{}).length?'La remise bénévole commence au palier Satellite (300 points). Si le bénévole vient de l\'atteindre, mets à jour le catalogue en wifi.':'Liste des bénévoles non chargée : fais « Mettre à jour le catalogue » en wifi.')+'</div>',false);
+    setScanStatus('Accréditation lue : pas de remise.');return;
+  }
+  // Ni le QR ni le nom complet ne sont gardés : prénom, taux et empreinte seulement
+  billetLu={ticket_id:'',barcode:'',tarif:'Bénévole',prenom:bn.prenom,valide:true,ben:true,taux:bn.taux,ben_h:bn.h};
+  montrerResultat('','<div class="scan-state">🤝 Bénévole du club</div><div class="scan-tarif">Remise −'+Math.round(bn.taux*100)+' % sur le panier</div><div class="scan-meta">'
+    +esc(bn.prenom)+(bn.initiale?' '+esc(bn.initiale)+'.':'')+' · vérifie la photo sur l\'accréditation</div><div class="scan-meta">Hors pack et tarif partenaire, non cumulable.</div>',true);
+  setScanStatus('Accréditation lue. Relie-la à la vente :');
+}
+// Journal des remises bénévoles : envoyé au CRM (qui le transmet à l'appli bénévoles) après la fenêtre d'annulation.
+let _benEnvoi=false;
+async function envoyerRemisesBen(silencieux){
+  const url=CFG.apps_script_url;
+  if(_benEnvoi||!url||navigator.onLine===false)return;
+  const lim=Date.now()-35000,lot=(BEN.attente||[]).filter(x=>Date.parse(x.ts)<lim);
+  if(!lot.length)return;
+  _benEnvoi=true;let ok=false;
+  try{
+    const d=await fetchJSON(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'remises_benevoles',remises:lot})},20000);
+    if(d.status!=='ok')throw new Error(d.message||'refusé par le CRM');
+    ok=true;
+  }catch(e){console.error('Remises bénévoles : envoi',e);if(!silencieux)toast('Remises bénévoles non envoyées : elles restent sur la tablette');}
+  if(ok){const ids=new Set(lot.map(x=>x.id));BEN.attente=(BEN.attente||[]).filter(x=>!ids.has(x.id));await dPut('config',BEN);try{synL('Remises bénévoles envoyées : '+lot.length);}catch(e){}}
+  _benEnvoi=false;
+}
+window.addEventListener('online',()=>envoyerRemisesBen(true));
+setInterval(()=>envoyerRemisesBen(true),60000);
 // Si le panier est déjà sur l'écran CB ou Espèces quand on scanne / retire la carte : on recalcule le montant
 function majPaiementEnCours(){
   if(!pendV||pendV.mode==='Offert')return;
@@ -1611,7 +1671,7 @@ function majPaiementEnCours(){
     $('cbAmt').textContent=fmt(T.net);
     $('cbItems').innerHTML=T.lignes.map(i=>'<div><span>'+(i.src?'🏃 ':'')+esc(i.nom)+' ×'+i.qty+'</span><span>'+fmt(i.brut)+'</span></div>').join('')
       +(T.nbPacks?'<div><span>📦 '+esc(T.nomPack)+(T.nbPacks>1?' ×'+T.nbPacks:'')+'</span><span>−'+fmt(T.remPack)+'</span></div>':'')
-      +(T.remTaux>0?'<div><span>'+(T.typ==='abonne'?'⭐ Remise abonné':'🎫 Remise billet')+'</span><span>−'+fmt(T.remTaux)+'</span></div>':'');
+      +(T.remTaux>0?'<div><span>'+(T.typ==='benevole'?'🤝 Remise bénévole':T.typ==='abonne'?'⭐ Remise abonné':'🎫 Remise billet')+'</span><span>−'+fmt(T.remTaux)+'</span></div>':'');
   }else{
     $('eTo').textContent=fmt(T.net);const er=$('eRem');er.innerHTML=htmlRemise(T);er.style.display=T.remise>0?'block':'none';
     if(espCts)mEsp();
@@ -1622,7 +1682,9 @@ function rPan(){
   $('pBdg').textContent=cnt;$('pTot').textContent=fmt(tot);
   const pr=$('pRem');pr.innerHTML=htmlRemise(T);pr.style.display=T.remise>0?'block':'none';
   $('scanZone').innerHTML=billet
-    ?(billet.abo
+    ?(billet.ben
+      ?'<div class="ticket-badge abo">🤝<div><b>Bénévole'+(billet.prenom?' · '+esc(billet.prenom):'')+'</b><small>Remise −'+Math.round(tauxRemise(billet)*100)+' % appliquée (hors pack et tarif partenaire)</small></div><button onclick="retirerBillet()" aria-label="Retirer l\'accréditation">✕</button></div>'
+      :billet.abo
       ?'<div class="ticket-badge abo">⭐<div><b>Abonné'+(billet.prenom?' · '+esc(billet.prenom):'')+(billet.formule?' · '+esc(billet.formule):'')+'</b><small>Remise −'+Math.round(tauxRemise(billet)*100)+' % appliquée (hors pack et tarif partenaire)</small></div><button onclick="retirerBillet()" aria-label="Retirer la carte abonné">✕</button></div>'
       :'<div class="ticket-badge">🎫<div><b>'+esc(billet.tarif||'Billet scanné')+(billet.prenom?' · '+esc(billet.prenom):'')+'</b><small>'+(billet.nonVerifie?'Non vérifié (hors ligne) : pas de remise billet':tauxRemise(billet)>0?'Remise −'+Math.round(tauxRemise(billet)*100)+' % appliquée':'Billet relié à cette vente')+'</small></div><button onclick="retirerBillet()" aria-label="Retirer le billet">✕</button></div>')
     :'<button class="btn-scan" onclick="ouvrirScanner()"><span class="stepn">1</span> 🎫 Scanner le billet ou la carte abonné <small>(−5 % billet · −10 % abonné)</small></button>';
@@ -1686,9 +1748,10 @@ function payer(mode){
 // Bouton billet sur les écrans de paiement : on scanne pendant que le client paie
 function rPayScan(){
   ['cbScan','espScan'].forEach(k=>{const el=$(k);if(!el)return;
-    if(billet&&billet.abo){el.className='pay-scan ok';el.innerHTML='⭐ Abonné'+(billet.prenom?' · '+esc(billet.prenom):'')+' · −'+Math.round(tauxRemise(billet)*100)+' % déduits';}
+    if(billet&&billet.ben){el.className='pay-scan ok';el.innerHTML='🤝 Bénévole'+(billet.prenom?' · '+esc(billet.prenom):'')+' · −'+Math.round(tauxRemise(billet)*100)+' % déduits';}
+    else if(billet&&billet.abo){el.className='pay-scan ok';el.innerHTML='⭐ Abonné'+(billet.prenom?' · '+esc(billet.prenom):'')+' · −'+Math.round(tauxRemise(billet)*100)+' % déduits';}
     else if(billet){el.className='pay-scan ok';el.innerHTML='🎫 Billet relié'+(billet.tarif?' · '+esc(billet.tarif):'')+(billet.prenom?' · '+esc(billet.prenom):'')+(tauxRemise(billet)>0?' · −'+Math.round(tauxRemise(billet)*100)+' % déduits':'');}
-    else{el.className='pay-scan';el.innerHTML='🎫 Pendant qu\'il paie : scanner son billet (−5 %) ou sa carte abonné (−10 %)';}
+    else{el.className='pay-scan';el.innerHTML='🎫 Pendant qu\'il paie : scanner son billet (−5 %), sa carte abonné (−10 %) ou son accréditation bénévole';}
   });
 }
 function cbAccepte(){if(!pendV||$('cbYes').disabled)return;enregistrerVente();}
@@ -1749,10 +1812,12 @@ async function enregistrerVente(){
   const courses=T.lignes.filter(i=>i.src);
   for(const i of courses)TRF.liste.push(nouveauTransfert(i,i.qty,'vente',{groupe:grp,de:i.src,statut:'a_livrer',ts:now}));
   if(courses.length)await dPut('config',TRF);
+  // Remise bénévole accordée : une ligne de journal (empreinte de l'accréditation, taux, montants), jamais le détail des articles
+  if(b&&b.ben&&b.ben_h&&T.remTaux>0){BEN.attente=(BEN.attente||[]).concat([{id:grp,h:b.ben_h,pct:Math.round(b.taux*100),brut:T.brut,remise:T.remTaux,ts:now,boutique:CFG.boutique_id}]);await dPut('config',BEN);}
   billet=null;
-  if(mode!=='Offert'){sCA+=tot;sTx++;if(b)sScan++;}
+  if(mode!=='Offert'){sCA+=tot;sTx++;if(b&&!b.ben)sScan++;}
   derniere={tot,mon:mode==='Espèces'?(monnaie||0):0,course:courses.reduce((s,i)=>s+i.qty,0),
-    lib:(mode==='CB'?'💳 CB enregistrée':mode==='Espèces'?'💵 Espèces enregistrées':'🎁 Offert · '+esc(motif||''))+(T.remise>0?' · remise −'+fmt(T.remise)+(T.nbPacks?' (pack)':''):b?' · 🎫 billet relié':'')};
+    lib:(mode==='CB'?'💳 CB enregistrée':mode==='Espèces'?'💵 Espèces enregistrées':'🎁 Offert · '+esc(motif||''))+(T.remise>0?' · remise −'+fmt(T.remise)+(T.nbPacks?' (pack)':''):(b&&!b.ben)?' · 🎫 billet relié':'')};
   if(navigator.vibrate)navigator.vibrate([60,30,60]);
   pan={};rPan();rGrid();rBand();rCourses();showUndo(grp);ss('s-cai');
   setTimeout(pilEnvoyer,32000); // après la fenêtre d'annulation de 30 s
@@ -1771,6 +1836,7 @@ async function annuler(){
   const all=await dAll('ventes'),del=all.filter(v=>v.groupe===grp);let caU=0,off=false;
   for(const v of del){caU+=v.ca_ligne||0;off=v.mode_paiement==='Offert';const p=prods.find(x=>x.id===v.produit_id);if(p&&!v.a_chercher)p.ss=(stockOf(p)||0)+v.quantite;await dDel('ventes',v.id);}
   if(TRF.liste.some(t=>t.groupe===grp)){TRF.liste=TRF.liste.filter(t=>t.groupe!==grp);await dPut('config',TRF);rCourses();}
+  if((BEN.attente||[]).some(x=>x.id===grp)){BEN.attente=BEN.attente.filter(x=>x.id!==grp);await dPut('config',BEN);}
   if(!off){sCA=Math.max(0,sCA-caU);sTx=Math.max(0,sTx-1);if(del.some(v=>v.ticket_id||v.barcode))sScan=Math.max(0,sScan-1);}
   derniere=null;
   rGrid();rBand();
@@ -1876,6 +1942,7 @@ async function rSync(){
   $('synSai').textContent=cfg.saison||'—';
   $('synNP').textContent=prods.length;
   $('synAbo').textContent=Object.keys(ABO.liste||{}).length;
+  if($('synBen'))$('synBen').textContent=Object.keys(BEN.liste||{}).length;
   rRetSyn();
   {const n=trfAEnvoyer(true,'crm_envoye').length;$('synTrf').textContent=n;$('synTrf').className=n?'c-warn':'';}
   $('synUrl').value=cfg.apps_script_url||'';
@@ -1903,6 +1970,7 @@ async function lancerSync(){
     catch(e){synL('ERREUR : '+s.match_label+' — '+e.message);}
   }
   const nt=await envoyerTransfertsCRM(url);
+  await envoyerRemisesBen(true);
   await rSync();await rHome();toast(ok+'/'+sessions.length+' session'+(ok>1?'s':'')+' synchronisée'+(ok>1?'s':'')+(nt?' · '+nt+' transfert'+(nt>1?'s':''):''));
 }
 // Garde-fou : une tablette boutique ne doit jamais charger le catalogue buvette
@@ -1928,7 +1996,7 @@ async function syncCat(){
   try{const data=await fetchJSON(url+'?action=get_catalogue&boutique='+CFG.boutique_id+'&saison='+encodeURIComponent(CFG.saison),{},30000);
     if(!guardCatalogSourceBoutique(data))return;
     if(data.produits&&Array.isArray(data.produits)&&!data.produits.length){synL('Catalogue vide renvoyé par le CRM : catalogue de la tablette conservé');toast('Catalogue vide côté CRM : rien changé');return;}
-    if(data.produits&&Array.isArray(data.produits)){await stockAutreBoutique(url,data.produits);await dClr('produits');for(const p of data.produits)await dPut('produits',p);await loadP();await recalcStockSession();if(data.regles){REG=Object.assign({},REG,data.regles,{id:'regles'});await dPut('config',REG);}$('synNP').textContent=prods.length;synL('Catalogue OK : '+prods.length+' produit(s)');await chargerAbonnes();await chargerRetraits();toast(prods.length+' produit(s) · '+Object.keys(ABO.liste||{}).length+' carte(s) abonné · '+retAFaire()+' retrait(s) web');}
+    if(data.produits&&Array.isArray(data.produits)){await stockAutreBoutique(url,data.produits);await dClr('produits');for(const p of data.produits)await dPut('produits',p);await loadP();await recalcStockSession();if(data.regles){REG=Object.assign({},REG,data.regles,{id:'regles'});await dPut('config',REG);}$('synNP').textContent=prods.length;synL('Catalogue OK : '+prods.length+' produit(s)');await chargerAbonnes();await chargerBenevoles();await chargerRetraits();toast(prods.length+' produit(s) · '+Object.keys(ABO.liste||{}).length+' carte(s) abonné · '+retAFaire()+' retrait(s) web');}
     else{synL('Réponse invalide');toast('Erreur serveur');}
   }catch(e){synL('ERREUR : '+e.message);toast('Erreur de connexion');}
 }
@@ -2035,6 +2103,8 @@ function saisieManuelle(e){e.preventDefault();const v=$('scan-manual').value.tri
 async function chercherBillet(barcode){
   _retCour=await chercherRetrait(barcode);
   if(_modeRetrait&&_retCour){const r=_retCour;fermerScanner();ouvrirRetrait(r,false);return;}
+  const bn=await chercherBenevole(barcode);
+  if(bn){_retCour=null;afficherBenevole(bn);return;}
   const ab=await chercherAbonne(barcode);
   if(ab){afficherBillet({valide:true,abo:true,prenom:ab[0],formule:ab[1],tarif:ab[1]||'Abonnement'},barcode);return;}
   const local=(PIL.billets||{})[barcode];
@@ -2079,7 +2149,7 @@ function afficherBillet(t,barcode){
 function utiliserBillet(){
   if(!billetLu||!billetLu.valide)return;
   billet=billetLu;billetLu=null;fermerScanner();rPan();rPayScan();majPaiementEnCours();
-  toast(billet.abo?'⭐ Abonné : remise −'+Math.round(tauxRemise(billet)*100)+' % appliquée':tauxRemise(billet)>0?'🎫 Billet relié : remise −'+Math.round(tauxRemise(billet)*100)+' % appliquée':'🎫 Billet relié à la vente en cours');
+  toast(billet.ben?'🤝 Bénévole : remise −'+Math.round(tauxRemise(billet)*100)+' % appliquée':billet.abo?'⭐ Abonné : remise −'+Math.round(tauxRemise(billet)*100)+' % appliquée':tauxRemise(billet)>0?'🎫 Billet relié : remise −'+Math.round(tauxRemise(billet)*100)+' % appliquée':'🎫 Billet relié à la vente en cours');
 }
 function relancerScan(){arreterCamera();ouvrirScanner();}
 function fermerScanner(){arreterCamera();$('ov-scan').classList.remove('on');_modeRetrait=false;}
