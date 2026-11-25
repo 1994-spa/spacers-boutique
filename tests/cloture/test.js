@@ -28,18 +28,18 @@ function session(b, id) {
   return {
     session: { id, boutique_id: b, match_label: MATCH, date: '2026-11-28', benevole: 'Lucie',
       controle: { ts: d(21, 30).toISOString(), saisi_par: 'Lucie', fond: 30, cb_tablette: b === 'B1' ? 175.65 : 15, esp_tablette: b === 'B1' ? 14.25 : 0,
-        tpe: b === 'B1' ? [{ tpe: '2668544-001', cb_tablette: 118.65, tickets: 3, tpe_saisi: 118.65 }, { tpe: '2668543-001', cb_tablette: 57, tickets: 1, tpe_saisi: '' }]
-                        : [{ tpe: '6053438-002', cb_tablette: 15, tickets: 1, tpe_saisi: 14 }],
+        tpe: b === 'B1' ? [{ tpe: '2668544-001', cb_tablette: 118.65, tickets: 3, tpe_saisi: 118.65 }, { tpe: '6053438-002', cb_tablette: 57, tickets: 1, tpe_saisi: '' }]
+                        : [{ tpe: '2668543-001', cb_tablette: 15, tickets: 1, tpe_saisi: 14 }],
         esp_comptees_tiroir: b === 'B1' ? 44.25 : 30 } },
     ventes: b === 'B1' ? [
       { id: 'v1', timestamp: d(16, 40).toISOString(), produit_nom: 'Écharpe', quantite: 1, ca_ligne: 14.25, mode_paiement: 'CB', tpe: '2668544-001', benevole: 'Lucie' },
       { id: 'v2', timestamp: d(16, 45).toISOString(), produit_nom: 'Maillot Blanc - M', quantite: 1, ca_ligne: 55.8, mode_paiement: 'CB', tpe: '2668544-001' },
       { id: 'v3', timestamp: d(17, 5).toISOString(), produit_nom: 'Polo femme - L', quantite: 1, ca_ligne: 48.6, mode_paiement: 'CB', tpe: '2668544-001' },
-      { id: 'v4', timestamp: d(17, 10).toISOString(), produit_nom: 'Sweat - M', quantite: 1, ca_ligne: 57, mode_paiement: 'CB', tpe: '2668543-001' },
+      { id: 'v4', timestamp: d(17, 10).toISOString(), produit_nom: 'Sweat - M', quantite: 1, ca_ligne: 57, mode_paiement: 'CB', tpe: '6053438-002' },
       { id: 'v5', timestamp: d(17, 20).toISOString(), produit_nom: 'Écharpe', quantite: 1, ca_ligne: 14.25, mode_paiement: 'Espèces' },
       { id: 'v6', timestamp: d(17, 30).toISOString(), produit_nom: 'Gourde', quantite: 1, ca_ligne: 0, mode_paiement: 'Offert' },
     ] : [
-      { id: 'w1', timestamp: d(19, 0).toISOString(), produit_nom: 'Écharpe', quantite: 1, ca_ligne: 15, mode_paiement: 'CB', tpe: '6053438-002' },
+      { id: 'w1', timestamp: d(19, 0).toISOString(), produit_nom: 'Écharpe', quantite: 1, ca_ligne: 15, mode_paiement: 'CB', tpe: '2668543-001' },
     ],
   };
 }
@@ -102,19 +102,19 @@ console.log('3. Rapport de clôture');
   const gp = R.boutiques.find(b => b.boutique === 'B1'), vip = R.boutiques.find(b => b.boutique === 'B2');
   check(gp.ca === 189.9 && gp.cb === 175.65 && gp.esp === 14.25 && gp.offerts === 1 && gp.sessions === 1, 'GP : CA 189,90 € = CB 175,65 € + espèces 14,25 €, 1 offert (au centime)');
   check(vip.ca === 15 && vip.cb === 15, 'VIP : 15 € CB');
-  const tGP = R.terminaux.find(t => t.terminal === '2668544-001'), tB2 = R.terminaux.find(t => t.terminal === '2668543-001'), tV = R.terminaux.find(t => t.terminal === '6053438-002');
+  const tGP = R.terminaux.find(t => t.terminal === '2668544-001'), tB2 = R.terminaux.find(t => t.terminal === '6053438-002'), tV = R.terminaux.find(t => t.terminal === '2668543-001');
   check(tGP.tablette === 118.65 && tGP.compte === 118.65 && tGP.ecart === 0 && tGP.source === 'ticket saisi sur la tablette', 'D177 GP : 118,65 € tablette = ticket, écart 0');
   check(tB2.tablette === 57 && tB2.ecart === null && /réaffecter/.test(tB2.note), 'D177 Buvette 2 : 57 € de ventes boutique signalés à réaffecter (pas d\'écart calculé : terminal partagé)');
   check(tV.ecart === -1, 'A920 VIP : ticket 14 € vs 15 € tablette → écart −1,00 € (signé)');
-  check(/❌ CLÔTURE À FINIR/.test(R.resume) && /A920 Boutique VIP : écart -1,00 €/.test(R.resume) && /télécollecte non saisie/.test(R.resume) === false, 'verdict : à finir à cause de l\'écart VIP (tolérance CB 0 €)');
-  check(R.actions.some(a => /D177 Buvette 2 : 57,00 €/.test(a)), 'action : réaffecter 57 € du D177 Buvette 2 vers la boutique');
+  check(/❌ CLÔTURE À FINIR/.test(R.resume) && /D177 Boutique VIP : écart -1,00 €/.test(R.resume) && /télécollecte non saisie/.test(R.resume) === false, 'verdict : à finir à cause de l\'écart VIP (tolérance CB 0 €)');
+  check(R.actions.some(a => /A920 Buvette 2 : 57,00 €/.test(a)), 'action : réaffecter 57 € du D177 Buvette 2 vers la boutique');
   // la télécollecte (PDF) prime sur le ticket saisi sur la tablette
   T.run('cm_rapportCloture("' + MATCH + '")');
   const TL = T.crm.getSheetByName('28_TELECOLLECTES');
   check(TL && TL.getLastRow() === 1, '28_TELECOLLECTES créé vide pour la saisie');
-  TL.appendRow([new Date(2026, 10, 28), '6053438-002', 'A920 Boutique VIP', 15, 1, 'PDF télécollecte 29/11', 'Clément', '']);
+  TL.appendRow([new Date(2026, 10, 28), '2668543-001', 'D177 Boutique VIP', 15, 1, 'PDF télécollecte 29/11', 'Clément', '']);
   const R2 = T.run('cm_calculerCloture_(SpreadsheetApp.getActive(), "' + MATCH + '")');
-  check(R2.terminaux.find(t => t.terminal === '6053438-002').ecart === 0 && R2.terminaux.find(t => t.terminal === '6053438-002').source === 'télécollecte', 'télécollecte saisie : prime sur le ticket tablette, écart 0');
+  check(R2.terminaux.find(t => t.terminal === '2668543-001').ecart === 0 && R2.terminaux.find(t => t.terminal === '2668543-001').source === 'télécollecte', 'télécollecte saisie : prime sur le ticket tablette, écart 0');
   check(/✅ CLÔTURE CONFORME/.test(R2.resume), 'tout rapproché : clôture conforme (actions à faire listées à part)');
   const sh = T.crm.getSheetByName('27_CLOTURE_MATCH');
   check(sh && /CLÔTURE DE MATCH/.test(sh.get(1, 1)), '27_CLOTURE_MATCH écrit');

@@ -39,9 +39,10 @@ const CM = {
   ENT_TELE: ['date_match', 'terminal', 'libelle', 'montant_EUR', 'nb_transactions', 'source (PDF / relevé)', 'saisi_par', 'commentaire'],
   // Terminaux (table de Clément du 24/11/2026) — même liste que la tablette
   TERMINAUX: {
+    // 25/11 (Clément) : les deux D177 vont aux boutiques, l'A920 n°2 (ex-VIP) passe à la Buvette 2
     '2668544-001': { lib: 'D177 Boutique GP', boutique: 'B1' },
-    '6053438-002': { lib: 'A920 Boutique VIP', boutique: 'B2' },
-    '2668543-001': { lib: 'D177 Buvette 2', boutique: '' },
+    '2668543-001': { lib: 'D177 Boutique VIP', boutique: 'B2' },
+    '6053438-002': { lib: 'A920 Buvette 2', boutique: '' },
     '6053438-001': { lib: 'A920 Buvette 1', boutique: '' },
     '6053438-003': { lib: 'A920 Buvette 3', boutique: '' },
     '6053438-004': { lib: 'A920 Désoiffeur', boutique: '' },

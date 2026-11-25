@@ -1030,14 +1030,15 @@ let TRF={id:'transferts',liste:[]};
 // 25/11/2026 : terminal CB utilisé, enregistré sur chaque vente CB (table de Clément du 24/11).
 // But : rapprocher chaque euro CB de la télécollecte du BON terminal (à Tours ≈ 500 € GP sont passés sur le D177 Buvette 2).
 const TPE_LISTE=[
+  // 25/11 (Clément) : les deux D177 vont aux boutiques, l'A920 n°2 (ex-VIP) passe à la Buvette 2
   {id:'2668544-001',lib:'D177 Boutique GP',stand:'B1'},
-  {id:'6053438-002',lib:'A920 Boutique VIP',stand:'B2'},
-  {id:'2668543-001',lib:'D177 Buvette 2'},
+  {id:'2668543-001',lib:'D177 Boutique VIP',stand:'B2'},
+  {id:'6053438-002',lib:'A920 Buvette 2'},
   {id:'6053438-001',lib:'A920 Buvette 1'},
   {id:'6053438-003',lib:'A920 Buvette 3'},
   {id:'6053438-004',lib:'A920 Désoiffeur'},
 ];
-const APP_VERSION='v20';   // à contrôler sur chaque tablette avant le match (accueil)
+const APP_VERSION='v21';   // à contrôler sur chaque tablette avant le match (accueil)
 const FOND_CAISSE=30; // registre : 30 € par boutique
 const tpeDefaut=()=>(TPE_LISTE.find(t=>t.stand===CFG.boutique_id)||TPE_LISTE[0]).id;
 const tpeLib=id=>{const t=TPE_LISTE.find(x=>x.id===id);return t?t.lib+' (n° '+t.id+')':(id||'terminal non indiqué');};
