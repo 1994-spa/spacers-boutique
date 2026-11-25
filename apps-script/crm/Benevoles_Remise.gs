@@ -16,14 +16,15 @@
  *
  *  INSTALLATION (une fois)
  *   A. Ajouter ce fichier au projet Apps Script « CRM Boutique ».
- *   B. Paramètres du projet → Propriétés du script :
- *        BENEVOLES_SUPABASE_ANON = clé publique (anon) de l'appli bénévoles
- *                                  (celle de public/config.js du dépôt spacers-benevoles)
- *        BENEVOLES_BOUTIQUE_CLE  = clé partagée, à lire dans Supabase :
- *                                  select value from public._app_secrets where key = 'boutique_cle';
- *   C. Dans CRM_Boutique_V3.gs, ajouter les deux branchements ci-dessous.
- *   D. Exécuter testBenevolesRemise() : le journal doit afficher le nombre d'accréditations.
- *   E. Déployer → Gérer les déploiements → ✏️ → Nouvelle version.
+ *   B. Dans CRM_Boutique_V3.gs, ajouter les deux branchements ci-dessous.
+ *   C. Exécuter testBenevolesRemise() : au premier lancement, le module récupère tout seul
+ *      la clé partagée grâce au code d'appairage (usage unique, durée limitée) et la range
+ *      dans les propriétés du script. Le journal doit afficher le nombre d'accréditations.
+ *   D. Déployer → Gérer les déploiements → ✏️ → Nouvelle version.
+ *
+ *   Sans code d'appairage (ou s'il a expiré), renseigner à la main dans
+ *   Paramètres du projet → Propriétés du script :
+ *        BENEVOLES_BOUTIQUE_CLE  = select value from public._app_secrets where key = 'boutique_cle';
  *
  *  BRANCHEMENTS À AJOUTER DANS CRM_Boutique_V3.gs
  *
@@ -48,7 +49,11 @@
 const BENEVOLES_CFG = {
   URL_DEFAUT: 'https://xphuolvbamdkizydveij.supabase.co',
   PROP_URL:   'BENEVOLES_SUPABASE_URL',   // optionnelle : à renseigner seulement si l'adresse change
-  PROP_ANON:  'BENEVOLES_SUPABASE_ANON',
+  PROP_ANON:  'BENEVOLES_SUPABASE_ANON',   // optionnelle : remplace la clé publique ci-dessous
+  // Clé PUBLIQUE (anon) de l'appli bénévoles : déjà présente dans les pages de l'appli, ce n'est pas un secret.
+  ANON_DEFAUT: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhwaHVvbHZiYW1ka2l6eWR2ZWlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwNDQ2MDksImV4cCI6MjA5MjYyMDYwOX0.vpxV6ApwAkhlTx-LMCBZwee7LCdQGYP_5sbPMXEFFUQ',
+  // Code d'appairage à usage unique (vide dans le dépôt GitHub : il n'est fourni que dans le fichier remis à Clément).
+  CODE_APPAIRAGE: '',
   PROP_CLE:   'BENEVOLES_BOUTIQUE_CLE',
   CACHE_CLE:  'bn_liste_tablettes_v1',
   CACHE_S:    300,                        // la liste est gardée 5 min : un match = quelques appels seulement
@@ -59,24 +64,44 @@ function bn_journal_(niveau, message) {
   try { if (typeof logDiag === 'function') logDiag('Benevoles_Remise', niveau, message); } catch (e) {}
 }
 
-/** Appelle une fonction de l'appli bénévoles. Lève une erreur lisible si la configuration manque. */
-function bn_rpc_(fonction, corps) {
+/** Appel brut d'une fonction de l'appli bénévoles (clé publique). */
+function bn_appel_(fonction, corps) {
   const props = PropertiesService.getScriptProperties();
   const url  = (props.getProperty(BENEVOLES_CFG.PROP_URL) || BENEVOLES_CFG.URL_DEFAUT).replace(/\/+$/, '');
-  const anon = props.getProperty(BENEVOLES_CFG.PROP_ANON);
-  const cle  = props.getProperty(BENEVOLES_CFG.PROP_CLE);
-  if (!anon || !cle) throw new Error('Propriétés du script manquantes : ' + BENEVOLES_CFG.PROP_ANON + ' et ' + BENEVOLES_CFG.PROP_CLE);
-
+  const anon = props.getProperty(BENEVOLES_CFG.PROP_ANON) || BENEVOLES_CFG.ANON_DEFAUT;
   const rep = UrlFetchApp.fetch(url + '/rest/v1/rpc/' + fonction, {
     method: 'post',
     contentType: 'application/json',
     headers: { apikey: anon, Authorization: 'Bearer ' + anon },
-    payload: JSON.stringify(Object.assign({ p_cle: cle }, corps || {})),
+    payload: JSON.stringify(corps || {}),
     muteHttpExceptions: true,
   });
   const code = rep.getResponseCode();
   if (code < 200 || code >= 300) throw new Error('Appli bénévoles : erreur ' + code);
-  const d = JSON.parse(rep.getContentText() || '{}');
+  return JSON.parse(rep.getContentText() || '{}');
+}
+
+/**
+ * Premier lancement : échange le code d'appairage (usage unique) contre la clé partagée,
+ * rangée ensuite dans les propriétés du script. La clé n'est jamais affichée.
+ */
+function bn_appairer_() {
+  if (!BENEVOLES_CFG.CODE_APPAIRAGE) {
+    throw new Error('Clé partagée absente : renseigner la propriété du script ' + BENEVOLES_CFG.PROP_CLE + ' (voir l\'en-tête du fichier).');
+  }
+  const d = bn_appel_('boutique_appairer', { p_code: BENEVOLES_CFG.CODE_APPAIRAGE });
+  if (!d || d.ok !== true || !d.cle) {
+    throw new Error('Appairage impossible (code expiré ou déjà utilisé) : demander un nouveau fichier Benevoles_Remise.gs.');
+  }
+  PropertiesService.getScriptProperties().setProperty(BENEVOLES_CFG.PROP_CLE, d.cle);
+  bn_journal_('INFO', 'Appairage avec l\'appli bénévoles effectué.');
+  return d.cle;
+}
+
+/** Appelle une fonction protégée de l'appli bénévoles. Lève une erreur lisible si la configuration manque. */
+function bn_rpc_(fonction, corps) {
+  const cle = PropertiesService.getScriptProperties().getProperty(BENEVOLES_CFG.PROP_CLE) || bn_appairer_();
+  const d = bn_appel_(fonction, Object.assign({ p_cle: cle }, corps || {}));
   if (!d || d.ok !== true) throw new Error('Appli bénévoles : ' + ((d && d.code) || 'réponse invalide'));
   return d;
 }
