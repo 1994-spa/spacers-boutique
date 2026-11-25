@@ -55,6 +55,45 @@ check(String(C.get(C.find(1, 'BON-BLE-TU', 9), 11)).indexOf('Rupture') !== -1, '
 run('installerFichierBoutique()');
 check(T.triggers.length === 2 && T.fichiers.F2 === undefined, 'réinstallation : même classeur, pas de déclencheur en double');
 
+// ---------- 1 bis. Mémo de chaque onglet (25/11) ----------
+console.log('1 bis. Mémos');
+{
+  const memo = run('FB_MEMOS');
+  const att = { '1_COMMANDE': [14, 3], '2_BOUTIQUE': [17, 3], '3_JOURNAL_VENTES': [13, 0], '4_TOP_VENTES': [14, 0], '5_APRES_MATCH': [11, 0] };
+  const texte = sh => (sh.get(2, 1) + '\n' + sh.get(2, 4));
+  const fusions2 = sh => sh.merges.filter(m => m.r === 2 || m.r + m.nr - 1 >= 2 && m.r <= 2);
+  Object.keys(att).forEach(n => {
+    const sh = F.getSheetByName(n), [nb, fig] = att[n], L = memo[n];
+    check(L && L.length >= 4 && L.length <= 7 && L.every(l => /^[A-ZÀ-Ý][A-ZÀ-Ý ]+ : /.test(l)), n + ' : mémo de ' + (L || []).length + ' lignes, chacune ouverte par un mot-clé en MAJUSCULES');
+    const f = fusions2(sh);
+    const ok = fig ? (f.length === 2 && f[0].c === 1 && f[0].nc === fig && f[1].c === fig + 1 && f[1].c + f[1].nc - 1 === nb && sh.get(2, 1) === '📌 MÉMO' && sh.get(2, fig + 1) === L.join('\n'))
+                   : (f.length === 1 && f[0].c === 1 && f[0].nc === nb && sh.get(2, 1) === '📌 MÉMO\n' + L.join('\n'));
+    check(ok, n + ' : encadré « 📌 MÉMO » fusionné en ligne 2 sur ' + nb + ' colonnes' + (fig ? ' (A–C figées à part, Sheets refuse la fusion à cheval)' : ''));
+    check(sh.bg['2,1'] === '#fff8e1' && sh.bords.some(b => b.r === 2 && b.c === 1 && b.nc === nb && b.on), n + ' : fond #fff8e1 et bordure sur toute la largeur');
+    check(sh.hauteurs[2] === (L.length + (fig ? 0 : 1)) * 18 + 14, n + ' : hauteur de ligne 2 = ' + sh.hauteurs[2] + ' px (18 px par ligne)');
+  });
+  check(C.get(8, 1) === 'Réf.' && C.get(4, 1) === 'Saisi par :' && C.get(4, 4) === 'Fournisseur :' && C.get(4, 9) === 'N° de facture :' && C.find(1, 'ECH-TU', 9) === lc,
+        '1_COMMANDE : en-tête en ligne 8, B4 / E4 / J4 et lignes d\'articles non décalés');
+  check(B.get(8, 12) === 'Compté GP' && B.get(4, 7) === '✅ Valider →' && B.get(4, 9) === '📝 Proposer le réassort →', '2_BOUTIQUE : en-tête ligne 8, Valider H4 et Proposer L4 en place');
+  const Ap0 = F.getSheetByName('5_APRES_MATCH');
+  check(Ap0.get(4, 1) === 'Match :' && Ap0.get(4, 4) === 'Contrôlé par :' && Ap0.get(5, 1) === 'Commentaire :' && Ap0.get(8, 7) === 'CB relevé TPE' && Ap0.get(8, 8) === 'Espèces comptées',
+        '5_APRES_MATCH : B4 / E4 / B5 et colonnes « CB relevé TPE » / « Espèces comptées » non décalés');
+  // chaque libellé cité dans les mémos existe bien dans l'onglet
+  const cite = (n, motif) => memo[n].join(' ').indexOf(motif) !== -1;
+  check(cite('1_COMMANDE', '« ➕ Reçu (quantité) »') && run('FB.CDE_COLS').indexOf('➕ Reçu (quantité)') !== -1 && cite('1_COMMANDE', '« Prix d\'achat HT (si différent) »') && run('FB.CDE_COLS').indexOf('Prix d\'achat HT (si différent)') !== -1,
+        '1_COMMANDE : libellés du mémo = colonnes réelles');
+  check(['Compté GP', 'Compté dépôt', '➡️ Sortir du dépôt vers GP (ajout)'].every(x => run('FB.BTQ_COLS').indexOf(x) !== -1) && cite('2_BOUTIQUE', '(L4)') && cite('2_BOUTIQUE', '(H4)'),
+        '2_BOUTIQUE : libellés et cases du mémo = onglet réel');
+  // idempotence : reconstruire deux fois ne crée ni fusion en double ni erreur ; une ancienne consigne A2 non fusionnée est remplacée
+  const J0 = F.getSheetByName('3_JOURNAL_VENTES');
+  J0.merges = J0.merges.filter(m => m.r !== 2); J0.getRange('A2').setValue('Automatique, depuis le CRM : rien à saisir.');
+  run('installerFichierBoutique()'); run('majFichierBoutique()');
+  check(Object.keys(att).every(n => fusions2(F.getSheetByName(n)).length === (att[n][1] ? 2 : 1)), 'reconstructions répétées : toujours une seule fusion de mémo par onglet');
+  check(J0.get(2, 1).indexOf('📌 MÉMO') === 0 && !/Automatique, depuis/.test(J0.get(2, 1)), 'ancienne consigne A2 (version précédente) remplacée par le mémo');
+  check(Object.keys(att).every(n => { const sh = F.getSheetByName(n); for (let c = 2; c <= 30; c++) if (c !== att[n][1] + 1 && sh.get(2, c) !== '') return false; return true; }),
+        'ligne 2 : aucun texte résiduel hors des cellules du mémo');
+}
+
 // ---------- 2. Réception ----------
 console.log('2. Réception (1_COMMANDE)');
 C.getRange('B4').setValue('Élise'); C.getRange(lc, 12).setValue(50); C.getRange('H4').setValue(true);
@@ -106,8 +145,8 @@ console.log('3. Inventaire et préparation (2_BOUTIQUE, mode complet)');
 check(B.get(8, 12) === 'Compté GP' && B.get(8, 13) === 'Compté VIP' && B.get(8, 14) === 'Compté dépôt' &&
       /Sortir du dépôt vers GP \(ajout\)/.test(B.get(8, 15)) && /vers VIP \(ajout\)/.test(B.get(8, 16)) && B.get(8, 17) === 'Résultat',
       'colonnes jaunes : Compté GP / VIP / dépôt, puis sorties du dépôt vers GP / VIP, puis Résultat');
-check(/BOUTIQUES GP \/ VIP ET DÉPÔT/.test(B.get(1, 1)) && !/En boutique/.test(B.get(2, 1)) && /le comptage passe d'abord/.test(B.get(2, 1)),
-      'titre et consigne du mode complet, sans renvoi à « En boutique »');
+check(/BOUTIQUES GP \/ VIP ET DÉPÔT/.test(B.get(1, 1)) && !/En boutique/.test(B.get(2, 4)) && /comptage passe avant la sortie/.test(B.get(2, 4)),
+      'titre et mémo du mode complet, sans renvoi à « En boutique »');
 B.getRange('B4').setValue('Élise');
 const be = B.find(1, 'ECH-TU', 9), bm = B.find(1, 'MAI-BNU-L', 9), bg = B.find(1, 'GRD-TU', 9), bmap = B.find(1, 'MAP-BNU-M', 9);
 const totalEch0 = stock('ECH-TU').R + stock('ECH-TU').B1 + stock('ECH-TU').B2;
@@ -282,7 +321,7 @@ run(`ScriptApp.newTrigger('eb_simuler').create()`);
 run('installerFichierBoutique()');
 check(T.triggers.some(t => t.h === 'eb_simuler') && T.triggers.filter(t => /^fb_surModification|majFichierBoutique$/.test(t.h)).length === 2, 'installerFichierBoutique ne touche pas aux autres déclencheurs');
 { const N = F.getSheetByName('📖 LISEZ-MOI'); const txt = Array.from({ length: 60 }, (_, i) => N.get(i + 1, 1)).join('\n');
-  check(N.getRange('A1').getNote() === 'fb-notice-v3-fichier-unique' && /INVENTAIRE ET PRÉPARATION DU MATCH/.test(txt) && !/En boutique|eb_simuler/.test(txt), 'notice v3 : inventaire complet + répartition, plus de renvoi à « En boutique »'); }
+  check(N.getRange('A1').getNote() === 'fb-notice-v4-memos' && /INVENTAIRE ET PRÉPARATION DU MATCH/.test(txt) && /MÉMO en haut/.test(txt) && !/En boutique|eb_simuler/.test(txt), 'notice v4 : renvoi aux mémos, inventaire complet + répartition, plus de renvoi à « En boutique »'); }
 
 // ---------- 8. Passage de la disposition du 24/11 (« En boutique ») au mode complet ----------
 console.log('8. Mise à jour d\'un onglet 2_BOUTIQUE de la version du 24/11');
