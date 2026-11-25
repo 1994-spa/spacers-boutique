@@ -109,8 +109,7 @@ const RG_CONFIG = {
     { famille: 'Chaussettes', stand: 'GP',  taille: '3942', attendu: 6, nouveau: 4, motif: '2 paires vendues à Tours (tablette GP)' },
     { famille: 'Chaussettes', stand: 'VIP', taille: '3942', attendu: 2, nouveau: 1, motif: '1 paire vendue à Tours (tablette VIP)' },
     { famille: 'Sac',         stand: 'GP',  taille: 'TU',   attendu: 3, nouveau: 2, motif: '1 sac à dos Team vendu à Tours (tablette GP)' },
-    // XL confirmé par Clément le 25/11 ; attendu null = valeur lue au moment de l'application, moins 1
-    { famille: 'Maillot Bleu clair', stand: 'GP', taille: 'XL', attendu: null, moins: 1, motif: '1 maillot Bleu Ciel XL offert à Jean-Claude Tardif (21/11)', siDotation: true },
+    // 25/11 : maillot du cadeau (Bleu Ciel XL) — « En boutique » GP XL est déjà à 0 (comptage d'Élise après le match) : rien à retirer ici.
   ],
 
   // ── 6. Cadeau (dotation) : sort du stock GP du CRM, sans chiffre d'affaires, bon DOT-2627-… ──
@@ -122,7 +121,7 @@ const RG_CONFIG = {
     // ⬇ À COMPLÉTER : nom EXACT de l'enveloppe (onglet 14_ENVELOPPES_DOTATIONS), par exemple :
     //   'Contrepartie contractuelle partenaire' · 'Cadeau partenaire / prospect' · 'Protocole / collectivités / officiels'
     //   'Bénévoles' · 'Joueurs / staff (dotation équipement)'
-    enveloppe: '???',
+    enveloppe: 'Cadeau partenaire / prospect',   // Clément, 25/11 : JC = partenaire, maillot non prévu au contrat
     commentaire: 'noté « Maillot GP XL 62 € – Maillot JC » dans le journal ; Bleu Ciel (Élise, 24/11), taille XL (Clément, 25/11)',
   },
   TABLEAUX: [   // tableaux « TableauN » de l'onglet « En boutique » à renommer (titre du bloc → nom attendu par le script)
@@ -357,6 +356,19 @@ function rg_dotation_(ecrire, out) {
   const x = P.rows.find(r => r.ref === D.ref);
   if (!x) { out.push('⏸ Cadeau sauté — référence ' + D.ref + ' introuvable.'); return; }
   const pt = RG_CONFIG.BOUTIQUE;
+  // 25/11 : la pièce a déjà quitté le stock du CRM sans cause (comptage d'Élise recopié par eb_appliquer) : on la remet
+  // par un ajustement d'inventaire tracé, puis la dotation la sort avec sa vraie cause (stock net inchangé).
+  if (x[pt] < D.quantite) {
+    const shMv = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SB.ONGLET_MOUVEMENTS);
+    if (shMv && shMv.getLastRow() > 1) {
+      const mv = shMv.getDataRange().getValues(); const h = mv[0].map(String);
+      const ir = h.indexOf('ref_boutique');
+      mv.slice(1).filter(r => String(r[ir]) === D.ref).slice(-4).forEach(r => out.push('   historique ' + D.ref + ' : ' + r.map(c => c instanceof Date ? Utilities.formatDate(c, 'Europe/Paris', 'dd/MM HH:mm') : c).filter(c => c !== '').join(' | ')));
+    }
+    out.push((ecrire ? '✓ ' : '→ ') + 'ajustement d\'inventaire ' + pt + ' ' + x[pt] + '→' + (x[pt] + D.quantite) + ' (pièce déjà sortie sans cause : cadeau de ' + D.beneficiaire + ')');
+    if (ecrire) { enregistrerInventaire({ lignes: [{ ref: D.ref, R: '', B1: pt === 'B1' ? x.B1 + D.quantite : '', B2: pt === 'B2' ? x.B2 + D.quantite : '' }], commentaire: 'Régul. Tours : maillot offert à ' + D.beneficiaire + ' déjà sorti au comptage, remis pour être sorti en dotation' }); x[pt] += D.quantite; }
+    else x[pt] += D.quantite;
+  }
   out.push((ecrire ? '✓ ' : '→ ') + D.quantite + ' × ' + x.produit + ' offert à ' + D.beneficiaire + ' (' + D.enveloppe + ') · stock ' + pt + ' ' +
     x[pt] + '→' + (x[pt] - D.quantite) + ' · aucun chiffre d\'affaires');
   if (!ecrire) return;
