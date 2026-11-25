@@ -81,7 +81,7 @@ function cm_problemesAvantEb_(maintenant) {
   //        match…) : majInventaire ne les a pas retirées de « En boutique », et eb_appliquer les remettrait en stock.
   const jv = cm_jamaisVuesEnDirect_(ss, new Date(maintenant.getTime() - CM.JOURS_CONTROLE * 864e5));
   Object.keys(jv).sort().forEach(k => { const [j, b] = k.split('|'); pb.push(jv[k] + ' article(s) ' + cm_nomB_(b) + ' du ' + j +
-    ' synchronisé(s) mais jamais reçu(s) en direct : « En boutique » ne les a pas décomptés (les retirer dans « En boutique », puis noter dans la propriété CM_JOURS_VERIFIES « ' + j + '|' + b + ' »)'); });
+    ' synchronisé(s) mais pas encore reçu(s) en direct : « En boutique » ne les a pas encore décomptés. Ne rien retirer à la main : rallumer la tablette en wifi, attendre « ✓ à jour », relancer cm_verifierAvantEb. Si le message reste, prévenir Clément (qui, après vérification, note « ' + j + '|' + b + ' » dans la propriété CM_JOURS_VERIFIES)'); });
   // b) transferts GP ↔ VIP reçus mais pas encore appliqués à 03_PRODUITS
   const trf = cm_lire_(ss, CM.TRF);
   const colFait = trf.entetes.find(h => /^(appliqu|trait|fait)/i.test(h));

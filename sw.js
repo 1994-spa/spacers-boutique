@@ -32,7 +32,8 @@ self.addEventListener('fetch', e => {
     // (jamais une page de portail wifi ou d'erreur).
     const cache = () => caches.match('./index.html').then(r => r || caches.match('./'));
     const reseau = fetch(req).then(r => {
-      if (r.ok && r.type === 'basic') { const copy = r.clone(); caches.open(CACHE).then(c => c.put('./index.html', copy)); }
+      const page = url.pathname.replace(/^.*\//, '');
+      if (r.ok && r.type === 'basic' && (page === '' || page === 'index.html')) { const copy = r.clone(); caches.open(CACHE).then(c => c.put('./index.html', copy)); }
       return r;
     });
     e.respondWith(new Promise(resolve => {

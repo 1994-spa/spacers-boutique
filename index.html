@@ -1377,7 +1377,9 @@ async function createSess(){
     match_label:'Spacer\'s vs '+adv,date,heure:$('mHeu').value,
     benevole:$('mBen').value.trim(),statut:'ouvert',stock_ouverture:prods.map(p=>({id:p.id,stock:p.stock})),
     tickie_event_id:(PIL.match&&PIL.match.dateMatch===date)?PIL.match.eventId:''};
-  await dPut('sessions',s);closeNM();
+  await dPut('sessions',s);
+  if(CFG.tpe){delete CFG.tpe;await dPut('config',{...CFG,id:'main',key:'main'});}   // 25/11 : chaque session repart sur le terminal du stand
+  closeNM();
   await _prepSess(s.id);
   obSt=0;
   document.querySelectorAll('.obsl').forEach((sl,i)=>sl.classList.toggle('on',i===0));

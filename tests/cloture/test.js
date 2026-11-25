@@ -73,7 +73,7 @@ console.log('1. Verrou avant eb_appliquer');
   check(/^✅/.test(T.run('cm_verifierAvantEb()')), 'cm_verifierAvantEb (à la main) : même contrôle, réponse lisible');
   // vente synchronisée mais jamais reçue en direct (pilotage absent) : « En boutique » pas décompté → eb la remettrait en stock
   T.V.appendRow([d(20), 'tablette', 'sGP_zz', '', 'Écharpe', '', 2, 15, 30, MATCH, 'B1', '2026-2027', 'CB']);
-  assert.throws(() => T.run('cm_gardeAvantEb_(' + apres + ')'), /2 article\(s\) Boutique GP du 2026-11-28 synchronisé\(s\) mais jamais reçu\(s\) en direct/);
+  assert.throws(() => T.run('cm_gardeAvantEb_(' + apres + ')'), /2 article\(s\) Boutique GP du 2026-11-28 synchronisé\(s\) mais pas encore reçu\(s\) en direct/);
   check(true, 'vente jamais reçue en direct : refusé (sinon eb_appliquer annulerait la vente dans le stock)');
   T.props.CM_JOURS_VERIFIES = '2026-11-28|B1';
   check(T.run('cm_gardeAvantEb_(' + apres + ')') === true, 'jour régularisé à la main et déclaré (CM_JOURS_VERIFIES) : autorisé');
