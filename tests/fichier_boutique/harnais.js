@@ -30,6 +30,14 @@ class Sheet {
   appendRow(row) { const r = this.getLastRow() + 1; row.forEach((v, i) => this.set(r, i + 1, v)); }
   setFrozenRows() {} setFrozenColumns(n) { this.fig = n; } getFrozenColumns() { return this.fig; } setColumnWidth() {} setRowHeight(r, h) { this.hauteurs[r] = h; } setHiddenGridlines() {} setTabColor() {}
   getProtections() { return this.prot; }
+  // groupes (comme Google Sheets : getRowGroup / getColumnGroup lèvent une exception si le groupe n'existe pas)
+  groupe_(sens, i, prof) {
+    const g = (this.groupes || []).find(x => x.sens === sens && x.prof === prof && i >= x.debut && i < x.debut + x.nb);
+    if (!g) throw new Error('No ' + (sens === 'ligne' ? 'row' : 'column') + ' group at index ' + i);
+    return { collapse() { g.replie = true; return this; }, expand() { g.replie = false; return this; }, isCollapsed: () => g.replie };
+  }
+  getRowGroup(i, p) { return this.groupe_('ligne', i, p); }
+  getColumnGroup(i, p) { return this.groupe_('colonne', i, p); }
   clear() { this.g = {}; this.notes = {}; this.merges = []; }
   copyTo() { return this; } setName(n) { this.name = n; return this; }
   // utilitaire de test
@@ -73,6 +81,8 @@ class Range {
     return this;
   }
   setBorder(t, l, b, rr, v, h, couleur) { this.sh.bords.push({ r: this.r, c: this.c, nr: this.nr, nc: this.nc, on: !!t, couleur: couleur || null }); return this; }
+  shiftRowGroupDepth(d) { (this.sh.groupes = this.sh.groupes || []).push({ sens: 'ligne', debut: this.r, nb: this.nr, prof: d, replie: false }); return this; }
+  shiftColumnGroupDepth(d) { (this.sh.groupes = this.sh.groupes || []).push({ sens: 'colonne', debut: this.c, nb: this.nc, prof: d, replie: false }); return this; }
   protect() { const p = { d: '', setDescription(d) { this.d = d; return this; }, getDescription() { return this.d; }, setWarningOnly() { return this; }, remove() {} }; this.sh.prot.push(p); return p; }
 }
 ['setFontSize', 'setFontWeight', 'setFontColor', 'setWrap', 'setVerticalAlignment', 'setHorizontalAlignment', 'setFontStyle',

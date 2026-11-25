@@ -64,18 +64,26 @@ const FB = {
   HDR: 8,                     // ligne des en-têtes des tableaux 1 et 2 (lignes 6-7 : bandeaux d'information)
   // 1_COMMANDE : 11 colonnes grises, 2 jaunes, 1 résultat
   CDE_COLS: ['Réf.', 'Article', 'Taille', 'Dépôt', 'Boutique GP', 'Boutique VIP', 'TOTAL',
-             'Reçu (saison)', 'Vendu + remis (saison)', 'Prix d\'achat HT (CRM)', 'Alerte',
-             '➕ Reçu (quantité)', 'Prix d\'achat HT (si différent)', 'Résultat'],
+             'Reçu (saison)', 'Vendu + remis (saison)', 'Prix d\'achat HT (actuel)', 'Alerte',
+             '➕ Reçu (quantité)', 'Prix d\'achat HT (facture)', 'Résultat'],
   CDE_GRIS: 11, CDE_JAUNE: 2,
   // 2_BOUTIQUE : 11 colonnes grises, 5 jaunes (3 comptages, 2 sorties du dépôt), 1 résultat
   BTQ_COLS: ['Réf.', 'Article', 'Taille', 'Dépôt', 'Boutique GP', 'Boutique VIP',
              'Vendu GP (dernier match)', 'Vendu VIP (dernier match)', 'Add-ons remis GP (dernier match)',
              'Réassort conseillé', 'Prix de vente TTC',
-             'Compté GP', 'Compté VIP', 'Compté dépôt',
-             '➡️ Sortir du dépôt vers GP (ajout)', '➡️ Sortir du dépôt vers VIP (ajout)', 'Résultat'],
+             'Compté GP (0 si aucun)', 'Compté VIP (0 si aucun)', 'Compté dépôt (0 si aucun)',
+             '➡️ Pièces à AJOUTER en GP (prises au dépôt)', '➡️ Pièces à AJOUTER en VIP (prises au dépôt)', 'Résultat'],
   BTQ_GRIS: 11, BTQ_JAUNE: 5,
+  // 26/11 : colonnes grises G–K (vendu, add-ons, réassort, prix) groupées et repliées à la création du groupe :
+  // la case « ✅ Valider » de 2_BOUTIQUE quitte H4 (masquée une fois G–K repliées) pour Q4.
+  BTQ_VALIDER: 'Q4', BTQ_GROUPE: { col: 7, nb: 5 },
+  // Renommages sans changement de colonne : l'en-tête est réécrit sur place, les saisies en cours sont gardées.
+  // (2_BOUTIQUE n'y figure pas exprès : sa ligne 4 change, l'onglet est refait.)
+  ANCIENS_ENTETES: { 'Prix d\'achat HT (si différent)': 'Prix d\'achat HT (facture)', 'Prix d\'achat HT (CRM)': 'Prix d\'achat HT (actuel)' },
   JRN_COLS: ['Date', 'Match', 'Boutique', 'Type', 'Réf.', 'Article', 'Taille', 'Qté', 'PU TTC', 'CA TTC', 'Paiement', 'Remise', 'Remarque'],
   CONTROLES: '25_CONTROLES_CAISSE',
+  APR_COLS: ['Boutique', 'Articles', 'CA TTC tablette', 'dont CB', 'dont espèces', 'Offerts (articles)',
+             'CB relevé TPE (ticket de fin)', 'Espèces comptées (SANS les 30 € du fond)', 'Écart CB', 'Écart espèces'],
   ENTETES_CONTROLES: ['horodatage', 'match', 'boutique', 'CA_tablette_TTC', 'CB_tablette', 'CB_TPE', 'ecart_CB',
                       'especes_tablette', 'especes_comptees', 'ecart_especes', 'offerts_articles', 'controle_par', 'commentaire', 'statut'],
   // 25/11/2026 : tolérances de clôture (au-delà : « écart à expliquer »). CB : paiement électronique, 0 toléré.
@@ -83,7 +91,7 @@ const FB = {
   ORDRE_TAILLES: ['116', '128', '140', '152', '164', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', '3XL', 'TU', ''],
   SORTIES_MATCH: ['VENTE_COMPTOIR', 'OFFERT_CAISSE'],
   JAUNE: '#fff2cc', GRIS: '#eef1f5', NUIT: '#0b1f3a', BLEU: '#1f5fbf', ROUGE: '#b3261e', VERT: '#15803d',
-  NOTICE_VERSION: 'fb-notice-v4-memos',
+  NOTICE_VERSION: 'fb-notice-v5-revue',
   MEMO_FOND: '#fff8e1', MEMO_BORD: '#e0b84d', MEMO_PX_LIGNE: 18
 };
 
@@ -93,42 +101,54 @@ const FB = {
  */
 const FB_MEMOS = {
   '1_COMMANDE': [
-    'BUT : faire entrer une livraison au DÉPÔT (stock et facture partent dans le CRM).',
+    'BUT : faire entrer une livraison au DÉPÔT (le stock du club et la facture sont mis à jour).',
     'QUAND : à chaque livraison reçue.',
-    'COMMENT : prénom en B4 · fournisseur en E4 · n° de facture en J4 (les deux obligatoires) · quantité reçue dans « ➕ Reçu (quantité) », sur la ligne de l\'article et de la taille.',
-    'PRIX : « Prix d\'achat HT (si différent) » seulement s\'il a changé (sinon le prix du CRM est pris) · puis cocher « ✅ Valider » (H4).',
-    'EXEMPLE : 50 écharpes, facture FA26081234 → E4 le fournisseur, J4 « FA26081234 », ligne ECH-TU « ➕ Reçu » = 50, Valider.',
-    'ATTENTION : tout entre au DÉPÔT, rien en boutique. Pour mettre des pièces en boutique GP / VIP → onglet 2_BOUTIQUE.',
-    'RÉSULTAT : ✅ = enregistré et case vidée · ❌ = rien enregistré, lire le message, corriger, recocher « Valider ».'
+    'COMMENT : prénom en B4 · fournisseur en E4 · n° de facture en J4 (les deux obligatoires).',
+    'QUANTITÉ : « ➕ Reçu (quantité) », sur la ligne de l\'article et de la taille.',
+    'PRIX : écris TOUJOURS le prix HT de la facture dans « Prix d\'achat HT (facture) », même s\'il n\'a pas changé.',
+    'VALIDER : coche « ✅ Valider » (H4) le jour même.',
+    'EXEMPLE : 50 écharpes à 7 € HT, facture FA26081234 → J4 « FA26081234 », ligne ECH-TU : 50 et 7, Valider.',
+    'ATTENTION : tout entre au DÉPÔT. Pour mettre des pièces en boutique GP / VIP → onglet 2_BOUTIQUE.',
+    'RÉSULTAT : ✅ = enregistré, case vidée · ❌ = rien enregistré : lis le message, corrige, recoche « Valider ».'
   ],
   '2_BOUTIQUE': [
     'BUT : compter le stock (GP, VIP, dépôt) et préparer les boutiques pour le match.',
-    'QUAND : avant chaque match (J-2 / J-1), et après le match une fois « Synchroniser tout » fait sur les deux tablettes. Jamais pendant un match.',
-    'COMMENT : prénom en B4 · « Compté GP / Compté VIP / Compté dépôt » = ce que tu as sous les yeux · case vide = pas compté · écris 0 s\'il n\'y en a plus.',
-    'SORTIR : « ➡️ Sortir du dépôt vers GP / VIP » = pièces que tu AJOUTES (pas le total) · puis cocher « ✅ Valider » (H4). Le comptage passe avant la sortie.',
-    'ASTUCE : cocher « 📝 Proposer le réassort » (L4) pré-remplit les sorties d\'après le dernier match : vérifie, corrige, puis Valider.',
-    'EXEMPLE : dépôt compté 12 écharpes, sortir 5 vers GP → dépôt 7, GP +5.',
+    'QUAND : avant le match (J-2 / J-1) ou après « Synchroniser tout » sur les 2 tablettes. Jamais en match.',
+    'AVANT : prénom en B4 · tablettes synchronisées et fermées · pas de bandeau rouge en ligne 6.',
+    'TÉMOIN : inventaire complet à deux, prénoms des deux en B4, feuille papier signée.',
+    'INVENTAIRE COMPLET : remplis TOUTES les cases « Compté », 0 compris. Case vide = pas compté : l\'ancien reste.',
+    'ORDRE : 1) compte SANS rien déplacer, Valider (Q4), attends les ✅ · 2) déplace, « Pièces à AJOUTER », Valider.',
+    'CASSE / PERTE : une pièce abîmée se déclare AVANT de compter (prévenir Clément), sinon : écart inexpliqué.',
+    'ADD-ONS : les pièces de la ligne 7 « à remettre » restent en GP : ajoute-les dans « Pièces à AJOUTER en GP ».',
+    'RÉASSORT : coche L4 AVANT toute saisie à la main (il remplace ce qui est écrit), vérifie, puis Valider.',
+    'GROS INVENTAIRE : la validation peut se faire en 2–3 fois. S\'il reste des ⏸, attends 2 min et recoche Valider.',
+    'RÉSULTAT : tout doit être ✅. Valide le jour même ; sinon efface tes chiffres et recompte.',
     'APRÈS : sur CHAQUE tablette, en wifi : « Mettre à jour le catalogue » puis « 🎫 Charger le match ».'
   ],
   '3_JOURNAL_VENTES': [
-    'BUT : voir chaque vente des tablettes (GP, VIP, hors match) et chaque add-on Tickie remis au stand (lignes bleues).',
-    'RIEN À SAISIR : l\'onglet se met à jour tout seul toutes les 10 min, une fois « Synchroniser tout » fait sur la tablette.',
-    'SI UNE VENTE MANQUE : la tablette n\'a pas encore fait « Synchroniser tout », ou la vente n\'a pas été saisie en caisse → prévenir Clément.',
-    'À SAVOIR : les ventes en ligne ne sont pas ici (suivies dans le CRM) · ligne rose ⚠ = article absent du catalogue → prévenir Clément.'
+    'BUT : voir chaque vente des tablettes (GP, VIP, hors match).',
+    'LIGNES BLEUES : article payé avec le billet (add-on), remis au stand GP.',
+    'RIEN À SAISIR : mise à jour toute seule toutes les 10 min, après « Synchroniser tout » sur la tablette.',
+    'SI UNE VENTE MANQUE : « Synchroniser tout » pas fait, ou vente pas saisie en caisse → prévenir Clément.',
+    'À SAVOIR : ventes en ligne absentes d\'ici · ligne rose ⚠ = article absent du catalogue → prévenir Clément.'
   ],
   '4_TOP_VENTES': [
-    'BUT : voir ce qui se vend le mieux (à gauche, top 5 surligné) et le bilan de chaque match (à droite : CA GP, VIP, total).',
+    'BUT : voir ce qui se vend le mieux (à gauche, top 5 surligné) et le bilan de chaque match (à droite).',
     'RIEN À SAISIR : l\'onglet se met à jour tout seul toutes les 10 min.',
     'SERT À : préparer le réassort (2_BOUTIQUE) et les prochaines commandes (1_COMMANDE).',
-    'À SAVOIR : « Vendu » = ventes de caisse (GP + VIP + hors match) ; les add-ons Tickie remis sont dans une colonne à part.'
+    'À SAVOIR : « Vendu » = ventes de caisse (GP + VIP + hors match).',
+    'ADD-ONS REMIS : articles payés avec le billet (add-on) et remis au stand, comptés à part.'
   ],
   '5_APRES_MATCH': [
     'BUT : contrôler la caisse de chaque boutique (GP et VIP). C\'est le seul contrôle de caisse à faire.',
-    'QUAND : le lendemain du match, après « Synchroniser tout » sur les deux tablettes (sinon le contrôle est refusé).',
-    'COMMENT : match en B4 · prénom en E4 · « CB relevé TPE » = total du ticket de fin de journée (D177 2668544-001 = GP, D177 2668543-001 = VIP).',
-    'ESPÈCES : « Espèces comptées » = espèces dans la caisse MOINS les 30 € de fond de caisse · puis cocher « ✅ Valider le contrôle » (H4).',
-    'TOLÉRANCE : 0 €. Tout écart (CB ou espèces) est enregistré « ❌ écart à expliquer » : écris l\'explication dans « Commentaire » (B5) avant de valider.',
-    'UNE SEULE FOIS : un contrôle par match ; pour corriger, écrire en « Commentaire » « Correction : motif », puis recocher.'
+    'LE SOIR DU MATCH : espèces comptées à deux (bénévole + Méline), sous enveloppe signée avec le ticket TPE.',
+    'QUAND : le lendemain, avec les chiffres de l\'enveloppe, après « Synchroniser tout » sur les 2 tablettes.',
+    'COMMENT : match déjà en B4 (n\'y touche pas) · ton prénom en E4 · « CB relevé TPE » = total du ticket de fin.',
+    'TPE : D177 2668544-001 = GP, D177 2668543-001 = VIP (étiquette sur le terminal).',
+    'ESPÈCES : « Espèces comptées » = espèces de l\'enveloppe MOINS les 30 € de fond de caisse.',
+    'AVANT DE COCHER : regarde les écarts ; s\'ils ne sont pas à 0, écris d\'abord pourquoi en B5.',
+    'TOLÉRANCE : 0 €. Tout écart (CB ou espèces) = « ❌ écart à expliquer ». Puis coche « ✅ Valider » (H4).',
+    'UNE SEULE FOIS : un contrôle par match ; pour corriger, écris en B5 « Correction : motif », puis recoche.'
   ]
 };
 
@@ -212,7 +232,7 @@ function fb_surModification(e) {
   const coche = e.range.getValue() === true;
   const msg = {};
   msg[FB.T.CDE + '|H4'] = 'A5';
-  msg[FB.T.BTQ + '|H4'] = 'A5';
+  msg[FB.T.BTQ + '|' + FB.BTQ_VALIDER] = 'A5';
   msg[FB.T.BTQ + '|L4'] = 'A5';
   msg[FB.T.APR + '|H4'] = 'A6';
   if (nom === FB.T.APR && a1 === 'B4') {
@@ -254,9 +274,9 @@ function fb_traiterDemandes_(ss) {
     let msg; try { msg = fb_proposerReassort_(btq); } catch (err) { msg = '❌ ' + err.message; }
     btq.getRange('L4').setValue(false); btq.getRange('A5').setValue(msg);
   }
-  if (btq && btq.getRange('H4').getValue() === true) {
+  if (btq && btq.getRange(FB.BTQ_VALIDER).getValue() === true) {
     let msg; try { msg = fb_validerBoutique_(btq); } catch (err) { msg = '❌ ' + err.message; }
-    btq.getRange('H4').setValue(false); btq.getRange('A5').setValue(msg); fait = true;
+    btq.getRange(FB.BTQ_VALIDER).setValue(false); btq.getRange('A5').setValue(msg); fait = true;
   }
   const apr = ss.getSheetByName(FB.T.APR);
   if (apr && apr.getRange('H4').getValue() === true) {
@@ -295,7 +315,7 @@ function fb_validerCommande_(sh) {
         fb_appel_(enregistrerReception, { lignes: [{ ref: o.ref, R: o.q }], prix_achat: o.prix,
           fournisseur: fournisseur, reference: facture }, auteur, '', o.ref);
       } catch (err) {
-        if (fb_estVerrou_(err)) { arret = 'verrou'; fb_resultat_(sh, ligne, nbC, '⏸ CRM occupé par une tablette : rien n\'a été enregistré, recocher « Valider » dans 2 minutes'); continue; }
+        if (fb_estVerrou_(err)) { arret = 'verrou'; fb_resultat_(sh, ligne, nbC, '⏸ stock du club occupé par une tablette : rien n\'a été enregistré, recocher « Valider » dans 2 minutes'); continue; }
         fb_resultat_(sh, ligne, nbC, '❌ ' + err.message + ' — rien n\'a été enregistré pour cette ligne');
         continue;
       }
@@ -306,9 +326,9 @@ function fb_validerCommande_(sh) {
   });
   const pb = plan.resultats.filter(r => r && String(r).indexOf('❌') === 0).length;
   if (nb && !pb && !arret) { sh.getRange('E4').clearContent(); sh.getRange('J4').clearContent(); }
-  return (nb ? '✅ ' : '⚠ ') + heure + ' — ' + nb + ' réception(s) enregistrée(s) dans le CRM par ' + auteur +
+  return (nb ? '✅ ' : '⚠ ') + heure + ' — ' + nb + ' réception(s) enregistrée(s) dans le stock du club par ' + auteur +
          (pb ? ' · ⚠ ' + pb + ' ligne(s) refusée(s) : voir la colonne Résultat.' : '') +
-         (arret ? ' · ⏸ CRM occupé ou traitement long : recocher « Valider » dans 2 minutes pour finir.' : '.');
+         (arret ? ' · ⏸ stock du club occupé ou traitement long : recocher « Valider » dans 2 minutes pour finir.' : '.');
 }
 
 /**
@@ -321,7 +341,7 @@ function fb_planCommande(saisies, produits, aFacture) {
     const vide = (s.q === '' || s.q === null || s.q === undefined) && (s.prix === '' || s.prix === null || s.prix === undefined);
     if (vide) { resultats.push(null); return; }
     const x = produits.find(p => p.ref === s.ref);
-    if (!x) { resultats.push('❌ référence inconnue du CRM'); return; }
+    if (!x) { resultats.push('❌ référence inconnue du stock du club'); return; }
     const q = Number(String(s.q).replace(',', '.'));
     if (!(q > 0) || Math.round(q) !== q) { resultats.push('❌ quantité reçue : nombre entier positif'); return; }
     const prixSaisi = s.prix === '' || s.prix === null || s.prix === undefined ? null : Number(String(s.prix).replace(',', '.'));
@@ -339,6 +359,10 @@ function fb_planCommande(saisies, produits, aFacture) {
 function fb_validerBoutique_(sh) {
   const auteur = String(sh.getRange('B4').getValue()).trim();
   if (!auteur) throw new Error('Indiquez votre prénom en B4, puis cochez à nouveau « Valider ».');
+  // 26/11 : aucune validation (comptage ni sortie) tant qu'une vente des tablettes n'est pas arrivée :
+  // une vente faite avant le comptage mais synchronisée après serait déduite deux fois. Rien n'est écrit, rien n'est vidé.
+  const msgNonSync = fb_refusNonSync_(fb_donnees_());
+  if (msgNonSync) throw new Error(msgNonSync);
   const n = sh.getLastRow() - FB.HDR;
   if (n < 1) return 'Aucune ligne.';
   const nbC = FB.BTQ_COLS.length;
@@ -375,7 +399,7 @@ function fb_validerBoutique_(sh) {
           }
         } catch (err) {
           if (fb_estVerrou_(err)) arret = 'verrou';
-          plan.resultats[o.i] = (fb_estVerrou_(err) ? '⏸ CRM occupé par une tablette' : '❌ ' + err.message) +
+          plan.resultats[o.i] = (fb_estVerrou_(err) ? '⏸ stock du club occupé par une tablette' : '❌ ' + err.message) +
                                 (faits.length ? ' — déjà enregistré : ' + faits.join(', ') : ' — rien n\'a été enregistré') +
                                 ' — vérifier puis revalider';
           fb_resultat_(sh, ligne, nbC, plan.resultats[o.i]);
@@ -391,18 +415,18 @@ function fb_validerBoutique_(sh) {
     });
   });
   const pb = plan.resultats.filter(r => r && String(r).indexOf('❌') === 0).length;
-  return (nb ? '✅ ' : '⚠ ') + heure + ' — ' + nb + ' article(s) enregistré(s) dans le CRM par ' + auteur +
+  return (nb ? '✅ ' : '⚠ ') + heure + ' — ' + nb + ' article(s) enregistré(s) dans le stock du club par ' + auteur +
          (pb ? ' · ⚠ ' + pb + ' ligne(s) refusée(s) : voir la colonne Résultat.' : '.') +
-         (arret ? ' · ⏸ CRM occupé ou traitement long : recocher « Valider » dans 2 minutes pour finir.' : '') +
+         (arret ? ' · ⏸ stock du club occupé ou traitement long : recocher « Valider » dans 2 minutes pour finir.' : '') +
          (nb ? ' Tablettes : « Mettre à jour le catalogue » puis « Charger le match » pour prendre ce stock.' : '');
 }
 
 /**
  * Plan d'une ligne de 2_BOUTIQUE (sans écriture). Exporté pour les tests.
  * saisies : { ref, cGP, cVIP, cR, aGP, aVIP } — case vide = non compté / rien à sortir.
- *  1. « Compté GP / VIP / dépôt » : ce qu'Élise a sous les yeux. Une seule opération d'inventaire
+ *  1. « Compté GP / VIP / dépôt (0 si aucun) » : ce qu'Élise a sous les yeux. Une seule opération d'inventaire
  *     (enregistrerInventaire) corrige le CRM de l'écart (AJUSTEMENT_INVENTAIRE) ; le non-compté est laissé vide.
- *  2. « Sortir du dépôt vers GP / VIP » = nombre de pièces AJOUTÉES en boutique, APRÈS le comptage :
+ *  2. « Pièces à AJOUTER en GP / VIP (prises au dépôt) » = nombre de pièces AJOUTÉES en boutique, APRÈS le comptage :
  *     TRANSFERT dépôt → boutique (enregistrerRepartition). Le dépôt (compté s'il vient de l'être) doit suffire.
  *  Case à 0 dans une sortie : vidée sans mouvement.
  *  La ligne est refusée entière si un contrôle échoue : rien n'est appliqué à moitié.
@@ -421,7 +445,7 @@ function fb_planBoutique(saisies, produits) {
     const toutes = [c.B1, c.B2, c.R, a1, a2];
     if (toutes.every(v => v.vide)) { resultats.push(null); return; }
     const x = produits.find(p => p.ref === s.ref);
-    if (!x) { resultats.push('❌ référence inconnue du CRM'); return; }
+    if (!x) { resultats.push('❌ référence inconnue du stock du club'); return; }
     if (toutes.some(v => v.invalide)) { resultats.push('❌ nombres entiers positifs uniquement'); return; }
 
     const ops = [];
@@ -468,11 +492,11 @@ function fb_proposerReassort_(sh) {
   refs.forEach((ref, i) => {
     const s = D.reassort[ref];
     if (!s) return;
-    if (s.gp > 0) { sh.getRange(FB.HDR + 1 + i, g + 4).setValue(s.gp); pieces += s.gp; }     // « Sortir … vers GP »
-    if (s.vip > 0) { sh.getRange(FB.HDR + 1 + i, g + 5).setValue(s.vip); pieces += s.vip; }  // « Sortir … vers VIP »
+    if (s.gp > 0) { sh.getRange(FB.HDR + 1 + i, g + 4).setValue(s.gp); pieces += s.gp; }     // « Pièces à AJOUTER en GP »
+    if (s.vip > 0) { sh.getRange(FB.HDR + 1 + i, g + 5).setValue(s.vip); pieces += s.vip; }  // « Pièces à AJOUTER en VIP »
     if (s.gp > 0 || s.vip > 0) lignes++;
   });
-  return lignes ? '📝 Réassort proposé sur ' + lignes + ' article(s) (' + pieces + ' pièce(s)) dans « ➡️ Sortir du dépôt » (nombre de pièces à ajouter). Vérifier, corriger si besoin, puis cocher « ✅ Valider ».'
+  return lignes ? '📝 Réassort proposé sur ' + lignes + ' article(s) (' + pieces + ' pièce(s)) dans « ➡️ Pièces à AJOUTER ». Vérifier, corriger si besoin, puis cocher « ✅ Valider ».'
                 : 'Rien à réassortir : les boutiques sont au niveau du dernier match (ou le dépôt est vide).';
 }
 
@@ -753,15 +777,23 @@ function fb_ordre_(produits) {
     String(a.modele).localeCompare(String(b.modele), 'fr') || rang(a.taille) - rang(b.taille) || String(a.ref).localeCompare(String(b.ref)));
 }
 
-/** Tableau à saisie : les colonnes grises sont réécrites, les saisies jaunes sont conservées par référence. */
-function fb_tableauSaisie_(ss, nom, titre, cols, nbGris, nbJaune, lignesGrises, entete) {
+/**
+ * Tableau à saisie : les colonnes grises sont réécrites, les saisies jaunes sont conservées par référence.
+ * valider : [cellule du libellé, case à cocher] de « ✅ Valider » (défaut G4 / H4).
+ */
+function fb_tableauSaisie_(ss, nom, titre, cols, nbGris, nbJaune, lignesGrises, entete, valider) {
   let sh = ss.getSheetByName(nom);
   const nbC = cols.length;
-  // changement de colonnes (version précédente du fichier) : l'onglet est refait à neuf
+  valider = valider || ['G4', 'H4'];
+  // changement de colonnes (version précédente du fichier) : l'onglet est refait à neuf,
+  // sauf simple renommage connu (FB.ANCIENS_ENTETES, même position) : en-tête réécrit sur place, saisies gardées.
   if (sh) {
     const lu = sh.getRange(FB.HDR, 1, 1, Math.max(nbC, sh.getLastColumn())).getValues()[0].map(x => String(x).trim());
     const attendu = cols.concat(new Array(Math.max(0, lu.length - nbC)).fill(''));
-    if (lu.some((x, i) => x !== attendu[i])) { ss.deleteSheet(sh); sh = null; }
+    const diff = lu.map((x, i) => i).filter(i => lu[i] !== attendu[i]);
+    if (diff.length && diff.every(i => FB.ANCIENS_ENTETES[lu[i]] === attendu[i])) {
+      diff.forEach(i => sh.getRange(FB.HDR, i + 1).setValue(attendu[i]));
+    } else if (diff.length) { ss.deleteSheet(sh); sh = null; }
   }
   const neuf = !sh;
   if (neuf) {
@@ -769,8 +801,10 @@ function fb_tableauSaisie_(ss, nom, titre, cols, nbGris, nbJaune, lignesGrises, 
     sh.getRange('A1').setValue(titre).setFontSize(14).setFontWeight('bold').setFontColor(FB.NUIT);
     sh.getRange('A4').setValue('Saisi par :').setFontWeight('bold').setHorizontalAlignment('right');
     sh.getRange('B4').setBackground(FB.JAUNE).setFontWeight('bold');
-    sh.getRange('G4').setValue('✅ Valider →').setFontWeight('bold').setHorizontalAlignment('right');
-    sh.getRange('H4').insertCheckboxes().setBackground(FB.JAUNE);
+    const lib = sh.getRange(valider[0]);
+    if (valider[0].indexOf(':') !== -1) lib.merge();
+    lib.setValue('✅ Valider →').setFontWeight('bold').setHorizontalAlignment('right');
+    sh.getRange(valider[1]).insertCheckboxes().setBackground(FB.JAUNE).setHorizontalAlignment('left');
     sh.getRange('A5').setValue('Prêt.').setFontStyle('italic');
     sh.getRange(FB.HDR, 1, 1, nbC).setValues([cols]).setFontWeight('bold').setBackground(FB.NUIT).setFontColor('#ffffff')
       .setWrap(true).setVerticalAlignment('middle').setHorizontalAlignment('center');
@@ -814,7 +848,7 @@ function fb_tableauSaisie_(ss, nom, titre, cols, nbGris, nbJaune, lignesGrises, 
     fb_protegerAvertissement_(sh, 'fb_gris_' + nom, sh.getRange(r0, 1, Math.max(lignesGrises.length, 1), nbGris));
   }
   fb_memo_(sh, nbC, FB_MEMOS[nom]);
-  sh.getRange('A3').setValue('Données du CRM lues le ' + sb_fmt_(new Date()) + ' (mise à jour automatique toutes les ' + FB.FREQ_MIN + ' min)')
+  sh.getRange('A3').setValue('Stock du club lu le ' + sb_fmt_(new Date()) + ' (mise à jour automatique toutes les ' + FB.FREQ_MIN + ' min)')
     .setFontColor('#888888').setFontSize(9);
   return sh;
 }
@@ -847,6 +881,55 @@ function fb_memo_(sh, nbCols, lignes) {
   cadre.setBorder(true, true, true, true, false, false, FB.MEMO_BORD, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
   const nb = lignes.length + (fig > 0 && fig < nbCols ? 0 : 1);
   sh.setRowHeight(2, nb * FB.MEMO_PX_LIGNE + 14);
+  fb_groupeUnique_(sh, 'ligne', 2, 1, false);           // mémo repliable (groupe créé une fois, ouvert)
+}
+
+/**
+ * Groupe de lignes ou de colonnes, créé UNE seule fois (idempotent) : s'il existe déjà, rien n'est touché
+ * (un groupe déplié par Élise le reste). replier : seulement au moment où le groupe est créé.
+ */
+function fb_groupeUnique_(sh, sens, debut, nb, replier) {
+  try {
+    let g = null;
+    try { g = sens === 'ligne' ? sh.getRowGroup(debut, 1) : sh.getColumnGroup(debut, 1); } catch (e) { g = null; }
+    if (g) return false;
+    if (sens === 'ligne') sh.getRange(debut, 1, nb, 1).shiftRowGroupDepth(1);
+    else sh.getRange(1, debut, 1, nb).shiftColumnGroupDepth(1);
+    g = sens === 'ligne' ? sh.getRowGroup(debut, 1) : sh.getColumnGroup(debut, 1);
+    if (g) { if (replier) g.collapse(); else g.expand(); }
+    return true;
+  } catch (e) { console.warn('Groupe ' + sens + ' ' + sh.getName() + ' : ' + e.message); return false; }
+}
+
+/**
+ * Bandeau « saisies non validées » (ligne 3, toujours visible : colonne A figée). Pas de refus automatique.
+ * Compte les lignes dont une case jaune est remplie, hors validation en cours (case Valider cochée).
+ */
+function fb_alerteSaisies_(sh, nbGris, nbJaune, nbC, caseValider, conseil) {
+  const n = sh.getLastRow() - FB.HDR;
+  const enCours = sh.getRange(caseValider).getValue() === true;
+  const nb = n < 1 || enCours ? 0 : sh.getRange(FB.HDR + 1, nbGris + 1, n, nbJaune).getValues()
+    .filter(r => r.some(v => v !== '' && v !== null && v !== undefined)).length;
+  const a3 = sh.getRange('A3');
+  const lu = 'Stock du club lu le ' + sb_fmt_(new Date()) + ' (mise à jour automatique toutes les ' + FB.FREQ_MIN + ' min)';
+  if (nb) {
+    a3.setValue('⚠ ' + nb + ' ligne(s) saisie(s) mais pas validée(s) : coche « ✅ Valider » aujourd\'hui, ou ' + conseil + '.   ·   ' + lu)
+      .setFontColor(FB.ROUGE).setFontSize(10).setFontWeight('bold');
+    sh.getRange(3, 1, 1, nbC).setBackground('#fde2e1');
+  } else {
+    a3.setValue(lu).setFontColor('#888888').setFontSize(9).setFontWeight('normal');
+    sh.getRange(3, 1, 1, nbC).setBackground(null);
+  }
+  return nb;
+}
+
+/** Message de refus si des ventes des tablettes ne sont pas encore arrivées (D.nonSync), sinon ''. */
+function fb_refusNonSync_(D) {
+  const ns = (D && D.nonSync) || {};
+  if (!Object.keys(ns).some(b => ns[b] > 0)) return '';
+  return 'Des ventes des tablettes ne sont pas encore arrivées (GP : ' + (ns.GP || 0) + ', VIP : ' + (ns.VIP || 0) + '). ' +
+         'Fais « Synchroniser tout » sur chaque tablette, attends que le bandeau rouge en A6 disparaisse (10 min max), ' +
+         'puis recoche Valider. Rien n\'a été enregistré.';
 }
 
 function fb_construireCommande_(ss, D, ordre) {
@@ -867,6 +950,7 @@ function fb_construireCommande_(ss, D, ordre) {
     });
   sh.getRange(FB.HDR + 1, 10, Math.max(lignes.length, 1), 1).setNumberFormat('#,##0.00 €');
   fb_couleursAlertes_(sh, 11, lignes.length);
+  fb_alerteSaisies_(sh, FB.CDE_GRIS, FB.CDE_JAUNE, FB.CDE_COLS.length, 'H4', 'efface tes chiffres');
   const val = { R: 0, B1: 0, B2: 0 }, sansCout = [];
   D.produits.forEach(x => { ['R', 'B1', 'B2'].forEach(p => { val[p] += Math.max(0, x[p]) * (x.cout || 0); }); if (!(x.cout > 0) && x.R + x.B1 + x.B2 > 0) sansCout.push(x.ref); });
   sh.getRange('A6').setValue('Valeur du stock au coût d\'achat HT : dépôt ' + fb_eur_(val.R) + ' · GP ' + fb_eur_(val.B1) + ' · VIP ' + fb_eur_(val.B2) +
@@ -887,26 +971,31 @@ function fb_construireBoutique_(ss, D, ordre) {
   });
   const sh = fb_tableauSaisie_(ss, FB.T.BTQ, '2 · BOUTIQUES GP / VIP ET DÉPÔT — inventaire et préparation du match',
     FB.BTQ_COLS, FB.BTQ_GRIS, FB.BTQ_JAUNE, lignes, sh => {
-      sh.getRange('I4').setValue('📝 Proposer le réassort →').setFontWeight('bold').setHorizontalAlignment('right');
-      sh.getRange('I4:K4').merge();
+      // ligne 4, colonnes G–K repliées : [Proposer le réassort →] (D–F) L4 ☐ … [✅ Valider →] (O–P) Q4 ☐
+      sh.getRange('D4:F4').merge();
+      sh.getRange('D4').setValue('📝 Proposer le réassort →').setFontWeight('bold').setHorizontalAlignment('right');
       sh.getRange('L4').insertCheckboxes().setBackground(FB.JAUNE);
-      [110, 200, 60, 70, 85, 85, 85, 85, 95, 200, 80, 75, 75, 80, 110, 110, 400].forEach((w, i) => sh.setColumnWidth(i + 1, w));
+      [110, 200, 60, 70, 85, 85, 85, 85, 95, 200, 80, 85, 85, 90, 120, 120, 400].forEach((w, i) => sh.setColumnWidth(i + 1, w));
+      sh.setRowHeight(FB.HDR, 64);
       sh.getRange(FB.HDR, 5).setBackground(FB.BLEU); sh.getRange(FB.HDR, 6).setBackground(FB.ROUGE);
-      // Compté GP / Sortir vers GP en bleu, Compté VIP / Sortir vers VIP en rouge
+      // Compté GP / Pièces à AJOUTER en GP en bleu, Compté VIP / Pièces à AJOUTER en VIP en rouge
       sh.getRange(FB.HDR, 12).setBackground(FB.BLEU); sh.getRange(FB.HDR, 15).setBackground(FB.BLEU);
       sh.getRange(FB.HDR, 13).setBackground(FB.ROUGE); sh.getRange(FB.HDR, 16).setBackground(FB.ROUGE);
-    });
+    }, ['O4:P4', FB.BTQ_VALIDER]);
+  // colonnes grises G–K (vendu, add-ons, réassort, prix) : groupe créé une fois et replié à sa création
+  fb_groupeUnique_(sh, 'colonne', FB.BTQ_GROUPE.col, FB.BTQ_GROUPE.nb, true);
   sh.getRange(FB.HDR + 1, 11, Math.max(lignes.length, 1), 1).setNumberFormat('#,##0.00 €');
   const mt = fb_matchTablettes_();
   sh.getRange('A6').setValue('Dernier match vendu : ' + (D.dernierMatch || '—') + '   ·   Match des tablettes : ' + (mt || '—') +
     fb_texteNonSync_(D)).setFontColor(Object.keys(D.nonSync).length ? FB.ROUGE : '#555555').setFontSize(9).setFontWeight('bold');
   const ar = Object.keys(D.aRemettre);
   sh.getRange('A7').setValue(ar.length
-    ? '🎁 Add-ons Tickie à remettre en boutique GP (payés en ligne, à garder en stock GP) : ' +
+    ? '🎁 Add-ons (articles payés avec le billet) à remettre en boutique GP, à garder en stock GP : ' +
       ar.map(k => D.aRemettre[k].q + ' ' + D.aRemettre[k].nom + (D.aRemettre[k].passes ? ' (dont ' + D.aRemettre[k].passes + ' de matchs passés : à vérifier)' : '')).join(' · ') +
       (ar.some(k => /maillot/.test(k)) ? ' — maillots : taille choisie au retrait' : '')
-    : '🎁 Aucun add-on Tickie en attente de retrait.').setFontSize(9).setFontWeight('bold').setFontColor(ar.length ? '#8a6d00' : '#555555');
+    : '🎁 Aucun add-on (article payé avec le billet) en attente de retrait.').setFontSize(9).setFontWeight('bold').setFontColor(ar.length ? '#8a6d00' : '#555555');
   fb_couleursAlertes_(sh, 10, lignes.length);
+  fb_alerteSaisies_(sh, FB.BTQ_GRIS, FB.BTQ_JAUNE, FB.BTQ_COLS.length, FB.BTQ_VALIDER, 'efface et recompte');
 }
 
 function fb_construireJournal_(ss, D) {
@@ -973,27 +1062,36 @@ function fb_construireApres_(ss, D) {
   if (!sh) {
     sh = ss.insertSheet(FB.T.APR);
     sh.getRange('A1').setValue('5 · APRÈS LE MATCH — contrôle de caisse').setFontSize(14).setFontWeight('bold').setFontColor(FB.NUIT);
-    sh.getRange('A4').setValue('Match :').setFontWeight('bold').setHorizontalAlignment('right');
+    sh.getRange('A4').setFontWeight('bold').setHorizontalAlignment('right');
     sh.getRange('B4:C4').merge().setBackground(FB.JAUNE).setFontWeight('bold');
-    sh.getRange('D4').setValue('Contrôlé par :').setFontWeight('bold').setHorizontalAlignment('right');
+    sh.getRange('D4').setFontWeight('bold').setHorizontalAlignment('right');
     sh.getRange('E4').setBackground(FB.JAUNE);
     sh.getRange('F4:G4').merge().setValue('✅ Valider le contrôle →').setFontWeight('bold').setHorizontalAlignment('right');
     sh.getRange('H4').insertCheckboxes().setBackground(FB.JAUNE);
     sh.getRange('A5').setValue('Commentaire :').setFontWeight('bold').setHorizontalAlignment('right');
     sh.getRange('B5:K5').merge().setBackground(FB.JAUNE);
     sh.getRange('A6').setValue('Prêt.').setFontStyle('italic');
-    const H = ['Boutique', 'Articles', 'CA TTC tablette', 'dont CB', 'dont espèces', 'Offerts (articles)', 'CB relevé TPE', 'Espèces comptées', 'Écart CB', 'Écart espèces'];
-    sh.getRange(8, 1, 1, H.length).setValues([H]).setFontWeight('bold').setBackground(FB.NUIT).setFontColor('#ffffff').setWrap(true);
+    sh.getRange(8, 1, 1, FB.APR_COLS.length).setFontWeight('bold').setBackground(FB.NUIT).setFontColor('#ffffff').setWrap(true);
     [130, 80, 120, 100, 100, 100, 120, 120, 100, 110].forEach((w, i) => sh.setColumnWidth(i + 1, w));
     sh.setHiddenGridlines(true);
   }
+  // 26/11 : libellés réécrits à chaque passage (un onglet existant prend les nouveaux libellés, rien n'est décalé)
+  sh.getRange('A4').setValue('Match (liste) :');
+  sh.getRange('D4').setValue('Ton prénom :');
+  sh.getRange(8, 1, 1, FB.APR_COLS.length).setValues([FB.APR_COLS]);
   fb_memo_(sh, 11, FB_MEMOS[FB.T.APR]);   // A–K : tableau A–J et commentaire B5:K5
   const liste = D.matchs.map(m => m.match);
   if (liste.length) sh.getRange('B4').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(liste.slice(0, 50), true).setAllowInvalid(true).build());
   let match = String(sh.getRange('B4').getValue()).trim();
+  const saisi = sh.getRange(9, 7, 2, 2).getValues();
+  // B4 suit le dernier match (le mémo dit « n'y touche pas ») : un match déjà contrôlé laisse la place au plus
+  // récent pas encore contrôlé, si rien n'est saisi. Un choix manuel d'un match non contrôlé est respecté.
+  if (liste.length && match && match !== liste[0] && saisi.every(r => r[0] === '' && r[1] === '')) {
+    const faits = fb_matchsControles_();
+    if (faits[match] && !faits[liste[0]]) match = '';
+  }
   if (!match && liste.length) { match = liste[0]; sh.getRange('B4').setValue(match); }
   const m = D.matchs.find(x => x.match === match);
-  const saisi = sh.getRange(9, 7, 2, 2).getValues();
   const lignes = ['GP', 'VIP'].map((b, i) => {
     const c = m ? m[b] : fb_caisseVide_();
     const tpe = saisi[i][0], esp = saisi[i][1];
@@ -1016,52 +1114,71 @@ function fb_construireApres_(ss, D) {
   fb_protegerAvertissement_(sh, 'fb_gris_caisse', sh.getRange(9, 1, 2, 6));
 }
 
+/** Matchs ayant déjà au moins un contrôle de caisse (25_CONTROLES_CAISSE du CRM). */
+function fb_matchsControles_() {
+  const o = {};
+  try { fb_lireOnglet_(SpreadsheetApp.getActive(), FB.CONTROLES).forEach(r => { const m = String(r.match || '').trim(); if (m) o[m] = true; }); }
+  catch (e) { /* onglet absent : aucun contrôle */ }
+  return o;
+}
+
 function fb_construireNotice_(ss) {
   let sh = ss.getSheetByName(FB.T.LIRE);
   if (sh && sh.getRange('A1').getNote() === FB.NOTICE_VERSION) return;
   if (sh) sh.clear(); else sh = ss.insertSheet(FB.T.LIRE, 0);
   const L = [
-    ["📖 BOUTIQUE SPACER'S — mode d'emploi", 'T'],
-    ['C\'est le SEUL fichier de la boutique. Il est relié au CRM du club et donc aux deux tablettes : ce que tu valides ici part dans le CRM en 1 à 2 minutes ; les ventes des tablettes reviennent ici toutes seules. L\'ancien classeur « Inventaire 2026 2027 » est archivé depuis le 25/11 : on n\'y saisit plus rien.', 'I'],
+    ['📖 BOUTIQUE SPACER\'S — mode d\'emploi', 'T'],
+    ['C\'est le SEUL fichier de la boutique. Il est relié au stock du club et donc aux deux tablettes : ce que tu valides ici est enregistré en 1 à 2 minutes ; les ventes des tablettes reviennent ici toutes seules. L\'ancien classeur « Inventaire 2026 2027 » est archivé depuis le 25/11 : on n\'y saisit plus rien.', 'I'],
     ['', 'V'],
     ['LES 5 RÈGLES', 'S'],
-    ['🟨 Cases JAUNES = c\'est toi qui les remplis.   ⬜ Cases GRISES = elles viennent du CRM, on n\'y touche jamais (Google avertit si on essaie).', 'E'],
-    ['☑️ Rien n\'est enregistré tant que tu n\'as pas coché « ✅ Valider ». Ton prénom est obligatoire.', 'E'],
+    ['🟨 Cases JAUNES = c\'est toi qui les remplis.   ⬜ Cases GRISES = elles viennent du stock du club, on n\'y touche jamais (Google avertit si on essaie).', 'E'],
+    ['☑️ Rien n\'est enregistré tant que tu n\'as pas coché « ✅ Valider ». Ton prénom est obligatoire. Valide le jour même : un bandeau rouge en ligne 3 signale les lignes saisies mais pas validées.', 'E'],
     ['✅ Après validation, la colonne « Résultat » dit ce qui a été fait et les cases jaunes appliquées se vident : impossible de compter deux fois.', 'E'],
-    ['📌 Chaque onglet a son MÉMO en haut (cadre jaune pâle, ligne 2) : relis-le avant de saisir.', 'E'],
+    ['📌 Chaque onglet a son MÉMO en haut (cadre jaune pâle, ligne 2, repliable avec le petit « – » à gauche) : relis-le avant de saisir.', 'E'],
     ['🔢 Tout le stock (dépôt, boutique GP, boutique VIP) se compte et se corrige ICI, dans 2_BOUTIQUE. Les ventes des tablettes sont retirées toutes seules : ne les retire jamais à la main.', 'A'],
+    ['', 'V'],
+    ['PETIT LEXIQUE', 'S'],
+    ['TPE = terminal carte bancaire.', 'E'],
+    ['Add-on = article payé avec le billet Tickie, remis au stand.', 'E'],
+    ['« Synchroniser tout » = bouton de la tablette qui envoie les ventes.', 'E'],
+    ['Réassort = remettre des pièces en boutique.', 'E'],
     ['', 'V'],
     ['① UNE COMMANDE ARRIVE — onglet 1_COMMANDE', 'S'],
     ['1. Prénom en B4. Fournisseur en E4 et n° de facture en J4 (obligatoires : ils partent en comptabilité).', 'E'],
-    ['2. Sur la ligne de l\'article et de la taille : quantité reçue dans « ➕ Reçu ». Si le prix d\'achat HT a changé, l\'écrire à côté (sinon le prix connu du CRM est pris).', 'E'],
-    ['3. Cocher « ✅ Valider ». Tout entre au DÉPÔT. Pour mettre ensuite des pièces en boutique : onglet 2_BOUTIQUE.', 'E'],
-    ['EXEMPLE : 50 écharpes reçues, facture FA26081234 → E4 « Fournisseur X », J4 « FA26081234 », ligne ECH-TU « ➕ Reçu » = 50, Valider.', 'X'],
+    ['2. Sur la ligne de l\'article et de la taille : quantité reçue dans « ➕ Reçu (quantité) », et TOUJOURS le prix HT de la facture dans « Prix d\'achat HT (facture) », même s\'il n\'a pas changé.', 'E'],
+    ['3. Cocher « ✅ Valider » (H4). Tout entre au DÉPÔT. Pour mettre ensuite des pièces en boutique : onglet 2_BOUTIQUE.', 'E'],
+    ['EXEMPLE : 50 écharpes à 7 € HT, facture FA26081234 → E4 « Fournisseur X », J4 « FA26081234 », ligne ECH-TU : « ➕ Reçu » = 50, « Prix d\'achat HT (facture) » = 7, Valider.', 'X'],
     ['', 'V'],
     ['② INVENTAIRE ET PRÉPARATION DU MATCH — onglet 2_BOUTIQUE', 'S'],
-    ['1. Prénom en B4.', 'E'],
-    ['2. Inventaire : « Compté GP », « Compté VIP », « Compté dépôt » = ce que tu as sous les yeux, pièce par pièce. Case vide = pas compté (le CRM n\'est pas touché). Le CRM est corrigé de l\'écart, et l\'écart est gardé dans l\'historique.', 'E'],
-    ['3. Répartition : « ➡️ Sortir du dépôt vers GP » ou « … vers VIP » = le NOMBRE DE PIÈCES QUE TU AJOUTES dans la boutique (pas le total). Elles quittent le dépôt et entrent en boutique. Il faut assez de pièces au dépôt, sinon la ligne est refusée.', 'E'],
-    ['4. Comptage et sortie peuvent être sur la même ligne : le comptage passe d\'abord, la sortie se fait ensuite à partir du dépôt compté.', 'E'],
-    ['   Raccourci : coche « 📝 Proposer le réassort » : les quantités conseillées (retour au niveau du dernier match, dans la limite du dépôt) sont pré-remplies dans « ➡️ Sortir du dépôt ». Vérifie, corrige, puis Valider.', 'I'],
-    ['   La ligne 🎁 en haut de l\'onglet donne les add-ons Tickie encore à remettre : garde-les en boutique GP.', 'I'],
-    ['5. Cocher « ✅ Valider ». Puis, sur CHAQUE tablette, en wifi : « Mettre à jour le catalogue » (c\'est ce qui charge le stock), puis « 🎫 Charger le match ».', 'E'],
-    ['EXEMPLE : écharpe. Tu comptes 2 en GP, 7 en VIP, 100 au dépôt, et tu veux 20 en GP → « Compté GP » = 2, « Compté VIP » = 7, « Compté dépôt » = 100, « Sortir du dépôt vers GP » = 18. Valider. Résultat : « … 18 dépôt → GP · maintenant dépôt 82 / GP 20 / VIP 7 ».', 'X'],
+    ['AVANT : « Synchroniser tout » fait sur les deux tablettes, tablettes fermées, plus de bandeau rouge en ligne 6. Sinon la validation est refusée (rien n\'est enregistré) : une vente arrivée après ton comptage serait retirée deux fois.', 'A'],
+    ['Casse ou perte : une pièce abîmée se déclare AVANT de compter (prévenir Clément), sinon elle devient un écart inexpliqué.', 'E'],
+    ['Inventaire complet : à deux (un témoin), les prénoms des deux en B4 (ex. « Élise + Méline »), et une feuille de comptage papier signée par les deux.', 'E'],
+    ['1. Prénom(s) en B4. Les colonnes grises « Vendu… / Réassort conseillé / Prix » sont repliées : le petit « + » au-dessus des colonnes les déplie.', 'E'],
+    ['2. COMPTER, sans rien déplacer : « Compté GP (0 si aucun) », « Compté VIP (0 si aucun) », « Compté dépôt (0 si aucun) » = ce que tu as sous les yeux. Remplis TOUTES les cases, 0 compris : une case vide = pas compté, l\'ancien stock reste. Coche « ✅ Valider » (Q4) et attends les ✅.', 'E'],
+    ['3. DÉPLACER ensuite les cartons, et écrire dans « ➡️ Pièces à AJOUTER en GP (prises au dépôt) » ou « … en VIP » le NOMBRE DE PIÈCES AJOUTÉES (pas le total). Il faut assez de pièces au dépôt, sinon la ligne est refusée. Coche « ✅ Valider » (Q4).', 'E'],
+    ['   Raccourci réassort : coche « 📝 Proposer le réassort » (L4) AVANT toute saisie à la main (il remplace ce qui est écrit) : les quantités conseillées sont pré-remplies dans « Pièces à AJOUTER ». Vérifie, corrige, puis Valider.', 'I'],
+    ['   Add-ons : la ligne 7 (🎁) donne les articles payés avec le billet encore « à remettre » : ils restent en GP, ajoute-les dans « Pièces à AJOUTER en GP ».', 'I'],
+    ['   Gros inventaire : la validation peut se faire en 2 ou 3 fois. S\'il reste des ⏸, attends 2 minutes et recoche Valider. À la fin, tout doit être ✅.', 'I'],
+    ['4. Puis, sur CHAQUE tablette, en wifi : « Mettre à jour le catalogue » (c\'est ce qui charge le stock), puis « 🎫 Charger le match ».', 'E'],
+    ['EXEMPLE : écharpe. Étape 1 : tu comptes 2 en GP, 7 en VIP, 100 au dépôt → « Compté GP » = 2, « Compté VIP » = 7, « Compté dépôt » = 100, Valider. Étape 2 : tu veux 20 en GP, tu déplaces 18 écharpes → « Pièces à AJOUTER en GP » = 18, Valider. Résultat : « … 18 dépôt → GP · maintenant dépôt 82 / GP 20 / VIP 7 ».', 'X'],
     ['', 'V'],
     ['③ PENDANT LE MATCH — les tablettes', 'S'],
-    ['Les bénévoles vendent sur les tablettes, même sans internet. Les add-ons Tickie (écharpe, maillot achetés avec le billet) se remettent uniquement à la boutique GP, en scannant le billet : ils sortent du stock GP tout seuls.', 'I'],
-    ['Pendant le match : aucun comptage, aucune saisie de stock.', 'A'],
-    ['À la fermeture : clôturer la caisse puis « Synchroniser tout » sur CHAQUE tablette dès qu\'il y a du réseau. Sans ça, les ventes ne sont pas déduites du stock.', 'A'],
+    ['Les bénévoles vendent sur les tablettes, même sans internet. Les add-ons (articles payés avec le billet Tickie : écharpe, maillot…) se remettent uniquement à la boutique GP, en scannant le billet : ils sortent du stock GP tout seuls.', 'I'],
+    ['Pendant le match : aucun comptage, aucune saisie de stock. Aucun échange de taille ni retour au stand : on renvoie la personne vers Élise.', 'A'],
+    ['Le soir même, à la fermeture : clôturer la caisse, puis « Synchroniser tout » sur CHAQUE tablette dès qu\'il y a du réseau. Sans ça, les ventes ne sont pas déduites du stock.', 'A'],
+    ['Le soir même aussi : les espèces de chaque boutique sont comptées à deux (le bénévole du stand + Méline, contrôleuse de caisse) et mises sous enveloppe signée, avec le ticket de fin du TPE.', 'A'],
     ['', 'V'],
     ['④ APRÈS LE MATCH — dans cet ordre', 'S'],
-    ['1. « Synchroniser tout » fait sur les deux tablettes (plus de bandeau rouge ici).  2. Seulement ensuite : tu comptes, et tu saisis tes comptages dans 2_BOUTIQUE (« Compté GP / VIP / dépôt »), puis Valider.', 'E'],
+    ['1. « Synchroniser tout » fait sur les deux tablettes (plus de bandeau rouge ici).  2. Seulement ensuite : comptages dans 2_BOUTIQUE si besoin (voir ②).', 'E'],
     ['3_JOURNAL_VENTES et 4_TOP_VENTES se remplissent tout seuls (ventes GP / VIP, add-ons remis). 2_BOUTIQUE montre ce qui s\'est vendu au dernier match et le « Réassort conseillé ».', 'I'],
-    ['5_APRES_MATCH : saisir le relevé TPE et les espèces comptées (sans le fond de caisse de 30 €) de chaque boutique, ton prénom, puis « ✅ Valider le contrôle ». Le rapport part par mail. C\'est le seul contrôle de caisse à faire.', 'E'],
+    ['5_APRES_MATCH, le lendemain, avec les chiffres de l\'enveloppe : le match est déjà en B4 (n\'y touche pas), ton prénom en E4. « CB relevé TPE (ticket de fin) » = total du ticket de fin (D177 2668544-001 = GP, D177 2668543-001 = VIP). « Espèces comptées (SANS les 30 € du fond) » = espèces de l\'enveloppe moins les 30 € de fond de caisse.', 'E'],
+    ['Avant de cocher « ✅ Valider le contrôle » : regarde les écarts. Tolérance 0 € : s\'ils ne sont pas à 0, écris d\'abord pourquoi en B5. Un seul contrôle par match (pour corriger : « Correction : motif » en B5). Le rapport part par mail.', 'E'],
     ['', 'V'],
     ['CE QUI NE SE FAIT PAS ICI', 'S'],
-    ['Dons, cadeaux partenaires, casse, vente en dehors d\'un match : page Gestion (spacers-boutique.spacersytb.workers.dev/gestion.html). Nouvel article ou prix de vente : prévenir Clément.', 'I'],
+    ['Dons, cadeaux partenaires, casse, vente en dehors d\'un match : page Gestion (spacers-boutique.spacersytb.workers.dev/gestion.html). Nouvel article ou prix de vente : prévenir Clément. Échange de taille ou retour : jamais au stand pendant le match, la personne voit Élise.', 'I'],
     ['EN CAS DE SOUCI', 'S'],
     ['❌ dans « Résultat » : la ligne n\'a PAS été enregistrée (le message dit pourquoi). Corriger puis recocher « Valider ».', 'E'],
-    ['⏸ dans « Résultat » : le CRM était occupé (une tablette synchronisait) : rien n\'est perdu, recocher « Valider » 2 minutes plus tard.', 'E'],
+    ['⏸ dans « Résultat » : le stock du club était occupé (une tablette synchronisait) : rien n\'est perdu, recocher « Valider » 2 minutes plus tard.', 'E'],
     ['Rien ne bouge après 5 minutes, ou un message que tu ne comprends pas : ne recoche pas, envoie une photo à Clément.', 'E'],
   ];
   sh.getRange(1, 1, L.length, 1).setValues(L.map(l => [l[0]]));
