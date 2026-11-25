@@ -80,7 +80,7 @@ const FB = {
   ENTETES_CONTROLES: ['horodatage', 'match', 'boutique', 'CA_tablette_TTC', 'CB_tablette', 'CB_TPE', 'ecart_CB',
                       'especes_tablette', 'especes_comptees', 'ecart_especes', 'offerts_articles', 'controle_par', 'commentaire', 'statut'],
   // 25/11/2026 : tolérances de clôture (au-delà : « écart à expliquer »). CB : paiement électronique, 0 toléré.
-  TOL_CB_EUR: 0, TOL_ESP_EUR: 1,
+  TOL_CB_EUR: 0, TOL_ESP_EUR: 2,
   ORDRE_TAILLES: ['116', '128', '140', '152', '164', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', '3XL', 'TU', ''],
   SORTIES_MATCH: ['VENTE_COMPTOIR', 'OFFERT_CAISSE'],
   JAUNE: '#fff2cc', GRIS: '#eef1f5', NUIT: '#0b1f3a', BLEU: '#1f5fbf', ROUGE: '#b3261e', VERT: '#15803d',
@@ -904,7 +904,7 @@ function fb_construireApres_(ss, D) {
     [130, 80, 120, 100, 100, 100, 120, 120, 100, 110].forEach((w, i) => sh.setColumnWidth(i + 1, w));
     sh.setHiddenGridlines(true);
   }
-  sh.getRange('A2').setValue('1. Match en B4 · 2. « CB relevé TPE » = ticket de fin de journée du terminal · « Espèces comptées » = espèces dans la caisse MOINS le fond de caisse (30 € par boutique) · 3. Prénom en E4 · 4. Cocher « ✅ Valider le contrôle ». Le stock GP / VIP se compte dans « En boutique » (classeur Inventaire). Ne pas faire aussi le contrôle de caisse de l\'ancien onglet « APRÈS MATCH ». Refusé tant qu\'une tablette n\'a pas fait « Synchroniser tout ». Un seul contrôle par match : pour corriger, commentaire « Correction : motif ». Tolérance : CB 0 €, espèces ±1 €.').setFontColor('#555555');
+  sh.getRange('A2').setValue('1. Match en B4 · 2. « CB relevé TPE » = ticket de fin de journée du terminal · « Espèces comptées » = espèces dans la caisse MOINS le fond de caisse (30 € par boutique) · 3. Prénom en E4 · 4. Cocher « ✅ Valider le contrôle ». Le stock GP / VIP se compte dans « En boutique » (classeur Inventaire). Ne pas faire aussi le contrôle de caisse de l\'ancien onglet « APRÈS MATCH ». Refusé tant qu\'une tablette n\'a pas fait « Synchroniser tout ». Un seul contrôle par match : pour corriger, commentaire « Correction : motif ». Tolérance : CB 0 €, espèces ±2 €.').setFontColor('#555555');
   const liste = D.matchs.map(m => m.match);
   if (liste.length) sh.getRange('B4').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(liste.slice(0, 50), true).setAllowInvalid(true).build());
   let match = String(sh.getRange('B4').getValue()).trim();
