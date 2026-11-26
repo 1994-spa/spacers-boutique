@@ -1,6 +1,6 @@
 // Lance tous les tests : node tests/tout.js   (fuseau Europe/Paris imposé)
 const { spawnSync } = require('child_process'), path = require('path');
-const T = ['caisse/test.js', 'adversaire/test.js', 'adversaire/pilotage.js', 'fichier_boutique/scenario.js', 'fichier_boutique/reprise.js',
+const T = ['caisse/test.js', 'adversaire/test.js', 'adversaire/pilotage.js', 'fichier_boutique/scenario.js', 'fichier_boutique/reprise.js', 'fichier_boutique/journal_bilan.js',
            'cloture/test.js', 'verrou/test.js', 'import_session/test.js', 'apres_match/test.js', 'corrections_crm/test.js',
            'remise_benevole/test.js'];
 let ko = 0;

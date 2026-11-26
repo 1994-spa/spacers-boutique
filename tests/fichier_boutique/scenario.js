@@ -59,7 +59,7 @@ check(T.triggers.length === 2 && T.fichiers.F2 === undefined, 'réinstallation :
 console.log('1 bis. Mémos');
 {
   const memo = run('FB_MEMOS');
-  const att = { '1_COMMANDE': [14, 3], '2_BOUTIQUE': [17, 3], '3_JOURNAL_VENTES': [13, 0], '4_TOP_VENTES': [14, 0], '5_APRES_MATCH': [11, 0] };
+  const att = { '1_COMMANDE': [14, 3], '2_BOUTIQUE': [17, 3], '3_JOURNAL_VENTES': [13, 0], '4_TOP_VENTES': [15, 0], '5_APRES_MATCH': [11, 0] };
   const texte = sh => (sh.get(2, 1) + '\n' + sh.get(2, 4));
   const fusions2 = sh => sh.merges.filter(m => m.r === 2 || m.r + m.nr - 1 >= 2 && m.r <= 2);
   Object.keys(att).forEach(n => {

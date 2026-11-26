@@ -130,14 +130,17 @@ const FB_MEMOS = {
     'LIGNES BLEUES : article payé avec le billet (add-on), remis au stand GP.',
     'RIEN À SAISIR : mise à jour toute seule toutes les 10 min, après « Synchroniser tout » sur la tablette.',
     'SI UNE VENTE MANQUE : « Synchroniser tout » pas fait, ou vente pas saisie en caisse → prévenir Clément.',
-    'À SAVOIR : ventes en ligne absentes d\'ici · ligne rose ⚠ = article absent du catalogue → prévenir Clément.'
+    'À SAVOIR : ventes en ligne absentes d\'ici · ligne rose ⚠ = article absent du catalogue → prévenir Clément.',
+    'HORS TABLETTE : ventes notées à la main (journal papier VIP) ; dans le CA, pas dans le contrôle de caisse.'
   ],
   '4_TOP_VENTES': [
     'BUT : voir ce qui se vend le mieux (à gauche, top 5 surligné) et le bilan de chaque match (à droite).',
     'RIEN À SAISIR : l\'onglet se met à jour tout seul toutes les 10 min.',
     'SERT À : préparer le réassort (2_BOUTIQUE) et les prochaines commandes (1_COMMANDE).',
     'À SAVOIR : « Vendu » = ventes de caisse (GP + VIP + hors match).',
-    'ADD-ONS REMIS : articles payés avec le billet (add-on) et remis au stand, comptés à part.'
+    'ADD-ONS REMIS : articles payés avec le billet (add-on) et remis au stand, comptés à part.',
+    'BILAN PAR MATCH : CA VIP = tablette VIP + ventes VIP notées à la main · CA autre = hors stand (facture, dépôt).',
+    'HORS MATCH : ventes sans match (ex. écharpes Groupama). Total des « CA total » = CA saison du journal.'
   ],
   '5_APRES_MATCH': [
     'BUT : contrôler la caisse de chaque boutique (GP et VIP). C\'est le seul contrôle de caisse à faire.',
@@ -571,20 +574,79 @@ function fb_donnees_() {
   const ventes = fb_lireOnglet_(crm, '01_VENTES');
   const live = fb_lireOnglet_(crm, '21_LIGNES_LIVE');
   const retraits = fb_lireOnglet_(crm, '17_RETRAITS');
-  return fb_calculer(produits, P.rows, mvts, ventes, live, FB.DEBUT_SAISON, retraits);
+  const matchsCrm = fb_lireOnglet_(crm, '04_MATCHS');
+  return fb_calculer(produits, P.rows, mvts, ventes, live, FB.DEBUT_SAISON, retraits, matchsCrm);
+}
+
+/**
+ * Date lue dans le CRM, quelle que soit sa forme : objet Date, numéro de série Sheets, texte « jj/mm/aaaa [hh:mm[:ss]] »
+ * (format français, que new Date() lit à l'américaine ou pas du tout), texte ISO. null si illisible (jamais « Invalid Date »).
+ */
+function fb_date_(v) {
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  if (typeof v === 'number') {
+    if (!(v > 20000 && v < 80000)) return null;
+    const u = new Date(Math.round((v - 25569) * 86400000));   // série Sheets = heure murale, lue en UTC puis remise en heure locale
+    return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate(), u.getUTCHours(), u.getUTCMinutes(), u.getUTCSeconds());
+  }
+  const s = String(v === null || v === undefined ? '' : v).trim();
+  if (!s) return null;
+  const fr = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T,]+(\d{1,2})[:h](\d{2})(?::(\d{2}))?)?$/.exec(s);
+  if (fr) {
+    const d = new Date(+fr[3], +fr[2] - 1, +fr[1], +(fr[4] || 0), +(fr[5] || 0), +(fr[6] || 0));
+    return d.getMonth() === +fr[2] - 1 ? d : null;
+  }
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
 }
 
 /**
  * Calculs purs (sans accès au classeur) — exportés pour les tests.
  * produits : articles actifs avec réf. ; tousProduits : tout 03_PRODUITS (pour relier un nom vendu à sa réf.)
- * mvts / ventes / live : tableaux d'objets { en-tête: valeur }.
+ * mvts / ventes / live : tableaux d'objets { en-tête: valeur }. matchsCrm : 04_MATCHS (date, club_visiteur), facultatif.
  */
-function fb_calculer(produits, tousProduits, mvts, ventes, live, debut, retraits) {
+function fb_calculer(produits, tousProduits, mvts, ventes, live, debut, retraits, matchsCrm) {
   const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
   const num = v => { const n = Number(String(v === null || v === undefined ? '' : v).replace(/\s/g, '').replace(',', '.')); return isNaN(n) ? 0 : n; };
-  const date = v => v instanceof Date ? v : (v ? new Date(v) : null);
+  const date = fb_date_;
   const parNom = {}, parRef = {};
   tousProduits.forEach(x => { if (x.produit) parNom[norm(x.produit)] = x; if (x.ref) parRef[x.ref] = x; });
+
+  // --- date de repli d'une ligne sans date lisible (26/11) : 1re vente tablette du même match, sinon 04_MATCHS
+  //     (adversaire = club_visiteur, une seule ligne), sinon la date portée par le n° de commande (HM-aaaammjj-…, RV-nn-…-jjmm).
+  const adv = m => norm(String(m || '').replace(/^.*\bvs\b/i, ''));
+  const debutTablette = {};
+  ventes.forEach(v => {
+    if (String(v.source || '').trim() !== 'tablette') return;
+    const d = date(v.date) || date(v.horodatage) || date(v.timestamp) || date(v.date_vente);
+    const m = String(v.match_associe || '').trim();
+    if (d && m && (!debutTablette[m] || d < debutTablette[m])) debutTablette[m] = d;
+  });
+  const parAdv = {};
+  (matchsCrm || []).forEach(r => {
+    const d = date(r.date), a = norm(r.club_visiteur);
+    if (d && a && d >= debut) (parAdv[a] = parAdv[a] || []).push(d);
+  });
+  const dateMatch = m => {
+    m = String(m || '').trim();
+    if (!m) return null;
+    if (debutTablette[m]) return debutTablette[m];
+    const l = parAdv[adv(m)];
+    return l && l.length === 1 ? l[0] : null;
+  };
+  const dateCommande = (c, ref) => {
+    c = String(c || '');
+    let x = /^HM-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(c);
+    if (x) return new Date(+x[1], +x[2] - 1, +x[3], +x[4], +x[5]);
+    x = /-(\d{2})(\d{2})$/.exec(c);
+    if (/^RV-\d{2}-/.test(c) && x) {
+      const mois = +x[2] - 1, an = debut.getFullYear() + (mois < debut.getMonth() ? 1 : 0);
+      return new Date(an, mois, +x[1], 20, 0);
+    }
+    return null;
+  };
+  // vrai match du club : un libellé vu sur une vente tablette, ou « Spacer's vs … » (pas « Hors match », pas une occasion libre)
+  const estMatch = m => !!m && (!!debutTablette[m] || /^spacer['’]?s?\s+vs\s+/i.test(m));
 
   // --- mouvements de la saison, par réf.
   const saison = {}, sortiesMatch = {};
@@ -611,32 +673,44 @@ function fb_calculer(produits, tousProduits, mvts, ventes, live, debut, retraits
 
   // --- journal : ventes tablette et hors match + retraits add-ons
   const journal = [];
+  //  Source « hors_match » (page Gestion, reprise RV-… du journal papier d'Élise du 24/11) : la boutique vient de
+  //  boutique_id quand la vente porte un vrai match — B2 → « VIP », B1 → « GP », autre lieu (R : dépôt / facturé)
+  //  → « Hors stand ». Sans vrai match → « Hors match ». Ces ventes n'ont pas de type « Vente » : elles restent hors
+  //  du contrôle de caisse des tablettes, du dernier match, du réassort et du rapprochement 21_LIGNES_LIVE.
   ventes.forEach(v => {
     const src = String(v.source || '').trim();
     if (src !== 'tablette' && src !== 'hors_match') return;
-    const d = date(v.date);
+    const matchBrut = String(v.match_associe || '').trim();
+    const d = date(v.date) || date(v.horodatage) || date(v.timestamp) || date(v.date_vente) || dateMatch(matchBrut) || dateCommande(v.commande);
     if (d && d < debut) return;
     const nom = String(v.produit || '').trim();
     const x = parNom[norm(nom)];
     const mode = String(v.mode_paiement || '').trim();
     const offert = /offert/i.test(mode);
+    const pt = String(v.boutique_id || '').trim();
+    const cmd = String(v.commande || '').trim();
+    let match = matchBrut, boutique, type, rem = '';
+    if (src === 'tablette') { boutique = pt === 'B2' ? 'VIP' : 'GP'; type = offert ? 'Offert' : 'Vente'; }
+    else if (estMatch(matchBrut)) {
+      boutique = pt === 'B2' ? 'VIP' : (pt === 'B1' ? 'GP' : 'Hors stand');
+      type = offert ? 'Offert hors tablette' : (boutique === 'Hors stand' ? 'Vente hors stand' : 'Vente ' + boutique + ' hors tablette');
+      rem = /^RV-\d{2}-/.test(cmd) ? 'reprise du journal papier d\'Élise (24/11), hors caisse tablette' : 'saisie hors tablette, hors caisse tablette';
+    } else { match = 'Hors match'; boutique = 'Hors match'; type = offert ? 'Offert hors match' : 'Vente hors match'; }
     journal.push({
-      d: d || new Date(0), match: String(v.match_associe || '').trim() || (src === 'hors_match' ? 'Hors match' : ''),
-      boutique: src === 'hors_match' ? 'Hors match' : (String(v.boutique_id).trim() === 'B2' ? 'VIP' : 'GP'),
-      type: offert ? 'Offert' : (src === 'hors_match' ? 'Vente hors match' : 'Vente'),
+      d: d, match: match, boutique: boutique, type: type,
       ref: x ? x.ref : (/^divers/i.test(nom) ? 'DIVERS' : ''), article: x ? (x.modele || x.produit) : nom, taille: x ? (x.taille || 'TU') : '',
       q: num(v.quantite), pu: num(v.prix_unitaire), ca: offert ? 0 : num(v.CA), paiement: mode,
       remise: num(v.remise) ? fb_r2_(num(v.remise)) : '',
-      remarque: x ? '' : (/^divers/i.test(nom) ? 'article hors catalogue' : '⚠ article absent du catalogue : stock non sorti')
+      remarque: x ? rem : (/^divers/i.test(nom) ? 'article hors catalogue' : '⚠ article absent du catalogue : stock non sorti')
     });
   });
   mvts.forEach(m => {
     if (String(m.type).trim() !== 'RETRAIT_ADDON') return;
-    const d = date(m.horodatage);
+    const d = date(m.horodatage) || dateMatch(m.match);
     if (d && d < debut) return;
     const x = parRef[String(m.ref_boutique || '').trim()];
     journal.push({
-      d: d || new Date(0), match: String(m.match || '').trim(), boutique: m.point === 'B2' ? 'VIP' : 'GP', type: 'Retrait add-on',
+      d: d, match: String(m.match || '').trim(), boutique: m.point === 'B2' ? 'VIP' : 'GP', type: 'Retrait add-on',
       ref: String(m.ref_boutique || ''), article: x ? (x.modele || x.produit) : String(m.produit || ''), taille: x ? (x.taille || 'TU') : '',
       q: -num(m.quantite), pu: '', ca: '', paiement: 'payé en ligne', remise: '', remarque: String(m.commentaire || '')
     });
@@ -656,6 +730,7 @@ function fb_calculer(produits, tousProduits, mvts, ventes, live, debut, retraits
   // début du match = première vente de caisse ou premier retrait d'add-on de ce match
   const debutMatch = ventesMatch.filter(j => j.match === dernierMatch).map(j => j.d)
     .concat(recentes.filter(r => r.match === dernierMatch && r.retrait).map(r => r.d))
+    .filter(d => d && d.getTime() > 0)
     .reduce((m, d) => (!m || d < m ? d : m), null);
   const net = {};
   if (debutMatch) mvts.forEach(m => {
@@ -711,12 +786,19 @@ function fb_calculer(produits, tousProduits, mvts, ventes, live, debut, retraits
   });
   const topListe = Object.keys(top).map(k => top[k]).sort((a, b) => (b.q + b.addon) - (a.q + a.addon) || b.ca - a.ca);
 
-  // --- bilan par match (caisse) : CA, CB, espèces, offerts par boutique
+  // --- bilan par match : GP / VIP = caisse des tablettes (CA, CB, espèces, offerts : contrôle de caisse de 5_APRES_MATCH) ;
+  //     bilan = toutes les ventes du match (tablettes + hors tablette : VIP reprise, hors stand) pour 4_TOP_VENTES.
+  //     Chaque vente compte dans une ligne (match ou « Hors match ») : somme des « CA total » = CA caisse saison du journal.
   const parMatch = {};
   journal.forEach(j => {
-    if (j.type === 'Retrait add-on' || !j.match) return;
-    const m = parMatch[j.match] = parMatch[j.match] || { match: j.match, d: j.d, GP: fb_caisseVide_(), VIP: fb_caisseVide_() };
-    if (j.d > m.d) m.d = j.d;
+    if (j.type === 'Retrait add-on') return;
+    const cle = j.match || 'Hors match';
+    const m = parMatch[cle] = parMatch[cle] || { match: cle, d: j.d, GP: fb_caisseVide_(), VIP: fb_caisseVide_(), bilan: { GP: 0, VIP: 0, autre: 0, articles: 0 } };
+    if (j.d > m.d || !m.d) m.d = j.d;
+    m.bilan.articles += j.q;
+    const k = j.boutique === 'VIP' || j.boutique === 'GP' ? j.boutique : 'autre';
+    m.bilan[k] += num(j.ca);
+    if (j.type !== 'Vente' && j.type !== 'Offert') return;       // contrôle de caisse : ventes des tablettes seulement
     const b = j.boutique === 'VIP' ? m.VIP : (j.boutique === 'GP' ? m.GP : null);
     if (!b) return;
     b.articles += j.q;
@@ -1010,12 +1092,14 @@ function fb_construireJournal_(ss, D) {
     sh.setHiddenGridlines(true);
   }
   fb_memo_(sh, nbC, FB_MEMOS[FB.T.JRN]);
-  const lignes = D.journal.map(j => [j.d, j.match, j.boutique, j.type, j.ref, j.article, j.taille, j.q, j.pu, j.ca, j.paiement, j.remise, j.remarque]);
+  // Date : objet Date neuf (jamais « Invalid Date » ni 01/01/1970), format posé AVANT l'écriture des valeurs
+  const lignes = D.journal.map(j => [j.d instanceof Date && j.d.getTime() > 0 ? new Date(j.d.getTime()) : '', j.match, j.boutique, j.type,
+                                     j.ref, j.article, j.taille, j.q, j.pu, j.ca, j.paiement, j.remise, j.remarque]);
   const n0 = Math.max(0, sh.getLastRow() - 5);
   if (n0 > 0) sh.getRange(6, 1, n0, nbC).clearContent();
   if (lignes.length) {
-    sh.getRange(6, 1, lignes.length, nbC).setValues(lignes).setFontFamily('Arial').setFontSize(9);
     sh.getRange(6, 1, lignes.length, 1).setNumberFormat('dd/MM/yyyy HH:mm');
+    sh.getRange(6, 1, lignes.length, nbC).setValues(lignes).setFontFamily('Arial').setFontSize(9);
     sh.getRange(6, 9, lignes.length, 2).setNumberFormat('#,##0.00 €');
     sh.getRange(6, 1, lignes.length, nbC).setBackgrounds(lignes.map(l => {
       const c = l[3] === 'Retrait add-on' ? '#e8f1fb' : (String(l[12]).indexOf('⚠') === 0 ? '#fde2e1' : null);
@@ -1035,10 +1119,10 @@ function fb_construireTop_(ss, D) {
     sh = ss.insertSheet(FB.T.TOP);
     sh.getRange('A1').setValue('4 · TOP VENTES — saison 2026-2027').setFontSize(14).setFontWeight('bold').setFontColor(FB.NUIT);
     sh.setHiddenGridlines(true);
-    [40, 220, 80, 70, 70, 90, 100, 110, 20, 230, 100, 100, 100, 100].forEach((w, i) => sh.setColumnWidth(i + 1, w));
+    [40, 220, 80, 70, 70, 90, 100, 110, 20, 230, 100, 100, 100, 100, 100].forEach((w, i) => sh.setColumnWidth(i + 1, w));
   }
-  fb_memo_(sh, 14, FB_MEMOS[FB.T.TOP]);   // deux tableaux : A–H (articles) et J–N (matchs)
-  sh.getRange(5, 1, Math.max(sh.getMaxRows() - 4, 1), 14).clearContent().setBackground(null).setFontWeight('normal');
+  fb_memo_(sh, 15, FB_MEMOS[FB.T.TOP]);   // deux tableaux : A–H (articles) et J–O (matchs)
+  sh.getRange(5, 1, Math.max(sh.getMaxRows() - 4, 1), 15).clearContent().setBackground(null).setFontWeight('normal');
   const H = ['Rang', 'Article', 'Vendu', 'dont GP', 'dont VIP', 'Add-ons remis', 'CA TTC', 'Dernier match'];
   sh.getRange(5, 1, 1, H.length).setValues([H]).setFontWeight('bold').setBackground(FB.NUIT).setFontColor('#ffffff');
   const L = D.top.map((t, i) => [i + 1, t.article, t.q, t.gp, t.vip, t.addon, fb_r2_(t.ca), t.dernier || '']);
@@ -1047,12 +1131,13 @@ function fb_construireTop_(ss, D) {
     sh.getRange(6, 7, L.length, 1).setNumberFormat('#,##0.00 €');
     sh.getRange(6, 1, Math.min(5, L.length), H.length).setBackground('#dce9fb').setFontWeight('bold');
   }
-  const M = ['Match', 'CA GP', 'CA VIP', 'CA total', 'Articles'];
+  const M = ['Match', 'CA GP', 'CA VIP', 'CA autre', 'CA total', 'Articles'];
   sh.getRange(5, 10, 1, M.length).setValues([M]).setFontWeight('bold').setBackground(FB.NUIT).setFontColor('#ffffff');
-  const LM = D.matchs.map(m => [m.match, fb_r2_(m.GP.ca), fb_r2_(m.VIP.ca), fb_r2_(m.GP.ca + m.VIP.ca), m.GP.articles + m.VIP.articles]);
+  const LM = D.matchs.map(m => [m.match, fb_r2_(m.bilan.GP), fb_r2_(m.bilan.VIP), fb_r2_(m.bilan.autre),
+                                 fb_r2_(m.bilan.GP + m.bilan.VIP + m.bilan.autre), m.bilan.articles]);
   if (LM.length) {
     sh.getRange(6, 10, LM.length, M.length).setValues(LM).setFontFamily('Arial').setFontSize(10);
-    sh.getRange(6, 11, LM.length, 3).setNumberFormat('#,##0.00 €');
+    sh.getRange(6, 11, LM.length, 4).setNumberFormat('#,##0.00 €');
   }
   sh.getRange('A3').setValue('Dernier match : ' + (D.dernierMatch || '—') + ' · lu le ' + sb_fmt_(new Date())).setFontSize(9).setFontColor('#888888');
 }
